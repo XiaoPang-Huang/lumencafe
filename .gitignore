@@ -20,6 +20,9 @@ dist/
 .vscode/
 .workbuddy/
 
+# 旧版后端（仅本地参考，不入库）
+old/
+
 # 数据与备份
 *.dump
 *.sql.gz
