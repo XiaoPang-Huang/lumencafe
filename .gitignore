@@ -1,0 +1,26 @@
+# 环境与密钥（任何 .env 都不入库，示例文件除外）
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / 前端
+node_modules/
+dist/
+*.local
+
+# 系统与工具
+.DS_Store
+.idea/
+.vscode/
+.workbuddy/
+
+# 数据与备份
+*.dump
+*.sql.gz
+backups/
