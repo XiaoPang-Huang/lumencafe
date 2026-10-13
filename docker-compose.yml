@@ -24,7 +24,10 @@ services:
   api:
     build: ./backend
     restart: unless-stopped
-    env_file: .env
+    # .env 缺失时不拒绝启动（compose >= 2.24），由 config.py 的默认值兜底
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "8000:8000"
     depends_on:
