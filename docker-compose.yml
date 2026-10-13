@@ -1,0 +1,43 @@
+# 流光咖啡馆本地/服务器一体化编排：PostgreSQL 16 + FastAPI
+# 用法：cp .env.example .env 后 `docker compose up -d --build`
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lumencafe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lumencafe}
+      POSTGRES_DB: lumencafe
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # 暴露到宿主机，供本机 venv 直连开发/验证（compose 内 api 走服务名 db）
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lumencafe -d lumencafe"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # 2核4G 小池：与后端连接池 pool_size=5 + max_overflow=10（合计 ≤15 < 20）匹配
+    command: ["postgres", "-c", "max_connections=20"]
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import httpx;httpx.get('http://127.0.0.1:8000/health',timeout=5)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # 启动即迁移（Alembic 替代 create_all）
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
