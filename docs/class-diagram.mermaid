@@ -1,0 +1,125 @@
+%% 流光咖啡馆 批次1 类图：数据模型 + 服务类
+%% 对应《架构设计-v1.md》附：类图
+
+classDiagram
+    class User {
+        +int id
+        +str username
+        +str password_hash
+        +str nickname
+        +bool is_active
+        +bool is_deleted
+    }
+    class Role {
+        +int id
+        +str name
+        +str description
+        +bool built_in
+    }
+    class Permission {
+        +int id
+        +str code
+        +str name
+    }
+    class Provider {
+        +int id
+        +str name
+        +str vendor
+        +str base_url
+        +str api_key
+        +bool enabled
+    }
+    class LLMModel {
+        +int id
+        +str name
+        +float temperature
+        +int max_tokens
+        +float top_p
+        +int sort
+    }
+    class AppBinding {
+        +str app_id
+        +int provider_id
+        +str model
+        +str system_prompt
+        +dict param_overrides
+        +int daily_limit
+    }
+    class Category {
+        +int id
+        +str name
+        +int sort
+    }
+    class AppRegistry {
+        +str id
+        +str name
+        +str desc
+        +str color
+        +str icon
+        +int sort
+        +str mode
+        +str perm_code
+    }
+    class AppVisibility {
+        +int id
+        +int user_id
+        +str app_id
+        +bool hidden
+        +int category_id
+    }
+    class ChatConversation {
+        +int id
+        +int user_id
+        +str app_id
+        +str title
+    }
+    class ChatMessage {
+        +int id
+        +int conversation_id
+        +int user_id
+        +str role
+        +str content
+    }
+    class UserSetting {
+        +int id
+        +int user_id
+        +str scope
+        +str key
+        +dict value
+    }
+
+    User "1" --> "n" user_roles
+    Role "1" --> "n" user_roles
+    Role "1" --> "n" role_permissions
+    Permission "1" --> "n" role_permissions
+    User "1" --> "n" ChatConversation
+    User "1" --> "n" ChatMessage
+    User "1" --> "n" AppVisibility
+    User "1" --> "n" UserSetting
+    ChatConversation "1" --> "n" ChatMessage
+    Category "1" --> "n" AppRegistry
+    AppRegistry "1" --> "1" AppBinding
+    AppRegistry "1" --> "n" AppVisibility
+    AppRegistry "1" --> "n" ChatConversation
+    Provider "1" --> "n" LLMModel
+    Provider "1" --> "n" AppBinding
+
+    class RBACService {
+        +permission_codes(db, user_id) set~str~
+        +roles_of(db, user_id) list~Role~
+    }
+    class LLMGateway {
+        +chat_stream(client_cfg, messages) AsyncIterator~str~
+        +chat_once(client_cfg, messages) str
+        +test_provider(provider) dict
+    }
+    class BindingService {
+        +resolve(db, app_id) ChatClientConfig
+        +check_daily_limit(db, user_id, binding) None
+    }
+    class SeedService {
+        +ensure_permissions_roles(db)
+        +ensure_admin_user(db)
+        +ensure_app_registry_and_bindings(db)
+        +ensure_llm_seed_from_env(db)
+    }
