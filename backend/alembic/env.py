@@ -20,7 +20,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# 数据库 URL 中经 URL 编码的密码可能含 %（如 a%40b%23c%24d），而 alembic.ini 走
+# configparser BasicInterpolation，裸 % 会在 set 时抛 invalid interpolation syntax。
+# 写入前转义为 %%，读取侧（get_main_option / get_section，offline/online 均经过）
+# 会自动反转义回单个 %，两侧行为一致。
+_ESCAPED_DATABASE_URL = settings.database_url.replace("%", "%%")
+config.set_main_option("sqlalchemy.url", _ESCAPED_DATABASE_URL)
 
 target_metadata = Base.metadata
 
