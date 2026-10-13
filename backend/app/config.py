@@ -3,8 +3,10 @@
 约定：业务代码统一 ``from app.config import settings``，
 禁止在业务代码里直接读 os.environ。
 """
+from typing import Annotated
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -24,7 +26,8 @@ class Settings(BaseSettings):
     db_max_overflow: int = 10
 
     # CORS（本地开发；生产由 Caddy 同域反代，可留空）
-    cors_origins: list[str] = ["http://localhost:5173"]
+    # NoDecode：环境变量按原始字符串交给下面的拆分校验器，不做 JSON 解析
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
 
     log_level: str = "INFO"
 
