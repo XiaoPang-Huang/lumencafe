@@ -27,3 +27,6 @@ old/
 *.dump
 *.sql.gz
 backups/
+
+# n8n 中文界面包（体积大，不入库；部署时按 README 下载解压）
+n8n-zh/
