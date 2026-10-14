@@ -2,14 +2,15 @@
 # 用法：cp .env.example .env 后 `docker compose up -d --build`
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: lumencafe
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lumencafe}
       POSTGRES_DB: lumencafe
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG 18+ 镜像要求挂载父目录 /var/lib/postgresql（数据存版本号子目录，便于未来 pg_upgrade）
+      - pgdata:/var/lib/postgresql
     ports:
       # 暴露到宿主机，供本机 venv 直连开发/验证（compose 内 api 走服务名 db）
       - "5432:5432"
@@ -22,7 +23,11 @@ services:
     command: ["postgres", "-c", "max_connections=20"]
 
   api:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # 国内构建走清华镜像加速；服务器/CI 可在 .env 覆盖为官方源
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     restart: unless-stopped
     # .env 缺失时不拒绝启动（compose >= 2.24），由 config.py 的默认值兜底
     env_file:
@@ -42,5 +47,42 @@ services:
     # 启动即迁移（Alembic 替代 create_all）
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
+  # 本地反代：http://cafe.localhost → api（SSE 不缓冲）。服务器部署用根目录 Caddyfile（真实域名+自动 HTTPS）
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # 自动化编排（可选组件）：胶水型任务编排，不直连数据库，仅通过 HTTP 调 API
+  # 本地入口 http://localhost:5678 （Basic Auth）；流程里访问后端用 http://api:8000
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-changeme}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      GENERIC_TIMEZONE: Asia/Shanghai
+      TZ: Asia/Shanghai
+    volumes:
+      - n8n_data:/home/node/.n8n
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
+  n8n_data:

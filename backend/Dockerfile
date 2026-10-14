@@ -1,12 +1,14 @@
 # 多阶段构建：builder 装依赖，runtime 只留运行时文件，非 root 运行
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# PIP_INDEX_URL 由 compose 构建参数注入（国内走镜像加速），默认官方 PyPI
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir --prefix=/install --index-url=${PIP_INDEX_URL} -r requirements.txt
 
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1

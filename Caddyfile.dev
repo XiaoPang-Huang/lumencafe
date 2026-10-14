@@ -1,0 +1,7 @@
+# 本地开发用 Caddy：http://cafe.localhost 反代到 api 容器（.localhost 域名 Caddy 自动解析到 127.0.0.1）
+# SSE 反代关键：flush_interval -1 关闭缓冲
+http://cafe.localhost {
+	reverse_proxy api:8000 {
+		flush_interval -1
+	}
+}

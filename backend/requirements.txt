@@ -1,12 +1,11 @@
-fastapi==0.115.*
-uvicorn[standard]==0.30.*
-sqlalchemy[asyncio]==2.0.*
-# 0.30 起提供 Python 3.13 预编译 wheel（0.29 无 cp313 wheel，本地 3.13 venv 无法直装）
-asyncpg==0.30.*
-alembic==1.13.*
-pydantic==2.*
-pydantic-settings==2.*
-PyJWT==2.*
-bcrypt==4.*
-httpx==0.27.*
+fastapi==0.143.*
+uvicorn[standard]==0.54.*
+sqlalchemy[asyncio]==2.1.*
+asyncpg==0.32.*
+alembic==1.20.*
+pydantic==2.14.*
+pydantic-settings==2.15.*
+PyJWT==2.15.*
+bcrypt==5.*
+httpx==0.28.*
 greenlet==3.*          # SQLAlchemy asyncio 依赖
