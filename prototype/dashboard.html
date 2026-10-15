@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工作台 · 流光咖啡馆</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <!-- 手机顶栏 -->
+  <header class="topbar">
+    <button class="menu-btn" data-open-sider>☰</button>
+    <span class="t">流光咖啡馆</span>
+    <span class="avatar" style="width:28px;height:28px;font-size:12px;">岛</span>
+  </header>
+
+  <!-- 侧栏（电脑固定 / 手机抽屉） -->
+  <aside class="sider">
+    <div class="brand">
+      <span class="brand-logo">☕</span>
+      <span>
+        <div class="brand-name">流光咖啡馆</div>
+        <div class="brand-sub">LUMENCAFE</div>
+      </span>
+    </div>
+    <nav class="sider-nav">
+      <a class="nav-item active" href="dashboard.html"><span class="nav-ico">🏠</span>工作台</a>
+      <a class="nav-item" href="chat.html"><span class="nav-ico">💬</span>对话</a>
+      <a class="nav-item" href="money.html"><span class="nav-ico">💰</span>记账</a>
+      <a class="nav-item" href="apps.html"><span class="nav-ico">🧩</span>应用中心</a>
+      <a class="nav-item" href="admin.html"><span class="nav-ico">⚙️</span>平台管理</a>
+    </nav>
+    <div class="sider-user">
+      <span class="avatar">岛</span>
+      <span>
+        <div class="u-name">island</div>
+        <div class="u-role">管理员</div>
+      </span>
+    </div>
+  </aside>
+  <div class="drawer-mask"></div>
+
+  <main class="main">
+    <div class="greet">
+      <div>
+        <h1>早安，岛 ☀️</h1>
+        <div class="page-desc">今天也是放下小说、认真生活的一天</div>
+      </div>
+      <span class="date">10月14日 星期二</span>
+    </div>
+
+    <!-- 今日摘要小组件 -->
+    <div class="widget-grid">
+      <div class="card widget money-mini">
+        <h3>本月支出概览 <a href="money.html">去记账 →</a></h3>
+        <div class="nums">
+          <div class="num"><small>支出</small><b class="ex">¥2,340</b></div>
+          <div class="num"><small>收入</small><b class="inc">¥8,000</b></div>
+          <div class="num"><small>结余</small><b>¥5,660</b></div>
+        </div>
+      </div>
+      <div class="card widget w-8">
+        <h3>最近对话 <a href="chat.html">全部 →</a></h3>
+        <div class="conv-line"><span class="who">树洞</span><p>昨晚睡得好一点了，今天想试着把手机放在客厅充电</p><span class="t">08:12</span></div>
+        <div class="conv-line"><span class="who">旅行</span><p>那就按 11 月初、四天三晚、人均 2500 来排一版厦门的</p><span class="t">昨天</span></div>
+      </div>
+    </div>
+
+    <!-- 固定应用卡片区 -->
+    <div class="app-section-title">🧩 我的应用</div>
+    <div class="app-grid">
+      <a class="app-card big" href="chat.html">
+        <div class="top">
+          <span class="ico ico-lg" style="background:#E6EBE1;">💬</span>
+          <div>
+            <div class="name">树洞对话</div>
+            <div class="desc">温柔地接住你的每一句话，多轮上下文持续陪伴</div>
+          </div>
+        </div>
+        <div class="foot"><span class="tag">AI 对话</span><span class="tag">DeepSeek</span><span class="tag">继续聊 →</span></div>
+      </a>
+      <a class="app-card big" href="money.html">
+        <div class="top">
+          <span class="ico ico-lg" style="background:#F5EBDD;">💰</span>
+          <div>
+            <div class="name">记账本</div>
+            <div class="desc">一句话 AI 记一笔，收支分类一目了然</div>
+          </div>
+        </div>
+        <div class="foot"><span class="tag">本月 23 笔</span><span class="tag">餐饮占比最高</span><span class="tag">记一笔 →</span></div>
+      </a>
+      <a class="app-card small is-disabled" href="apps.html">
+        <div class="top">
+          <span class="ico" style="background:#EFF1EC;">📚</span>
+          <div>
+            <div class="name">文献</div>
+            <div class="desc">第二批上线</div>
+          </div>
+        </div>
+      </a>
+      <a class="app-card small" href="chat.html">
+        <div class="top">
+          <span class="ico" style="background:#E6EBE1;">✈️</span>
+          <div>
+            <div class="name">旅行规划</div>
+            <div class="desc">对话式排行程</div>
+          </div>
+        </div>
+      </a>
+      <a class="app-card small" href="admin.html">
+        <div class="top">
+          <span class="ico" style="background:#EDECEC;">⚙️</span>
+          <div>
+            <div class="name">平台管理</div>
+            <div class="desc">模型与绑定</div>
+          </div>
+        </div>
+      </a>
+      <a class="app-card small" href="apps.html">
+        <div class="top">
+          <span class="ico" style="background:#EFF1EC;">🧩</span>
+          <div>
+            <div class="name">全部应用</div>
+            <div class="desc">管理排序/隐藏</div>
+          </div>
+        </div>
+      </a>
+    </div>
+  </main>
+
+  <!-- 手机底部 Tab -->
+  <nav class="tabbar">
+    <a class="active" href="dashboard.html"><span class="ti">🏠</span>工作台</a>
+    <a href="chat.html"><span class="ti">💬</span>对话</a>
+    <a href="money.html"><span class="ti">💰</span>记账</a>
+    <a href="apps.html"><span class="ti">🧩</span>应用</a>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

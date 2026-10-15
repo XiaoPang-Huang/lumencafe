@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>平台管理 · 流光咖啡馆</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <button class="menu-btn" data-open-sider>☰</button>
+    <span class="t">平台管理</span>
+    <span class="badge" style="flex:none;">仅管理员</span>
+  </header>
+
+  <aside class="sider">
+    <div class="brand">
+      <span class="brand-logo">☕</span>
+      <span>
+        <div class="brand-name">流光咖啡馆</div>
+        <div class="brand-sub">LUMENCAFE</div>
+      </span>
+    </div>
+    <nav class="sider-nav">
+      <a class="nav-item" href="dashboard.html"><span class="nav-ico">🏠</span>工作台</a>
+      <a class="nav-item" href="chat.html"><span class="nav-ico">💬</span>对话</a>
+      <a class="nav-item" href="money.html"><span class="nav-ico">💰</span>记账</a>
+      <a class="nav-item" href="apps.html"><span class="nav-ico">🧩</span>应用中心</a>
+      <a class="nav-item active" href="admin.html"><span class="nav-ico">⚙️</span>平台管理</a>
+    </nav>
+    <div class="sider-user">
+      <span class="avatar">岛</span>
+      <span>
+        <div class="u-name">island</div>
+        <div class="u-role">管理员</div>
+      </span>
+    </div>
+  </aside>
+  <div class="drawer-mask"></div>
+
+  <main class="main">
+    <div class="greet">
+      <div>
+        <h1 class="page-title">模型管理</h1>
+        <div class="page-desc">对话完全配置驱动：渠道 + 模型清单 + 应用绑定，改完即时生效</div>
+      </div>
+      <button class="btn" data-toast="原型演示：打开新建渠道表单">＋ 添加渠道</button>
+    </div>
+
+    <div class="admin-grid" style="margin-top:16px;">
+      <!-- 渠道列表 -->
+      <div class="col-7">
+        <div class="card pv-card">
+          <div class="pv-head">
+            <span class="ico" style="background:#E6EBE1;">🧠</span>
+            <div class="grow">
+              <div class="name">DeepSeek 主号 <span class="badge">已启用</span></div>
+              <div class="sub">https://api.deepseek.com · <span class="key-mask">****a1b2</span></div>
+            </div>
+            <label class="switch"><input type="checkbox" checked><i></i></label>
+          </div>
+          <div class="pv-meta">
+            <span class="tag">deepseek-chat</span>
+            <span class="tag">deepseek-reasoner</span>
+            <span class="tag">temperature 0.7</span>
+          </div>
+          <div class="pv-ops">
+            <button class="btn btn-ghost btn-sm" data-toast="连通性测试通过 · 412ms ✓">⚡ 测试</button>
+            <button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑渠道">编辑</button>
+            <button class="btn btn-ghost btn-sm" data-toast="原型演示：管理模型清单">模型清单</button>
+          </div>
+        </div>
+
+        <div class="card pv-card">
+          <div class="pv-head">
+            <span class="ico" style="background:#F5EBDD;">🌙</span>
+            <div class="grow">
+              <div class="name">Kimi 备用 <span class="badge badge-off">已停用</span></div>
+              <div class="sub">https://api.moonshot.cn/v1 · <span class="key-mask">****9f3e</span></div>
+            </div>
+            <label class="switch"><input type="checkbox"><i></i></label>
+          </div>
+          <div class="pv-meta">
+            <span class="tag">moonshot-v1-8k</span>
+            <span class="tag">moonshot-v1-32k</span>
+          </div>
+          <div class="pv-ops">
+            <button class="btn btn-ghost btn-sm" data-toast="渠道已停用，测试跳过">⚡ 测试</button>
+            <button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑渠道">编辑</button>
+            <button class="btn btn-ghost btn-sm" data-toast="原型演示：管理模型清单">模型清单</button>
+          </div>
+        </div>
+
+        <div class="card pv-card" style="margin-bottom:0;">
+          <div class="pv-head">
+            <span class="ico" style="background:#EDECEC;">🧪</span>
+            <div class="grow">
+              <div class="name">Mock 本地 <span class="badge badge-muted">开发占位</span></div>
+              <div class="sub">不联网 · 离线体验完整对话链路</div>
+            </div>
+            <label class="switch"><input type="checkbox" checked><i></i></label>
+          </div>
+          <div class="pv-meta">
+            <span class="tag">mock</span>
+            <span class="tag">无需 Key</span>
+          </div>
+          <div class="pv-ops">
+            <button class="btn btn-ghost btn-sm" data-toast="Mock 渠道永远通畅 ✓">⚡ 测试</button>
+            <button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑渠道">编辑</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 应用绑定 -->
+      <div class="col-5">
+        <div class="card">
+          <h3 style="font-size:15px;color:var(--deep);margin-bottom:8px;">应用绑定</h3>
+          <div class="page-desc" style="margin-bottom:8px;">每个对话应用 → 渠道 + 模型 + 系统提示词 + 参数覆盖</div>
+
+          <div class="bind-row">
+            <div class="b1"><span class="app">💬 树洞对话</span><span class="badge">DeepSeek 主号</span><span class="tag">deepseek-chat</span></div>
+            <div class="b2">提示词：你是「树洞」，温柔耐心、少说教的倾听者…（已配置）· 每日限 0 轮 = 不限</div>
+            <div class="b2"><button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑绑定">编辑绑定</button></div>
+          </div>
+
+          <div class="bind-row">
+            <div class="b1"><span class="app">✈️ 旅行规划</span><span class="badge">DeepSeek 主号</span><span class="tag">deepseek-chat</span></div>
+            <div class="b2">提示词：你是行程规划助手，按预算与天数给可执行的建议…（已配置）</div>
+            <div class="b2"><button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑绑定">编辑绑定</button></div>
+          </div>
+
+          <div class="bind-row">
+            <div class="b1"><span class="app">🧪 Mock 演示</span><span class="badge badge-muted">Mock 本地</span><span class="tag">mock</span></div>
+            <div class="b2">提示词：（空）· 离线演示用，生产可删除</div>
+            <div class="b2"><button class="btn btn-ghost btn-sm" data-toast="原型演示：编辑绑定">编辑绑定</button></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3 style="font-size:15px;color:var(--deep);margin-bottom:8px;">诊断 · Self-Test</h3>
+          <div class="page-desc" style="margin-bottom:10px;">不发起网络请求，解析各应用当前实际命中的渠道/模型</div>
+          <div class="card" style="background:var(--bg);box-shadow:none;padding:12px;font-family:Consolas,monospace;font-size:12px;line-height:1.9;">
+            chat &nbsp;&nbsp;→ DeepSeek 主号 / deepseek-chat ✓<br>
+            travel → DeepSeek 主号 / deepseek-chat ✓<br>
+            kb &nbsp;&nbsp;&nbsp;→ ERROR: 未配置绑定
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:10px;" data-toast="原型演示：重新解析全部应用">重新解析</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <nav class="tabbar">
+    <a href="dashboard.html"><span class="ti">🏠</span>工作台</a>
+    <a href="chat.html"><span class="ti">💬</span>对话</a>
+    <a href="money.html"><span class="ti">💰</span>记账</a>
+    <a href="apps.html"><span class="ti">🧩</span>应用</a>
+  </nav>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
