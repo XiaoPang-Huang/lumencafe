@@ -1,0 +1,15 @@
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI 依赖注入约定：Depends/Header/require_permission 等常用于参数默认值，视为不可变调用
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Header",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "app.deps.require_permission",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

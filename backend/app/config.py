@@ -21,6 +21,25 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-production"
     jwt_expire_days: int = 30
 
+    # 注册开关（默认关；实例部署者自行开启）
+    registration_open: bool = False
+
+    # 首次启动引导管理员（仅 users 表为空时生效）
+    admin_username: str = "admin"
+    admin_password: str = "change-me-too"
+
+    # 内部令牌（/internal/jobs/* 与 /gw/* 共用；留空 = 均关闭 503）
+    internal_token: str = ""
+
+    # 初始 LLM 渠道种子（providers 表为空时导入；mock = 本地开发占位，不联网）
+    llm_provider: str = ""  # mock / deepseek / kimi / 留空不种子
+    deepseek_key: str = ""
+    kimi_key: str = ""
+
+    # 登录/注册限流（PRD N14）：同 IP 每分钟次数；测试环境可关
+    rate_limit_enabled: bool = True
+    auth_rate_limit_per_minute: int = 10
+
     # 连接池（2核4G 小池；与 PG max_connections=20 匹配）
     db_pool_size: int = 5
     db_max_overflow: int = 10

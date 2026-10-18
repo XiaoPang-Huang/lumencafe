@@ -7,11 +7,11 @@ app.models 汇总导入各表模型后，autogenerate 即可感知业务表。
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.config import settings
 from app.db import Base
 
