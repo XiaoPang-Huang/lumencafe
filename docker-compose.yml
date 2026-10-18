@@ -54,6 +54,9 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # 8443：未备案域名临时方案（80/443 被腾讯云拦截，见 Caddyfile 头部说明）；
+      # 备案通过后随 Caddyfile 一起删掉这行
+      - "8443:8443"
     volumes:
       - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
