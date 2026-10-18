@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流光咖啡馆</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/main.css?v=20261018q">
+</head>
+<body data-route="workspace">
+
+<div class="shell">
+  <!-- 顶部通栏（全宽）：品牌 / 搜索 / 账号 -->
+  <header class="topbar">
+    <button class="icon-btn" type="button" data-open-sider aria-label="打开导航" id="menu-btn"><i data-ic="menu"></i></button>
+    <a class="topbar-brand" href="#/workspace">
+      <span class="brand-logo"><i data-ic="logo"></i></span>
+      <span class="topbar-brand-name">流光咖啡馆</span>
+    </a>
+    <button class="palette-trigger" type="button" data-open-palette>
+      <i data-ic="search"></i>
+      <span class="pt-label">搜索或跳转</span>
+      <kbd>⌘K</kbd>
+    </button>
+    <a class="avatar" id="topbar-avatar" href="#/me" aria-label="我的">A</a>
+  </header>
+
+  <div class="shell-body">
+    <!-- 侧栏：火山方舟式悬浮灰色菜单卡（位于顶栏下方） -->
+    <aside class="sider" id="sider">
+      <nav class="sider-nav" id="sider-nav"></nav>
+      <div class="sider-user" role="button" tabindex="0" data-toast="账号详情（演示）">
+        <span class="avatar">A</span>
+        <span class="sider-user-meta">
+          <span class="u-name">admin</span>
+          <span class="u-role">管理员</span>
+        </span>
+        <i data-ic="down" class="sider-user-caret"></i>
+      </div>
+    </aside>
+    <div class="drawer-mask" data-drawer-mask></div>
+
+    <!-- 内容列 -->
+    <div class="content">
+      <main class="main">
+        <div class="view" id="view"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 手机底部导航 -->
+  <nav class="tabbar" id="tabbar">
+    <a href="#/workspace" data-route-link="workspace"><i data-ic="home"></i>工作台</a>
+    <a href="#/apps" data-route-link="apps"><i data-ic="grid"></i>应用中心</a>
+    <a href="#/me" data-route-link="me"><i data-ic="user"></i>我的</a>
+  </nav>
+</div>
+
+<!-- ⌘K 命令面板 -->
+<div class="palette-mask" id="palette">
+  <div class="palette-panel" role="dialog" aria-label="命令面板">
+    <div class="palette-input">
+      <i data-ic="search"></i>
+      <input type="text" id="palette-input" placeholder="搜索页面或动作…" autocomplete="off">
+      <kbd>Esc</kbd>
+    </div>
+    <div class="palette-list" id="palette-list"></div>
+    <div class="palette-foot">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
+  </div>
+</div>
+
+<!-- 记一笔 -->
+<div class="modal-mask" id="modal-tx">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>记一笔</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>金额（元）</label>
+        <input type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" data-amount-input="#tx-preview">
+        <div class="hint">实际以「分」入账：<b id="tx-preview">¥0.00</b></div>
+      </div>
+      <div class="field">
+        <label>收支</label>
+        <div class="seg seg-expense" style="width:100%;" data-seg>
+          <button class="active" type="button" style="flex:1;">支出</button>
+          <button type="button" style="flex:1;">收入</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>分类</label>
+        <div class="chips" data-chips>
+          <button class="chip active" type="button">餐饮</button>
+          <button class="chip" type="button">交通</button>
+          <button class="chip" type="button">购物</button>
+          <button class="chip" type="button">居住</button>
+          <button class="chip" type="button">咖啡</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>备注</label>
+        <input type="text" placeholder="选填，最多 256 字">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>日期</label>
+        <input type="date" value="2026-10-16">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-submit-tx>确认入账</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI 记一笔 -->
+<div class="modal-mask" id="modal-ai">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>AI 记一笔</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>用一句话描述这笔账</label>
+        <textarea placeholder="例如：昨晚和朋友吃火锅花了 128"></textarea>
+        <div class="hint">AI 解析为草稿（不落库），确认后才正式入账</div>
+      </div>
+      <button class="btn btn-ghost btn-block" type="button" data-ai-parse><i data-ic="spark"></i>解析</button>
+      <div class="mt16 hide" data-parse-loading><span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span><span class="muted" style="font-size:13px;">正在解析，通常几秒内完成（上限 8s）…</span></div>
+      <div class="parse-preview hide mt16">
+        <div class="pv-row"><span class="k">金额</span><span class="v" data-pv-amount>—</span></div>
+        <div class="pv-row"><span class="k">类型</span><span class="v" data-pv-type>—</span></div>
+        <div class="pv-row"><span class="k">分类建议</span><span class="v" data-pv-cat>—</span></div>
+        <div class="pv-row"><span class="k">备注</span><span class="v" data-pv-note>—</span></div>
+        <div class="pv-row"><span class="k">日期</span><span class="v" data-pv-date>—</span></div>
+        <div class="pv-row"><span class="k">解析结果</span><span class="v muted" style="font-weight:400;" data-pv-confidence>—</span></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-submit-tx>确认入账</button>
+    </div>
+  </div>
+</div>
+
+<!-- 分类管理 -->
+<div class="modal-mask" id="modal-cats">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>分类管理</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" id="cats-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-toast="分类已创建（演示）">新建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 修改密码 -->
+<div class="modal-mask" id="modal-pass">
+  <form class="modal" onsubmit="event.preventDefault();">
+    <div class="modal-head">
+      <h3>修改密码</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="text" autocomplete="username" value="admin" aria-hidden="true" tabindex="-1" style="position:absolute;left:-9999px;">
+      <div class="field">
+        <label>原密码</label>
+        <input type="password" autocomplete="current-password" placeholder="请输入当前密码">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>新密码</label>
+        <input type="password" autocomplete="new-password" placeholder="至少 8 位，建议混合字母与数字">
+        <div class="hint">修改成功后旧密码立即失效；忘记密码请联系管理员重置</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-toast="密码已修改（演示）">确认修改</button>
+    </div>
+  </form>
+</div>
+
+<!-- 通用设置 -->
+<div class="modal-mask" id="modal-set-general">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>通用设置</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" style="padding-top:8px;">
+      <div class="set-row">
+        <i data-ic="lock"></i><span class="grow">修改密码</span>
+        <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-pass">修改</button>
+      </div>
+      <div class="set-row">
+        <i data-ic="key"></i><span class="grow">登录设备</span>
+        <span class="val">本机 · JWT 30 天</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-modal-close>完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 应用设置 -->
+<div class="modal-mask" id="modal-set-apps">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>应用设置</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" style="padding-top:8px;">
+      <div class="set-row">
+        <i data-ic="money"></i><span class="grow">记账本 · 分类管理</span>
+        <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-cats">管理</button>
+      </div>
+      <div class="set-row">
+        <i data-ic="chat"></i><span class="grow">AI 对话 · 系统提示词</span>
+        <span class="val">后端内置常量</span>
+      </div>
+      <div class="set-row">
+        <i data-ic="book"></i><span class="grow">文献 · 订阅关键词</span>
+        <span class="val">第二批上线后开放</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-modal-close>完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建网关令牌 -->
+<div class="modal-mask" id="modal-token">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>新建网关令牌</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>名称</label>
+        <input type="text" id="token-name" placeholder="例如 n8n、Codex">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>模型范围</label>
+        <div class="chips" data-chips data-token-scope>
+          <button class="chip active" type="button">全部模型</button>
+          <button class="chip" type="button">仅默认模型</button>
+        </div>
+      </div>
+      <div class="token-once hide mt16" id="token-once">
+        <div class="token-once-label">令牌已创建，只完整显示这一次，请立即复制</div>
+        <div class="token-once-row"><code></code><button class="btn btn-ghost btn-sm" type="button" data-toast="已复制（演示）">复制</button></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-create-token>创建</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="assets/js/data.js?v=20261018l"></script>
+<script src="assets/js/icons.js?v=20261018l"></script>
+<script src="assets/js/app.js?v=20261018l"></script>
+</body>
+</html>
