@@ -1,12 +1,32 @@
-/* 流光咖啡馆原型 v2 · SPA 运行时
+/* 流光咖啡馆 v2 · SPA 运行时
  * 参考：midday（外壳+⌘K）、gethomepage（玻璃 Bento）、Homarr（卡片即入口）、
  *       Open WebUI（多板块单外壳）、macOS 系统设置（子应用统一骨架）
- * 纯前端演示，无后端依赖；hash 路由，file:// 直开可用。
+ * 联调状态：登录 / 对话 / 记账 已接真实 API（assets/js/api.js → localhost:8000）；
+ *          工作台 / 应用中心 / 平台管理 仍为本地演示数据（D.*）。
  */
 (function () {
   "use strict";
 
   var D = window.LC_DATA || {};
+  var API = window.LC_API;
+
+  /* ================= 登录态 ================= */
+  var LC_USER = null; /* GET /auth/me 缓存 {id, username, nickname, roles, permissions} */
+
+  function isLoggedIn() { return !!API.getToken(); }
+
+  /* 未登录访问业务路由 → 跳登录；已登录访问登录页 → 回工作台 */
+  function authGuard(route) {
+    if (route !== "login" && !isLoggedIn()) {
+      location.replace("#/login");
+      return false;
+    }
+    if (route === "login" && isLoggedIn()) {
+      location.replace("#/workspace");
+      return false;
+    }
+    return true;
+  }
 
   /* ================= 工具 ================= */
   function fen(f) {
@@ -113,6 +133,7 @@
 
   function render() {
     var r = currentRoute();
+    if (!authGuard(r)) return;
     document.body.dataset.route = r;
     qsa("[data-route-link]").forEach(function (a) {
       a.classList.toggle("active", a.getAttribute("data-route-link") === r);
@@ -149,33 +170,32 @@
     }).join("") + "</span>";
   }
 
-  /* 模型池：按提供商条目分组（对话选择器与管理页共用） */
+  /* 模型池：对话选择器用「活数据」（GET /chat/models），管理页仍用演示数据 */
+  var liveModels = []; /* [{id, name, provider, capabilities, is_default}] */
   function modelPool() {
-    return (D.providers || []).filter(function (p) { return p.enabled; }).map(function (p) {
-      return { provider: p.name, items: (p.models || []).map(function (m) {
-        return { name: m.name, context: m.context || "", files: !!m.files, vision: !!m.vision, is_default: !!m.is_default, custom: !!m.custom };
+    var groups = {};
+    liveModels.forEach(function (m) {
+      (groups[m.provider] = groups[m.provider] || []).push(m);
+    });
+    return Object.keys(groups).map(function (k) {
+      return { provider: k, items: groups[k].map(function (m) {
+        return { id: m.id, name: m.name, context: (m.capabilities && m.capabilities.context) || "", files: !!(m.capabilities && m.capabilities.files), vision: !!(m.capabilities && m.capabilities.vision), is_default: !!m.is_default };
       }) };
     });
   }
   function defaultModel() {
-    var found = null;
-    (D.providers || []).forEach(function (p) {
-      (p.models || []).forEach(function (m) { if (m.is_default) found = m.name; });
-    });
-    return found || "deepseek-chat";
+    var d = liveModels.filter(function (m) { return m.is_default; })[0];
+    return d ? d.name : (liveModels[0] ? liveModels[0].name : "default");
   }
-  /* 当前对话模型（原型为会话内状态，正式版落 chat_conversations.model_id） */
-  var chatModel = null;
+  /* 对话会话状态（活数据：conversation_id / 模型 id） */
+  var chatState = { convId: null, modelId: null, sending: false };
   function capsOf(name) {
-    var caps = null;
-    (D.providers || []).forEach(function (p) {
-      (p.models || []).forEach(function (m) { if (m.name === name) caps = m; });
-    });
-    return caps || {};
+    var m = liveModels.filter(function (x) { return x.name === name; })[0];
+    return (m && m.capabilities) || {};
   }
   function syncMpCheck() {
     qsa("[data-mp-item]").forEach(function (item) {
-      var on = item.getAttribute("data-mp-item") === chatModel;
+      var on = parseInt(item.getAttribute("data-mp-item"), 10) === chatState.modelId;
       item.classList.toggle("selected", on);
       var ck = item.querySelector(".mp-check");
       if (ck) ck.style.visibility = on ? "visible" : "hidden";
@@ -184,7 +204,9 @@
   function syncUploadBtn() {
     var btn = qs("[data-upload]");
     if (!btn) return;
-    var ok = !!capsOf(chatModel || defaultModel()).files;
+    var name = null;
+    liveModels.forEach(function (m) { if (m.id === chatState.modelId) name = m.name; });
+    var ok = name ? !!capsOf(name).files : false;
     btn.classList.toggle("is-disabled", !ok);
     btn.title = ok ? "上传文件" : "当前模型不支持文件上传";
   }
@@ -361,43 +383,25 @@
         '<div class="bento-grid">' + cards.join("") + "</div>";
     },
 
-    /* ---------- 对话：ChatApp（模型选择器 + 文件上传入口） ---------- */
+    /* ---------- 对话：ChatApp（模型选择器 + 文件上传入口；已联调真实 /chat SSE） ---------- */
     chat: function () {
-      var convs = (D.conversations || []).map(function (c, i) {
-        return '<div class="conv-item' + (i === 0 ? " active" : "") + '"><span class="ct">' + esc(c.title) + '</span><span class="del" data-ic="trash" data-conv-del></span></div>';
-      }).join("");
-      var msgs = (D.messages || []).map(function (m) {
-        var who = m.role === "assistant" ? "馆" : (D.user ? D.user.nickname : "我");
-        return '<div class="msg ' + (m.role === "assistant" ? "ai" : "user") + '"><span class="avatar">' + who + '</span>' +
-          '<div class="msg-body"><div class="msg-text">' + (m.html || "<p>" + esc(m.text) + "</p>") + "</div></div></div>";
-      }).join("");
-      /* 模型选择器：按提供商条目分组 */
-      var mpGroups = modelPool().map(function (g) {
-        return '<div class="mp-group"><div class="mp-group-label">' + esc(g.provider) + "</div>" +
-          g.items.map(function (it) {
-            return '<div class="mp-item" data-mp-item="' + esc(it.name) + '" role="button" tabindex="0">' +
-              '<span class="mp-name">' + esc(it.name) + (it.is_default ? '<span class="pill pill-ok">默认</span>' : "") + "</span>" +
-              '<span class="mp-meta">' + (it.context || "") + "</span>" +
-              (it.files ? '<i class="ic" data-ic="doc" title="支持文件上传"></i>' : "") +
-              (it.vision ? '<i class="ic" data-ic="eye" title="支持图片理解"></i>' : "") +
-              '<i class="ic mp-check" data-ic="check" style="visibility:hidden;"></i></div>';
-          }).join("") + "</div>";
-      }).join("");
       return '' +
         '<div class="chat-layout">' +
           '<aside class="conv-panel">' +
             '<div class="conv-head"><span class="t">AI 对话</span>' +
             '<button class="icon-btn" type="button" data-new-conv aria-label="新建会话"><i data-ic="plus"></i></button></div>' +
-            '<div class="conv-list">' + convs + "</div>" +
+            '<div class="conv-list" data-conv-list></div>' +
           "</aside>" +
           '<div class="drawer-mask" data-conv-mask></div>' +
           '<div class="chat-main">' +
             '<div class="chat-head">' +
               '<button class="icon-btn" type="button" data-open-conv aria-label="会话列表" id="conv-toggle"><i data-ic="menu"></i></button>' +
-              "<span>通用对话</span>" +
+              "<span data-chat-title>通用对话</span>" +
               '<a class="icon-btn" href="#/workspace" aria-label="返回工作台" style="margin-left:auto;"><i data-ic="home"></i></a>' +
             "</div>" +
-            '<div class="chat-scroll"><div class="chat-inner" data-chat-inner>' + msgs + "</div></div>" +
+            '<div class="chat-scroll"><div class="chat-inner" data-chat-inner>' +
+              '<div class="chat-empty muted" data-chat-empty>开始一段新对话吧</div>' +
+            "</div></div>" +
             /* 输入框：参考 WorkBuddy——圆角白卡 + 底部工具条（附件左、模型与发送右） */
             '<div class="composer-wrap">' +
               '<div class="composer">' +
@@ -406,33 +410,32 @@
                   '<button class="icon-btn xs" type="button" data-upload aria-label="上传文件"><i data-ic="clip"></i></button>' +
                   '<span class="flex-spacer"></span>' +
                   '<div class="mp-wrap">' +
-                    '<button class="model-picker" type="button" data-model-picker><span data-mp-label>' + esc(chatModel || defaultModel()) + '</span><i data-ic="down"></i></button>' +
-                    '<div class="mp-pop hide" data-mp-pop>' + mpGroups + "</div>" +
+                    '<button class="model-picker" type="button" data-model-picker><span data-mp-label>…</span><i data-ic="down"></i></button>' +
+                    '<div class="mp-pop hide" data-mp-pop></div>' +
                   "</div>" +
                   '<button class="send-dark" type="button" data-send aria-label="发送"><i data-ic="send"></i></button>' +
                 "</div>" +
               "</div>" +
-              '<div class="composer-hint">原型演示，不连接真实模型</div>' +
             "</div>" +
           "</div>" +
         "</div>";
     },
 
-    /* ---------- 记账 ---------- */
+    /* ---------- 记账（已联调真实 /money：账目/统计/AI parse） ---------- */
     money: function () {
       return '' +
         '<div class="page-head"><div><h1 class="page-title">记账本</h1>' +
-        '<div class="page-desc">2026 年 10 月 · 数据按账目日期归属月份</div></div></div>' +
+        '<div class="page-desc" data-money-month>数据按账目日期归属月份</div></div></div>' +
         '<div class="card money-bar">' +
-          '<div class="item"><small>本月支出</small><b class="ex">' + fenShort(D.monthly.expenseTotal) + "</b></div>" +
-          '<div class="item"><small>本月收入</small><b class="inc">' + fenShort(D.monthly.incomeTotal) + "</b></div>" +
-          '<div class="item"><small>结余</small><b>' + fenShort(D.monthly.balance) + "</b></div>" +
+          '<div class="item"><small>本月支出</small><b class="ex" data-m-expense>—</b></div>' +
+          '<div class="item"><small>本月收入</small><b class="inc" data-m-income>—</b></div>' +
+          '<div class="item"><small>结余</small><b data-m-balance>—</b></div>' +
           '<div class="actions">' +
             '<button class="btn" type="button" data-modal-open="#modal-ai"><i data-ic="spark"></i>AI 记一笔</button>' +
             '<button class="btn" type="button" data-modal-open="#modal-tx"><i data-ic="plus"></i>记一笔</button>' +
           "</div></div>" +
-        '<div class="section-title">最近账目 <a class="more" href="javascript:void(0)" data-toast="原型仅演示最近 6 笔">查看全部 →</a></div>' +
-        '<div class="card tx-list" data-tx-list></div>' +
+        '<div class="section-title">最近账目</div>' +
+        '<div class="card tx-list" data-tx-list><div class="tx-row muted" style="padding:14px 4px;">加载中…</div></div>' +
         '<div class="section-title">月度统计</div>' +
         '<div class="stat-grid">' +
           '<div class="card stat-card"><h3>按分类汇总（支出降序）</h3><div data-by-category></div></div>' +
@@ -441,10 +444,7 @@
         "</div>" +
         '<div class="section-title">分类管理</div>' +
         '<div class="card" style="padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">' +
-          '<div class="chips" style="flex:1;" data-chips>' +
-            (D.moneyCategories || []).map(function (c, i) {
-              return '<button class="chip' + (i === 0 ? " active" : "") + '" type="button">' + esc(c.name) + "</button>";
-            }).join("") + "</div>" +
+          '<div class="chips" style="flex:1;" data-chips data-money-chips><span class="muted" style="font-size:13px;">加载中…</span></div>' +
           '<button class="btn btn-ghost btn-sm" type="button" data-modal-open="#modal-cats"><i data-ic="edit"></i>管理分类</button>' +
         "</div>";
     },
@@ -565,11 +565,13 @@
 
     /* ---------- 我的：三域设置统一入口（通用 / 应用 / 管理） ---------- */
     me: function () {
+      var u = LC_USER || { username: "…", nickname: "…", roles: [] };
+      var isAdmin = (u.roles || []).indexOf("admin") !== -1;
       return '' +
         '<div class="page-head"><div><h1 class="page-title">我的</h1>' +
         '<div class="page-desc">账号信息、设置与关于</div></div></div>' +
-        '<div class="card me-card"><span class="avatar">A</span>' +
-        '<div style="flex:1;"><div class="nick">管理员</div><div class="sub">admin · 管理员 · 注册于 2026-10</div></div>' +
+        '<div class="card me-card"><span class="avatar">' + esc((u.nickname || u.username || "?").slice(0, 1)) + "</span>" +
+        '<div style="flex:1;"><div class="nick">' + esc(u.nickname || u.username) + '</div><div class="sub">' + esc(u.username) + " · " + (isAdmin ? "管理员" : "成员") + "</div></div>" +
         '<button class="btn btn-ghost btn-sm" type="button" data-logout><i data-ic="logout"></i>退出登录</button></div>' +
         '<div class="section-title">设置</div>' +
         '<div class="card me-list">' +
@@ -600,12 +602,178 @@
             '<div class="field"><label for="login-user">用户名</label>' +
             '<input id="login-user" type="text" value="admin" autocomplete="username"></div>' +
             '<div class="field"><label for="login-pass">密码</label>' +
-            '<input id="login-pass" type="password" value="password" autocomplete="current-password"></div>' +
+            '<input id="login-pass" type="password" value="" autocomplete="current-password" placeholder="请输入密码"></div>' +
             '<button class="btn btn-block" type="submit">进入咖啡馆</button>' +
+            '<div class="login-err hide" data-login-err style="margin-top:10px;color:var(--danger,#d83931);font-size:13px;"></div>' +
           "</form>" +
         "</div></div>";
     }
   };
+
+  /* ================= 对话活数据（/chat 联调） ================= */
+  function renderMpPop() {
+    var pop = qs("[data-mp-pop]");
+    if (!pop) return;
+    pop.innerHTML = modelPool().map(function (g) {
+      return '<div class="mp-group"><div class="mp-group-label">' + esc(g.provider) + "</div>" +
+        g.items.map(function (it) {
+          return '<div class="mp-item" data-mp-item="' + it.id + '" role="button" tabindex="0">' +
+            '<span class="mp-name">' + esc(it.name) + (it.is_default ? '<span class="pill pill-ok">默认</span>' : "") + "</span>" +
+            '<span class="mp-meta">' + (it.context || "") + "</span>" +
+            (it.files ? '<i class="ic" data-ic="doc" title="支持文件上传"></i>' : "") +
+            (it.vision ? '<i class="ic" data-ic="eye" title="支持图片理解"></i>' : "") +
+            '<i class="ic mp-check" data-ic="check" style="visibility:hidden;"></i></div>';
+        }).join("") + "</div>";
+    }).join("");
+    injectIcons(pop);
+  }
+  function renderConvList(convs) {
+    var box = qs("[data-conv-list]");
+    if (!box) return;
+    chatState.convs = convs || [];
+    box.innerHTML = (convs && convs.length)
+      ? convs.map(function (c) {
+          return '<div class="conv-item' + (c.id === chatState.convId ? " active" : "") + '" data-cid="' + c.id + '"><span class="ct">' + esc(c.title) + '</span><span class="del" data-ic="trash" data-conv-del></span></div>';
+        }).join("")
+      : '<div class="muted" style="padding:10px 12px;font-size:13px;">暂无会话，发送首条消息自动创建</div>';
+    injectIcons(box);
+  }
+  function refreshConversations(keepCurrent) {
+    API.get("/chat/conversations?app_id=chat").then(function (convs) {
+      renderConvList(convs || []);
+      if (!keepCurrent || !chatState.convId) {
+        var first = (convs || [])[0];
+        if (first) selectConversation(first.id, first.title);
+      }
+    }).catch(function () {});
+  }
+  function selectConversation(id, title) {
+    chatState.convId = id;
+    var t = qs("[data-chat-title]");
+    if (t) t.textContent = title || "对话";
+    qsa(".conv-item").forEach(function (i) {
+      i.classList.toggle("active", parseInt(i.getAttribute("data-cid"), 10) === id);
+    });
+    API.get("/chat/history?app_id=chat&conversation_id=" + id).then(function (h) {
+      renderChatMessages((h && h.messages) || []);
+    }).catch(function (e) { toast(e.detail || "历史加载失败"); });
+  }
+  function renderChatMessages(messages) {
+    var inner = qs("[data-chat-inner]");
+    if (!inner) return;
+    var who = LC_USER ? LC_USER.nickname : "我";
+    inner.innerHTML = messages.map(function (m) {
+      var isAi = m.role === "assistant";
+      return '<div class="msg ' + (isAi ? "ai" : "user") + '"><span class="avatar">' + (isAi ? "馆" : esc(who)) + "</span>" +
+        '<div class="msg-body"><div class="msg-text"><p>' + esc(m.content) + "</p></div></div></div>";
+    }).join("");
+    var sc = qs(".chat-scroll");
+    if (sc) sc.scrollTop = sc.scrollHeight;
+  }
+
+  /* ================= 记账活数据（/money 联调） ================= */
+  var moneyCats = []; /* [{id, name, kind, built_in}] */
+  var aiDraft = null; /* AI 记一笔解析草稿 */
+  function monthNow() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+  }
+  function catName(cid) {
+    var c = moneyCats.filter(function (x) { return x.id === cid; })[0];
+    return c ? c.name : "未分类";
+  }
+  function renderMoneyChips(view) {
+    var box = qs("[data-money-chips]", view || undefined);
+    if (!box) return;
+    box.innerHTML = moneyCats.map(function (c, i) {
+      return '<button class="chip' + (i === 0 ? " active" : "") + '" type="button">' + esc(c.name) + "</button>";
+    }).join("") || '<span class="muted" style="font-size:13px;">暂无分类</span>';
+  }
+  function renderTxCatChips() {
+    var box = qs("[data-tx-cats]");
+    if (!box) return;
+    var wantIncome = qs("#modal-tx .seg button.active") && qs("#modal-tx .seg button.active").textContent.trim() === "收入";
+    var kinds = wantIncome ? ["income", "both"] : ["expense", "both"];
+    var list = moneyCats.filter(function (c) { return kinds.indexOf(c.kind) !== -1; });
+    box.innerHTML = list.map(function (c, i) {
+      return '<button class="chip' + (i === 0 ? " active" : "") + '" type="button" data-cid="' + c.id + '" data-kind="' + c.kind + '">' + esc(c.name) + "</button>";
+    }).join("") || '<span class="muted" style="font-size:13px;">暂无可用分类</span>';
+  }
+  function renderCatsModal() {
+    var body = qs("#cats-body");
+    if (!body) return;
+    body.innerHTML = moneyCats.map(function (c) {
+      var note = c.built_in ? "预置 · 可改名 / 可隐藏 / 不可删除" : "自定义分类";
+      var btn = c.built_in
+        ? '<button class="btn btn-ghost btn-sm" type="button" data-toast="预置分类不可删除">删除</button>'
+        : '<button class="btn btn-danger-ghost btn-sm" type="button" data-del-cat="' + c.id + '">删除</button>';
+      return '<div class="tx-row" style="padding:10px 0;"><span class="grow"><div class="cat">' + esc(c.name) + '</div>' +
+        '<div class="note">' + note + "</div></span>" + btn + "</div>";
+    }).join("") +
+      '<div class="field mt16" style="margin-bottom:0;"><label>新建分类</label>' +
+      '<input type="text" data-new-cat-name placeholder="分类名称，如：宠物"></div>';
+  }
+  function loadMoneyPage(view) {
+    view = view || qs("#view");
+    var mm = monthNow();
+    var monthEl = qs("[data-money-month]", view);
+    if (monthEl) monthEl.textContent = mm.slice(0, 4) + " 年 " + parseInt(mm.slice(5), 10) + " 月 · 数据按账目日期归属月份";
+    var dateInput = qs("[data-tx-date]");
+    if (dateInput && !dateInput.value) dateInput.value = mm + "-" + String(new Date().getDate()).padStart(2, "0");
+
+    API.get("/money/categories").then(function (cats) {
+      moneyCats = cats || [];
+      renderMoneyChips(view);
+      renderTxCatChips();
+      renderCatsModal();
+    }).catch(function (e) { toast(e.detail || "分类加载失败"); });
+
+    API.get("/money/stats/monthly?month=" + mm).then(function (s) {
+      var e1 = qs("[data-m-expense]"); if (e1) e1.textContent = fenShort(s.expense_total);
+      var e2 = qs("[data-m-income]"); if (e2) e2.textContent = fenShort(s.income_total);
+      var e3 = qs("[data-m-balance]"); if (e3) e3.textContent = fenShort(s.balance);
+      var byCat = qs("[data-by-category]");
+      if (byCat) {
+        if (!s.by_category || !s.by_category.length) {
+          byCat.innerHTML = '<div class="muted" style="font-size:13px;padding:8px 0;">本月暂无支出</div>';
+        } else {
+          var max = Math.max.apply(null, s.by_category.map(function (c) { return c.total; }));
+          byCat.innerHTML = s.by_category.map(function (c) {
+            return '<div class="bar-row"><span class="lbl">' + esc(c.name) + '</span>' +
+              '<span class="track"><span class="fill" style="width:' + Math.round((c.total / max) * 100) + '%"></span></span>' +
+              '<span class="val">' + fenShort(c.total) + '<span class="muted" style="font-weight:400"> · ' + c.count + "笔</span></span></div>";
+          }).join("");
+        }
+      }
+    }).catch(function (e) { toast(e.detail || "统计加载失败"); });
+
+    API.get("/money/stats/trend?months=6").then(function (s) {
+      var trendEl = qs("[data-trend]");
+      if (!trendEl) return;
+      var months = (s && s.months) || [];
+      var tMax = Math.max.apply(null, months.map(function (m) { return Math.max(m.expense_total, m.income_total); }).concat([1]));
+      trendEl.innerHTML = months.map(function (m) {
+        return '<div class="col"><span class="bars">' +
+          '<span class="bar ex" style="height:' + Math.max(3, Math.round((m.expense_total / tMax) * 100)) + '%" title="支出 ' + fen(m.expense_total) + '"></span>' +
+          '<span class="bar inc" style="height:' + Math.max(3, Math.round((m.income_total / tMax) * 100)) + '%" title="收入 ' + fen(m.income_total) + '"></span>' +
+          '</span><span class="cap">' + m.month.slice(5) + "月</span></div>";
+      }).join("");
+    }).catch(function () {});
+
+    API.get("/money/transactions?page_size=6").then(function (p) {
+      var txEl = qs("[data-tx-list]");
+      if (!txEl) return;
+      var items = (p && p.items) || [];
+      txEl.innerHTML = items.length ? items.map(function (t) {
+        var sign = t.type === "expense" ? "-" : "+";
+        var md = t.date.slice(5).replace("-", "/");
+        return '<div class="tx-row"><span class="date">' + md + '</span>' +
+          '<span class="grow"><div class="cat">' + esc(catName(t.category_id)) + "</div>" +
+          (t.note ? '<div class="note">' + esc(t.note) + "</div>" : "") + "</span>" +
+          '<span class="amt ' + t.type + '">' + sign + fenShort(t.amount) + "</span></div>";
+      }).join("") : '<div class="muted" style="padding:14px 4px;font-size:13px;">本月还没有账目，点「记一笔」开始</div>';
+    }).catch(function () {});
+  }
 
   /* ================= 页面初始化 ================= */
   var INITS = {
@@ -636,34 +804,19 @@
     },
 
     chat: function (view) {
-      /* 模型选择器与上传按钮初始状态 */
-      if (!chatModel) chatModel = defaultModel();
-      var label = qs("[data-mp-label]", view);
-      if (label) label.textContent = chatModel;
-      syncMpCheck();
-      syncUploadBtn();
-      var inner = qs("[data-chat-inner]", view);
-      /* 假流式：进入页面打字机播放一段 */
-      if (inner && D.streamDemo) {
-        var bubble = document.createElement("div");
-        bubble.className = "msg ai cursor";
-        bubble.innerHTML = '<span class="avatar">馆</span><div class="msg-body"><div class="msg-text"><span class="thinking"><i></i><i></i><i></i></span><span class="stream-text"></span></div></div>';
-        inner.appendChild(bubble);
-        var node = bubble.querySelector(".stream-text");
-        var idx = 0;
-        setTimeout(function typeNext() {
-          var dots = bubble.querySelector(".thinking");
-          if (dots) dots.remove();
-          if (idx < D.streamDemo.length) {
-            var step = 1 + Math.floor(Math.random() * 3);
-            node.textContent += D.streamDemo.slice(idx, idx + step);
-            idx += step;
-            setTimeout(typeNext, 55);
-          } else {
-            bubble.classList.remove("cursor");
-          }
-        }, 800);
-      }
+      /* 活数据：模型池 + 会话列表（异步填充） */
+      API.get("/chat/models").then(function (models) {
+        liveModels = models || [];
+        var def = liveModels.filter(function (m) { return m.is_default; })[0] || liveModels[0];
+        chatState.modelId = def ? def.id : null;
+        renderMpPop();
+        var lbl = qs("[data-mp-label]", view);
+        if (lbl) lbl.textContent = def ? def.name : "无可用模型";
+        syncMpCheck();
+        syncUploadBtn();
+      }).catch(function (e) { toast(e.detail || "模型池加载失败"); });
+      refreshConversations(true);
+
       var sc = qs(".chat-scroll", view);
       if (sc) sc.scrollTop = sc.scrollHeight;
       /* 手机端会话抽屉开关 */
@@ -675,53 +828,7 @@
     },
 
     money: function (view) {
-      /* 最近账目 */
-      var txEl = qs("[data-tx-list]", view);
-      if (txEl) {
-        txEl.innerHTML = (D.transactions || []).map(function (t) {
-          var sign = t.type === "expense" ? "-" : "+";
-          return '<div class="tx-row"><span class="date">' + t.date + '</span>' +
-            '<span class="grow"><div class="cat">' + esc(t.category) + "</div>" +
-            (t.note ? '<div class="note">' + esc(t.note) + "</div>" : "") + "</span>" +
-            '<span class="amt ' + t.type + '">' + sign + fenShort(t.amount) + "</span></div>";
-        }).join("");
-      }
-      /* 分类汇总 */
-      var byCat = qs("[data-by-category]", view);
-      if (byCat && D.monthly) {
-        var max = Math.max.apply(null, D.monthly.byCategory.map(function (c) { return c.total; }));
-        byCat.innerHTML = D.monthly.byCategory.map(function (c) {
-          return '<div class="bar-row"><span class="lbl">' + c.name + '</span>' +
-            '<span class="track"><span class="fill" style="width:' + Math.round((c.total / max) * 100) + '%"></span></span>' +
-            '<span class="val">' + fenShort(c.total) + '<span class="muted" style="font-weight:400"> · ' + c.count + "笔</span></span></div>";
-        }).join("");
-      }
-      /* 趋势柱 */
-      var trendEl = qs("[data-trend]", view);
-      if (trendEl && D.trend) {
-        var tMax = Math.max.apply(null, D.trend.map(function (mm) { return Math.max(mm.expense, mm.income); }));
-        trendEl.innerHTML = D.trend.map(function (mm) {
-          return '<div class="col"><span class="bars">' +
-            '<span class="bar ex" style="height:' + Math.max(3, Math.round((mm.expense / tMax) * 100)) + '%" title="支出 ' + fen(mm.expense) + '"></span>' +
-            '<span class="bar inc" style="height:' + Math.max(3, Math.round((mm.income / tMax) * 100)) + '%" title="收入 ' + fen(mm.income) + '"></span>' +
-            '</span><span class="cap">' + mm.month.slice(5) + "月</span></div>";
-        }).join("");
-      }
-      /* 分类管理弹层内容 */
-      var catsBody = qs("#cats-body");
-      if (catsBody && !catsBody.dataset.filled) {
-        catsBody.dataset.filled = "1";
-        catsBody.innerHTML = (D.moneyCategories || []).map(function (c) {
-          var note = c.built_in ? "预置 · 可改名 / 可隐藏 / 不可删除" : "自定义 · 下有 5 笔账目";
-          var btn = c.built_in
-            ? '<button class="btn btn-ghost btn-sm" type="button" data-toast="预置分类不可删除">删除</button>'
-            : '<button class="btn btn-danger-ghost btn-sm" type="button" data-toast="该分类下存在账目，请先迁移或删除（409）">删除</button>';
-          return '<div class="tx-row" style="padding:10px 0;"><span class="grow"><div class="cat">' + esc(c.name) + '</div>' +
-            '<div class="note">' + note + "</div></span>" + btn + "</div>";
-        }).join("") +
-          '<div class="field mt16" style="margin-bottom:0;"><label>新建分类</label>' +
-          '<input type="text" placeholder="分类名称，如：宠物"><div class="hint">同类目下重名返回 409</div></div>';
-      }
+      loadMoneyPage(view);
     },
 
     apps: function () {},
@@ -732,7 +839,24 @@
 
     login: function (view) {
       var form = qs("#login-form", view);
-      if (form) form.addEventListener("submit", function (e) { e.preventDefault(); go("workspace"); });
+      if (!form) return;
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var err = qs("[data-login-err]", view);
+        if (err) err.classList.add("hide");
+        var username = qs("#login-user", form).value.trim();
+        var password = qs("#login-pass", form).value;
+        var btn = form.querySelector("button[type=submit]");
+        btn.disabled = true;
+        API.post("/auth/login", { username: username, password: password }).then(function (d) {
+          API.setToken(d.token);
+          LC_USER = d.user;
+          applyUserChrome();
+          go("workspace");
+        }).catch(function (ex) {
+          if (err) { err.textContent = (ex && ex.detail) || "登录失败"; err.classList.remove("hide"); }
+        }).then(function () { btn.disabled = false; });
+      });
     }
   };
 
@@ -750,7 +874,7 @@
     { icon: "gear", label: "通用设置", hint: "设置", run: function () { openModal("#modal-set-general"); } },
     { icon: "grid", label: "应用设置", hint: "设置", run: function () { openModal("#modal-set-apps"); } },
     { icon: "shield", label: "管理设置", hint: "设置", run: function () { go("admin"); } },
-    { icon: "logout", label: "退出登录", hint: "动作", run: function () { go("login"); } }
+    { icon: "logout", label: "退出登录", hint: "动作", run: function () { API.clearToken(); LC_USER = null; go("login"); } }
   ];
   var paletteOpen = false;
   var paletteFiltered = paletteItems;
@@ -858,7 +982,13 @@
       return;
     }
 
-    if (el.closest("[data-logout]")) { go("login"); return; }
+    if (el.closest("[data-logout]")) {
+      API.clearToken();
+      LC_USER = null;
+      chatState.convId = null;
+      go("login");
+      return;
+    }
 
     /* 对话卡「新建对话」按钮 */
     if (el.closest("[data-new-conv-link]")) {
@@ -874,11 +1004,12 @@
     var toastEl = el.closest("[data-toast]");
     if (toastEl) { toast(toastEl.getAttribute("data-toast")); return; }
 
-    /* 分段控件 */
+    /* 分段控件（记一笔弹层的收支切换会联动分类 chips） */
     var segBtn = el.closest(".seg button");
     if (segBtn) {
       qsa("button", segBtn.closest(".seg")).forEach(function (b) { b.classList.remove("active"); });
       segBtn.classList.add("active");
+      if (segBtn.closest("#modal-tx")) renderTxCatChips();
       return;
     }
     /* chips 单选 */
@@ -900,39 +1031,85 @@
       }
       return;
     }
-    /* 入账提交 */
+    /* 入账提交（记一笔 / AI 记一笔共用；幂等键前端生成 UUID） */
     if (el.closest("[data-submit-tx]")) {
       var mm = el.closest(".modal-mask");
-      if (mm) mm.classList.remove("open");
-      toast("已入账（演示环境，不落库）");
+      var isAi = mm && mm.id === "modal-ai";
+      var payload = null;
+      if (isAi) {
+        if (!aiDraft) { toast("先输入一句话并解析，确认草稿后再入账"); return; }
+        var sugCat = moneyCats.filter(function (c) { return c.name === aiDraft.category_suggestion; })[0];
+        if (!sugCat) sugCat = moneyCats.filter(function (c) { return c.kind === aiDraft.type || c.kind === "both"; })[0];
+        if (!sugCat) { toast("没有可用分类，请先在分类管理里创建"); return; }
+        payload = {
+          request_id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+          amount: aiDraft.amount,
+          type: aiDraft.type,
+          category_id: sugCat.id,
+          note: aiDraft.note || "",
+          date: aiDraft.date
+        };
+      } else {
+        var amountInput = mm.querySelector("[data-amount-input]");
+        var fenV = Math.round(parseFloat((amountInput && amountInput.value) || "0") * 100);
+        var segActive = mm.querySelector(".seg button.active");
+        var type = segActive && segActive.textContent.trim() === "收入" ? "income" : "expense";
+        var chipActive = mm.querySelector("[data-tx-cats] .chip.active");
+        var noteInput = mm.querySelector("[data-tx-note]");
+        var dateInput = mm.querySelector("[data-tx-date]");
+        if (!fenV || fenV <= 0) { toast("先填金额"); return; }
+        if (!chipActive || !chipActive.getAttribute("data-cid")) { toast("先选择分类"); return; }
+        payload = {
+          request_id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()),
+          amount: fenV,
+          type: type,
+          category_id: parseInt(chipActive.getAttribute("data-cid"), 10),
+          note: (noteInput && noteInput.value.trim()) || "",
+          date: (dateInput && dateInput.value) || new Date().toISOString().slice(0, 10)
+        };
+      }
+      var btn = el.closest("[data-submit-tx]");
+      btn.disabled = true;
+      API.post("/money/transactions", payload).then(function () {
+        if (mm) mm.classList.remove("open");
+        aiDraft = null;
+        toast("已入账");
+        loadMoneyPage();
+      }).catch(function (ex) {
+        toast(ex.detail || "入账失败");
+      }).then(function () { btn.disabled = false; });
       return;
     }
-    /* AI 记一笔解析 */
+    /* AI 记一笔解析（POST /money/parse，草稿不落库） */
     var parseBtn = el.closest("[data-ai-parse]");
     if (parseBtn) {
-      var body = parseBtn.closest(".modal-body");
-      var input = body.querySelector("textarea");
-      var preview = body.querySelector(".parse-preview");
-      var loading = body.querySelector("[data-parse-loading]");
+      var bodyEl = parseBtn.closest(".modal-body");
+      var input = bodyEl.querySelector("textarea");
+      var preview = bodyEl.querySelector("[data-parse-preview]");
+      var loading = bodyEl.querySelector("[data-parse-loading]");
       if (!input.value.trim()) { toast("先输入一句话，比如：昨晚和朋友吃火锅花了 128"); return; }
       if (loading) loading.classList.remove("hide");
       if (preview) preview.classList.add("hide");
       parseBtn.disabled = true;
-      setTimeout(function () {
+      API.post("/money/parse", { text: input.value.trim() }).then(function (d) {
+        aiDraft = d;
         if (loading) loading.classList.add("hide");
         if (preview) {
           preview.classList.remove("hide");
-          preview.querySelector("[data-pv-amount]").textContent = "¥128.00";
-          preview.querySelector("[data-pv-amount]").className = "v expense";
-          preview.querySelector("[data-pv-type]").textContent = "支出";
-          preview.querySelector("[data-pv-cat]").textContent = "餐饮";
-          preview.querySelector("[data-pv-note]").textContent = "和朋友吃火锅 AA";
-          preview.querySelector("[data-pv-date]").textContent = "2026-10-15";
+          var amt = preview.querySelector("[data-pv-amount]");
+          amt.textContent = fen(d.amount);
+          amt.className = "v " + (d.type === "expense" ? "expense" : "income");
+          preview.querySelector("[data-pv-type]").textContent = d.type === "expense" ? "支出" : "收入";
+          preview.querySelector("[data-pv-cat]").textContent = d.category_suggestion;
+          preview.querySelector("[data-pv-note]").textContent = d.note || "—";
+          preview.querySelector("[data-pv-date]").textContent = d.date;
           var conf = preview.querySelector("[data-pv-confidence]");
-          if (conf) conf.textContent = "置信度 0.92 · 可修改后确认入账";
+          if (conf) conf.textContent = (d.confidence != null ? "置信度 " + d.confidence + " · " : "") + "可修改后确认入账";
         }
-        parseBtn.disabled = false;
-      }, 1200);
+      }).catch(function (ex) {
+        if (loading) loading.classList.add("hide");
+        toast(ex.detail || "解析失败，请手动记一笔");
+      }).then(function () { parseBtn.disabled = false; });
       return;
     }
     /* 成员行 → 详情抽屉（Supabase 侧栏模式） */
@@ -1071,7 +1248,7 @@
       toast("令牌已创建，只完整显示这一次");
       return;
     }
-    /* 对话模型选择器 */
+    /* 模型选择器 */
     if (el.closest("[data-model-picker]")) {
       var pop = qs("[data-mp-pop]");
       if (pop) pop.classList.toggle("hide");
@@ -1079,14 +1256,16 @@
     }
     var mpItem = el.closest("[data-mp-item]");
     if (mpItem) {
-      chatModel = mpItem.getAttribute("data-mp-item");
+      chatState.modelId = parseInt(mpItem.getAttribute("data-mp-item"), 10);
+      var mName = "";
+      liveModels.forEach(function (m) { if (m.id === chatState.modelId) mName = m.name; });
       var lbl = qs("[data-mp-label]");
-      if (lbl) lbl.textContent = chatModel;
+      if (lbl) lbl.textContent = mName || "default";
       syncMpCheck();
       var pop2 = qs("[data-mp-pop]");
       if (pop2) pop2.classList.add("hide");
       syncUploadBtn();
-      toast("已切换模型：" + chatModel + "（演示，正式版按会话保存）");
+      toast("已切换模型：" + (mName || "默认路由"));
       return;
     }
     /* 文件上传 */
@@ -1106,31 +1285,46 @@
       if (pane) pane.classList.add("active");
       return;
     }
-    /* 会话：删除 */
+    /* 会话：删除（真删，级联消息） */
     if (el.closest("[data-conv-del]")) {
-      var item = el.closest(".conv-item");
-      if (item) { item.remove(); toast("会话已删除"); }
+      var delItem = el.closest(".conv-item");
+      var delId = delItem ? parseInt(delItem.getAttribute("data-cid"), 10) : null;
+      if (delId) {
+        API.del("/chat/conversations/" + delId + "?app_id=chat").then(function () {
+          toast("会话已删除");
+          if (chatState.convId === delId) {
+            chatState.convId = null;
+            var innerEl = qs("[data-chat-inner]");
+            if (innerEl) innerEl.innerHTML = '<div class="chat-empty muted" data-chat-empty>开始一段新对话吧</div>';
+            var tEl = qs("[data-chat-title]");
+            if (tEl) tEl.textContent = "通用对话";
+          }
+          refreshConversations(true);
+        }).catch(function (ex) { toast(ex.detail || "删除失败"); });
+      }
       return;
     }
-    /* 会话：切换 */
+    /* 会话：切换（加载历史） */
     var convItem = el.closest(".conv-item");
     if (convItem) {
-      qsa(".conv-item").forEach(function (i) { i.classList.remove("active"); });
-      convItem.classList.add("active");
+      var cid = parseInt(convItem.getAttribute("data-cid"), 10);
+      if (cid) selectConversation(cid, convItem.querySelector(".ct").textContent);
       var cp = qs(".conv-panel"), cm = qs("[data-conv-mask]");
       if (cp) cp.classList.remove("open");
       if (cm) cm.classList.remove("open");
       return;
     }
-    /* 新建会话 */
+    /* 新建会话（本地状态；首条消息发送后由后端建会话） */
     if (el.closest("[data-new-conv]")) {
-      var listEl = qs(".conv-list");
-      var ni = document.createElement("div");
-      ni.className = "conv-item active";
-      ni.innerHTML = '<span class="ct">新的对话</span><span class="del" data-ic="trash" data-conv-del></span>';
+      chatState.convId = null;
       qsa(".conv-item").forEach(function (i) { i.classList.remove("active"); });
-      if (listEl) listEl.prepend(ni);
-      injectIcons(ni);
+      var inner2 = qs("[data-chat-inner]");
+      if (inner2) inner2.innerHTML = '<div class="chat-empty muted" data-chat-empty>开始一段新对话吧</div>';
+      var tEl2 = qs("[data-chat-title]");
+      if (tEl2) tEl2.textContent = "通用对话";
+      var cp2 = qs(".conv-panel"), cm2 = qs("[data-conv-mask]");
+      if (cp2) cp2.classList.remove("open");
+      if (cm2) cm2.classList.remove("open");
       toast("已新建会话");
       return;
     }
@@ -1190,42 +1384,63 @@
   });
   qs("#palette-input").addEventListener("input", function (e) { filterPalette(e.target.value); });
 
-  /* 对话发送（假流式回复） */
+  /* 对话发送：POST /chat SSE 流式渲染（delta 逐段 + [DONE]） */
   function sendMessage() {
     var composer = qs(".composer textarea");
     var inner = qs("[data-chat-inner]");
-    if (!composer || !inner) return;
+    if (!composer || !inner || chatState.sending) return;
     var text = composer.value.trim();
     if (!text) return;
-    var who = D.user ? D.user.nickname : "我";
+    var who = LC_USER ? LC_USER.nickname : "我";
+    var emptyEl = qs("[data-chat-empty]");
+    if (emptyEl) emptyEl.remove();
     var userMsg = document.createElement("div");
     userMsg.className = "msg user";
-    userMsg.innerHTML = '<span class="avatar">' + who + '</span><div class="msg-body"><div class="msg-text"><p></p></div></div>';
+    userMsg.innerHTML = '<span class="avatar">' + esc(who) + '</span><div class="msg-body"><div class="msg-text"><p></p></div></div>';
     userMsg.querySelector("p").textContent = text;
     inner.appendChild(userMsg);
     composer.value = "";
     composer.style.height = "auto";
-    userMsg.scrollIntoView({ behavior: "smooth" });
 
     var reply = document.createElement("div");
     reply.className = "msg ai cursor";
     reply.innerHTML = '<span class="avatar">馆</span><div class="msg-body"><div class="msg-text"><span class="thinking"><i></i><i></i><i></i></span><span class="stream-text"></span></div></div>';
     inner.appendChild(reply);
     var node = reply.querySelector(".stream-text");
-    var answer = "收到。这是原型演示环境，没有连接真实模型；正式版由后端网关按默认路由（DeepSeek-V3）走 SSE 流式返回。";
-    var i = 0;
-    setTimeout(function tick() {
+    var sc = qs(".chat-scroll");
+    function scrollBottom() { if (sc) sc.scrollTop = sc.scrollHeight; }
+    scrollBottom();
+
+    var body = { app_id: "chat", message: text };
+    if (chatState.convId) body.conversation_id = chatState.convId;
+    if (chatState.modelId) body.model_id = chatState.modelId;
+    chatState.sending = true;
+
+    API.stream("/chat", body, function (ev) {
       var dots = reply.querySelector(".thinking");
-      if (dots) dots.remove();
-      if (i < answer.length) {
-        node.textContent += answer.slice(i, i + 2);
-        i += 2;
-        reply.scrollIntoView({ behavior: "smooth", block: "end" });
-        setTimeout(tick, 45);
-      } else {
+      if (ev.done) {
+        if (dots) dots.remove();
         reply.classList.remove("cursor");
+        chatState.sending = false;
+        refreshConversations(true);
+        return;
       }
-    }, 600);
+      if (dots) dots.remove();
+      if (ev.delta) { node.textContent += ev.delta; scrollBottom(); }
+      if (ev.error) {
+        node.textContent += (node.textContent ? "\n" : "") + "⚠️ " + ev.error;
+        reply.classList.remove("cursor");
+        chatState.sending = false;
+        scrollBottom();
+      }
+    }).catch(function (ex) {
+      var dots2 = reply.querySelector(".thinking");
+      if (dots2) dots2.remove();
+      node.textContent = "发送失败：" + (ex && ex.detail ? ex.detail : "网络错误");
+      reply.classList.remove("cursor");
+      chatState.sending = false;
+      scrollBottom();
+    });
   }
 
   /* 会话面板输入框自适应（委托 input 已覆盖文本域，此处针对 composer 高度） */
@@ -1237,7 +1452,32 @@
   });
 
   /* ================= 启动 ================= */
+  function applyUserChrome() {
+    if (!LC_USER) return;
+    var initial = esc((LC_USER.nickname || LC_USER.username || "?").slice(0, 1));
+    var avatar = qs("#topbar-avatar");
+    if (avatar) avatar.textContent = initial;
+    var siderUser = qs(".sider-user");
+    if (siderUser) {
+      var a = siderUser.querySelector(".avatar");
+      if (a) a.textContent = initial;
+      var name = siderUser.querySelector(".u-name");
+      if (name) name.textContent = LC_USER.username;
+      var role = siderUser.querySelector(".u-role");
+      if (role) role.textContent = (LC_USER.roles || []).indexOf("admin") !== -1 ? "管理员" : "成员";
+    }
+  }
+
   renderSider();
   injectIcons(document);
-  render();
+  /* 已有 token 先校验（401 自动跳登录），再渲染首屏 */
+  if (isLoggedIn()) {
+    API.get("/auth/me").then(function (u) {
+      LC_USER = u;
+      applyUserChrome();
+      render();
+    }).catch(function () { render(); });
+  } else {
+    render();
+  }
 })();

@@ -1104,3 +1104,6 @@ body[data-route="chat"] .chat-layout { height: 100vh; }
     transition-duration: .01ms !important;
   }
 }
+
+/* 对话空状态（v2 联调新增） */
+.chat-empty { padding: 48px 0 24px; text-align: center; font-size: 13.5px; }
