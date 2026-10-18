@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 10
 
+    # 对话
+    chat_history_turns: int = 20  # 发给模型的最近轮数（PRD Q2，一轮 = 问答两条）
+
     # CORS（本地开发；生产由 Caddy 同域反代，可留空）
     # NoDecode：环境变量按原始字符串交给下面的拆分校验器，不做 JSON 解析
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]

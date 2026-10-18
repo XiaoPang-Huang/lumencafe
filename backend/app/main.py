@@ -16,6 +16,7 @@ from app.routers import (
     admin_users,
     apps,
     auth,
+    chat,
     gateway,
     internal,
     me,
@@ -48,6 +49,7 @@ app.include_router(money.router)
 app.include_router(apps.router)
 app.include_router(internal.router)
 app.include_router(gateway.router)
+app.include_router(chat.router)
 
 # 本地开发跨域；生产由 Caddy 同域反代，可将 LUMEN_CORS_ORIGINS 留空
 if settings.cors_origins:
