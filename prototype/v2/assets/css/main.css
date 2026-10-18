@@ -1009,10 +1009,11 @@ body[data-route="login"] .topbar,
 body[data-route="login"] .tabbar { display: none; }
 body[data-route="login"] .main { max-width: none; padding: 0; }
 
-body[data-route="chat"] .topbar { display: none; }
-body[data-route="chat"] .sider { top: 0; height: 100vh; margin-top: 0; border-radius: 0; }
+/* 对话页保留标准顶栏（与工作台/记账一致：火山方舟式全页常驻顶栏），
+   侧栏恢复默认悬浮卡样式（sticky top:60px，位于 48px 顶栏之下，不重叠）。
+   对话内容列通栏，chat-layout 高度 = 可视高度 - 48px 顶栏。 */
 body[data-route="chat"] .main { max-width: none; padding: 0; }
-body[data-route="chat"] .chat-layout { height: 100vh; }
+body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
 
 /* 桌面端默认隐藏 tabbar */
 .tabbar { display: none; }
@@ -1066,9 +1067,11 @@ body[data-route="chat"] .chat-layout { height: 100vh; }
   .stat-grid { grid-template-columns: minmax(0, 1fr); }
 
   body[data-route="chat"] .tabbar { display: none; }
-  body[data-route="chat"] .chat-layout { height: 100dvh; }
+  body[data-route="chat"] .chat-layout { height: calc(100dvh - 48px); }
   .conv-panel {
     display: none;
+    /* 注意：.view > * 的 fade-up 动画(fill:both)让 .chat-layout 长期持有 transform(矩阵单位),
+       成为 fixed 后代的 containing block——其矩形起点已是顶栏下沿(视口 48px),故 top 用 0 即贴顶栏 */
     position: fixed; left: 0; top: 0; bottom: 0;
     z-index: 70; box-shadow: var(--shadow-pop);
     width: 280px;
