@@ -4,6 +4,14 @@
 # 前置：.env 配好 LUMEN_JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_BASIC_AUTH_*，
 #       腾讯云防火墙放行 80/443/8443/5678（域名未备案，全程 IP 直连，见 docs/部署指南-v1.md §1.1）
 services:
+  db:
+    # 基础编排把 5432 发布到 0.0.0.0（本机 venv 开发用）；生产只走 compose 内网，
+    # !reset 清掉发布，不依赖云防火墙兜底（双重保险）
+    ports: !reset
+  api:
+    # 同理：8000 生产不对外，统一经 Caddy /api/* 反代入口
+    ports: !reset
+
   caddy:
     volumes:
       # 服务器版 Caddyfile（IP 通配站点 + 自签证书）

@@ -97,11 +97,8 @@ services:
       LUMEN_INTERNAL_TOKEN: ${LUMEN_INTERNAL_TOKEN:-}
     volumes:
       - n8n_data:/home/node/.n8n
-      # 中文界面包挂载已默认移除（2026-10-18）：腾讯云服务器无法从 GitHub Releases
-      # 拉到汉化包，而空目录挂载会把 editor-ui 的 dist 盖成空白导致 n8n 白屏。
-      # 需要中文界面时：按 README「n8n 中文界面」下载解压出 ./n8n-zh/dist 后，
-      # 取消下面一行的注释即可恢复：
-      # - ./n8n-zh/dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist:ro
+      # 中文界面：不在此处挂载——dist 缺失时 Docker 会建空目录覆盖镜像内文件导致白屏。
+      # 需要中文时用 deploy/docker-compose.n8n-zh.yml 覆盖层启用（自动下载见 deploy/n8n-zh-setup.sh）
 
 volumes:
   pgdata:

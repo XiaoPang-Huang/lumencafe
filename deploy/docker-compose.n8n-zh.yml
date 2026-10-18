@@ -1,0 +1,27 @@
+# n8n 中文界面覆盖层（可选，按需启用；不与基础编排混用）
+#
+# 用法（仓库根目录执行，加在基础编排 + 生产覆盖层之后）：
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml \
+#                  -f deploy/docker-compose.n8n-zh.yml up -d n8n
+#
+# 前置条件：./n8n-zh/dist/ 已存在且完整（index.html + assets/）。
+#   ⚠️ dist 缺失时 Docker 会自动创建空目录挂载 → n8n 白屏。
+#   先跑 deploy/n8n-zh-setup.sh（自动下载+校验+解压+重建）最稳。
+#
+# 版本对应：汉化包版本必须与 docker-compose.yml 里的 n8n 镜像版本一致
+#   （当前 2.43.5）。升级 n8n 前先确认 bsi-bcp/n8n-i18n-chinese 已发布对应版本，
+#   否则新界面文案会回退英文（功能不受影响）。
+#
+# 回滚英文界面：去掉本文件，重新
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d n8n
+#
+# 汉化包来源：https://github.com/bsi-bcp/n8n-i18n-chinese （MIT，接手续更的社区项目）
+# 只替换前端构建产物（editor-ui/dist），不碰后端、数据库与配置。
+services:
+  n8n:
+    volumes:
+      # n8n_data 必须重述一遍：compose 合并时 volumes 序列由覆盖层替换而非追加，
+      # 漏写这行 = 容器丢掉 /home/node/.n8n 挂载 = 账号/工作流/凭据全部"失忆"
+      - n8n_data:/home/node/.n8n
+      # 中文版前端构建产物，只读覆盖镜像内 editor-ui/dist
+      - ./n8n-zh/dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist:ro
