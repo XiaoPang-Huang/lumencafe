@@ -265,11 +265,49 @@
   </div>
 </div>
 
+<!-- 添加提供商 -->
+<div class="modal-mask" id="modal-add-pv">
+  <form class="modal" onsubmit="event.preventDefault();">
+    <div class="modal-head">
+      <h3>添加提供商</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>提供商名称</label>
+        <input type="text" data-pv-name placeholder="DeepSeek 主号">
+      </div>
+      <div class="field">
+        <label>Vendor</label>
+        <select data-pv-vendor>
+          <option value="deepseek">deepseek</option>
+          <option value="kimi">kimi</option>
+          <option value="openai">openai</option>
+          <option value="custom" selected>custom</option>
+          <option value="mock">mock</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Base URL</label>
+        <input type="text" data-pv-url placeholder="mock 可留空">
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>API Key</label>
+        <input type="password" data-pv-key placeholder="mock 可留空" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-confirm-add-pv>确认添加</button>
+    </div>
+  </form>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="assets/js/data.js?v=20261018w"></script>
 <script src="assets/js/icons.js?v=20261018w"></script>
 <script src="assets/js/api.js?v=20261018w"></script>
-<script src="assets/js/app.js?v=20261018w"></script>
+<script src="assets/js/app.js?v=20261018y"></script>
 </body>
 </html>

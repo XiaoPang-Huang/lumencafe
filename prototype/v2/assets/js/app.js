@@ -279,7 +279,7 @@
         '<div class="sub">' + esc(p.vendor) + (p.is_default ? " · 默认渠道" : "") + "</div></div>" +
         '<span class="pill ' + (p.enabled ? "pill-ok" : "pill-mute") + '">' + (p.enabled ? "启用" : "停用") + "</span></div>";
     }).join("");
-    return html + '<button class="btn btn-ghost btn-sm" type="button" data-add-provider><i data-ic="plus"></i>添加提供商</button>';
+    return html + '<button class="btn btn-ghost btn-sm" type="button" data-modal-open="#modal-add-pv"><i data-ic="plus"></i>添加提供商</button>';
   }
   function renderPvList(activeId) {
     var box = qs("#mm-list");
@@ -1452,16 +1452,27 @@
       selectProvider(mmItem.getAttribute("data-pv"));
       return;
     }
-    /* 添加提供商（先用 prompt 链，后续换正式表单） */
-    if (el.closest("[data-add-provider]")) {
-      var pname = window.prompt("提供商名称（如 DeepSeek 主号）");
-      if (!pname) return;
-      var pvendor = window.prompt("vendor（deepseek / kimi / openai / custom / mock）", "custom");
-      if (!pvendor) return;
-      var purl = window.prompt("Base URL（mock 可留空）", "") || "";
-      var pkey = window.prompt("API Key（mock 可留空）", "") || "";
-      API.post("/admin/models/providers", { name: pname, vendor: pvendor, base_url: purl, api_key: pkey }).then(function () {
+    /* 添加提供商：表单弹窗 #modal-add-pv 提交 */
+    if (el.closest("[data-confirm-add-pv]")) {
+      var pvName = qs("#modal-add-pv [data-pv-name]");
+      var pvVendor = qs("#modal-add-pv [data-pv-vendor]");
+      var pvUrl = qs("#modal-add-pv [data-pv-url]");
+      var pvKey = qs("#modal-add-pv [data-pv-key]");
+      var npv = pvName ? pvName.value.trim() : "";
+      if (!npv) { toast("先填提供商名称"); return; }
+      API.post("/admin/models/providers", {
+        name: npv,
+        vendor: pvVendor ? pvVendor.value : "custom",
+        base_url: pvUrl ? pvUrl.value.trim() : "",
+        api_key: pvKey ? pvKey.value.trim() : ""
+      }).then(function () {
         toast("提供商已创建");
+        var pvMask = qs("#modal-add-pv");
+        if (pvMask) pvMask.classList.remove("open");
+        if (pvName) pvName.value = "";
+        if (pvVendor) pvVendor.value = "custom";
+        if (pvUrl) pvUrl.value = "";
+        if (pvKey) pvKey.value = "";
         loadAdminTabData();
       }).catch(function (e) { toast(e.detail || "创建失败"); });
       return;
@@ -1541,8 +1552,8 @@
     var savePv = el.closest("[data-save-pv]");
     if (savePv) {
       var spid = savePv.getAttribute("data-save-pv");
-      var baseEl = qs("[data-pv-base]");
-      var keyEl = qs("[data-pv-key]");
+      var baseEl = qs("#mm-detail [data-pv-base]");
+      var keyEl = qs("#mm-detail [data-pv-key]");
       var body = { base_url: baseEl ? baseEl.value.trim() : "" };
       if (keyEl && keyEl.value.trim()) body.api_key = keyEl.value.trim();
       API.put("/admin/models/providers/" + spid, body).then(function () {
