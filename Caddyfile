@@ -45,3 +45,9 @@ n8n.lumenhub.online {
 	import common_headers
 	reverse_proxy n8n:5678
 }
+
+# 备用域名统一跳主站（DNS 里已有的 apex / www 记录，避免无证书报错）
+lumenhub.online, www.lumenhub.online, www.cafe.lumenhub.online, www.api.lumenhub.online {
+	import common_headers
+	redir https://cafe.lumenhub.online{uri} permanent
+}
