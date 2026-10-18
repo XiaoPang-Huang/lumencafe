@@ -1,0 +1,27 @@
+# 生产覆盖层：真实域名 + HTTPS + 前端静态目录 + n8n 公网子域
+# 用法（仓库根目录执行）：
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+# 前置：.env 配好 LUMEN_JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_HOST，
+#       域名 DNS 已 A 记录到服务器，防火墙放行 80/443（Caddy 自动签发证书）
+services:
+  caddy:
+    volumes:
+      # 服务器版 Caddyfile（主站 + api 子域 + n8n 子域）
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # 前端原型即静态站，无需构建，整目录只读挂载
+      - ./prototype/v2:/srv/frontend:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  n8n:
+    environment:
+      # 公网访问 n8n 控制台用的域名（须与 Caddyfile 中 n8n 站点一致）
+      N8N_HOST: ${N8N_HOST:-n8n.lumenhub.online}
+      N8N_PROTOCOL: "https"
+      WEBHOOK_URL: "https://${N8N_HOST:-n8n.lumenhub.online}/"
+      N8N_PROXY_HOPS: "1"
+      N8N_SECURE_COOKIE: "true"
+      # n8n 凭据加密密钥：不设则存在 n8n_data 卷里，换机不恢复=凭据全废；建议设并备份
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      # 文献抓取工作流用 $env.LUMEN_INTERNAL_TOKEN 调 /internal/jobs/*，由 compose 注入
+      LUMEN_INTERNAL_TOKEN: ${LUMEN_INTERNAL_TOKEN:-}

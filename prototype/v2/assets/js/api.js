@@ -5,7 +5,16 @@
 (function () {
   "use strict";
 
-  var BASE = "http://localhost:8000";
+  /* API 基址自动探测：
+   * - 本地开发（localhost / 127.0.0.1 / file:// 直开）：直连本机后端 :8000；
+   * - 服务器部署：Caddy 同域反代 /api/* → api:8000，走同源 /api（无 CORS、可 HTTPS）。
+   */
+  var BASE = (function () {
+    if (location.protocol === "file:" || location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    return "/api";
+  })();
   var TOKEN_KEY = "lc_token";
 
   function getToken() {

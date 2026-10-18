@@ -19,6 +19,18 @@ docker compose up -d --build
 - `POSTGRES_PASSWORD` 含 `$` `#` 等特殊字符时，`.env` 里的值要用单引号包住，如 `POSTGRES_PASSWORD='a@b#c$d'`。
 - Alembic 迁移在 api 容器启动时自动执行（`alembic upgrade head`）。
 
+## 服务器部署
+
+一台 2核4G VPS 即可，Caddy 自动 HTTPS。完整步骤见 [docs/部署指南-v1.md](docs/部署指南-v1.md)，核心三步：
+
+```bash
+git clone <仓库地址> lumencafe && cd lumencafe
+cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN；Caddyfile 改三处域名
+docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+```
+
+部署形态：`cafe.域名` 主站（前端 + /api 同域反代）、`api.域名` 外部客户端、`n8n.域名` 工作流控制台（可选）。
+
 ## n8n 中文界面（可选）
 
 n8n 镜像版本已锁定，中文界面包版本必须与之一致（当前 n8n `2.43.5`）：

@@ -80,6 +80,9 @@ services:
       N8N_DEFAULT_LOCALE: zh-CN
       GENERIC_TIMEZONE: Asia/Shanghai
       TZ: Asia/Shanghai
+      # 文献抓取工作流（n8n-workflows/papers-crawl.json）经 $env.LUMEN_INTERNAL_TOKEN
+      # 调 /internal/jobs/*；不配则工作流里的环境变量取到空值
+      LUMEN_INTERNAL_TOKEN: ${LUMEN_INTERNAL_TOKEN:-}
     volumes:
       - n8n_data:/home/node/.n8n
       # 中文界面包（bsi-bcp/n8n-i18n-chinese，版本须与镜像一致）：下载解压出 dist 放到 ./n8n-zh/dist

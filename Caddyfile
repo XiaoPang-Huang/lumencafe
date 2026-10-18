@@ -1,18 +1,47 @@
-# 流光咖啡馆 Caddy 配置（服务器用；本地开发可不用，文件必须备好）
-# SSE 反代关键：flush_interval -1 关闭缓冲
+# 流光咖啡馆 Caddy 配置（服务器用；本地开发用 Caddyfile.dev）
+# SSE 反代关键：flush_interval -1 关闭缓冲，流式输出不卡
+# 前置条件：deploy/docker-compose.prod.yml 把 ./prototype/v2 挂进 caddy 容器的 /srv/frontend
+# 域名按实际改（三处 cafe./api./n8n.）；Caddy 自动申请并续期 Let's Encrypt 证书
+
+# 通用安全响应头（三个站点复用）
+(common_headers) {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer-when-downgrade
+		-Server
+	}
+}
+
+# 主站：前端静态站 + 同域反代 /api/*（assets/js/api.js 生产模式走此前缀）
 cafe.lumenhub.online {
-	root * /srv/frontend/dist
+	import common_headers
+	root * /srv/frontend
 	file_server
 
-	handle /api/* {
+	# handle_path 会剥掉 /api 前缀再转发（/api/auth/login → /auth/login）
+	handle_path /api/* {
 		reverse_proxy api:8000 {
 			flush_interval -1
 		}
 	}
 }
 
+# API 子域：供外部客户端（OpenAI 兼容 /gw/v1、移动端）直连
+# /internal/* 只允许 compose 内网调用（n8n → http://api:8000），公网一律 404
 api.lumenhub.online {
-	reverse_proxy api:8000 {
-		flush_interval -1
+	import common_headers
+	route {
+		@internal path /internal/*
+		respond @internal 404
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
 	}
+}
+
+# n8n 编排控制台（可选）：n8n 2.x 首次打开要自建 owner 账号；
+# 域名需与 compose 里 N8N_HOST 一致，否则 webhook URL 会错
+n8n.lumenhub.online {
+	import common_headers
+	reverse_proxy n8n:5678
 }

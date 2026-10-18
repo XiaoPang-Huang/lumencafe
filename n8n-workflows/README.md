@@ -3,9 +3,10 @@
 ## 导入与接入（5 分钟）
 
 1. n8n 界面 → **Workflows → Import from File** → 选择 `papers-crawl.json`。
-2. 选中「触发抓取」节点，把 Header `X-Internal-Token` 的值改为 root `.env` 里的
-   `LUMEN_INTERNAL_TOKEN`（n8n 与 api 同网段，地址 `http://api:8000` 无需改动；
-   建议把令牌存进 n8n Credentials 而不是明文写在节点里）。
+2. 「触发抓取」节点的 Header `X-Internal-Token` 值为 `={{$env.LUMEN_INTERNAL_TOKEN}}`：
+   - 服务器部署（docker compose 起 n8n）：无需手改，compose 已把 `.env` 的 `LUMEN_INTERNAL_TOKEN` 注入 n8n 容器；
+   - 其他方式跑的 n8n：把该环境变量配进 n8n，或直接把值填进节点（建议存 n8n Credentials 而非明文）。
+   n8n 与 api 同网段，地址 `http://api:8000` 无需改动。
 3. **Save** 并右上角 **Activate**。
 
 ## 行为
