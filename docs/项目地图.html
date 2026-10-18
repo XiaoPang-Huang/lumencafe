@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流光咖啡馆 · 项目地图</title>
+<style>
+  :root{
+    --brand:#0064E0; --brand-soft:rgba(0,100,224,.08);
+    --bg:#F5F6F8; --card:#FFFFFF; --border:#E6E8EC;
+    --text:#1D2129; --text-2:#4E5969; --text-3:#86909C;
+    --mono:"SF Mono",Consolas,"Cascadia Mono",monospace;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(29,33,41,.04),0 4px 16px rgba(29,33,41,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#16181D; --card:#1F2229; --border:#2E323B;
+      --text:#F2F3F5; --text-2:#C9CDD4; --text-3:#8A919E;
+      --brand-soft:rgba(0,100,224,.18);
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.35);
+    }
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:"Manrope","MiSans","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; padding:32px 20px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  h1{font-size:24px;letter-spacing:.5px}
+  h1 .cup{color:var(--brand)}
+  .ver{font-size:12px;color:var(--text-3);border:1px solid var(--border);border-radius:99px;padding:2px 10px}
+  .sub{color:var(--text-3);font-size:13.5px;margin-bottom:22px}
+  .sub a{color:var(--brand);text-decoration:none}
+  .sub a:hover{text-decoration:underline}
+
+  /* 搜索框 */
+  .search{
+    position:sticky;top:14px;z-index:20;display:flex;align-items:center;gap:10px;
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:12px 16px;box-shadow:var(--shadow);margin-bottom:26px;
+  }
+  .search svg{flex:none;color:var(--text-3)}
+  .search input{
+    flex:1;border:0;outline:0;background:transparent;color:var(--text);
+    font-size:15px;font-family:inherit;
+  }
+  .search kbd{
+    font-size:11px;color:var(--text-3);border:1px solid var(--border);
+    border-radius:6px;padding:2px 8px;font-family:var(--mono);
+  }
+  .search .clear{border:0;background:none;color:var(--text-3);cursor:pointer;font-size:16px;display:none}
+  .search .clear:hover{color:var(--text)}
+
+  section{margin-bottom:36px}
+  .sec-title{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;margin-bottom:12px}
+  .sec-title .dot{width:8px;height:8px;border-radius:50%;background:var(--brand)}
+  .sec-note{font-size:12.5px;color:var(--text-3);font-weight:400;margin-left:2px}
+
+  /* 任务速查表 */
+  table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);
+    border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+  th,td{text-align:left;padding:10px 16px;font-size:13.5px;vertical-align:top}
+  thead th{
+    background:var(--brand-soft);color:var(--text-2);font-size:12px;font-weight:600;
+    letter-spacing:.5px;border-bottom:1px solid var(--border);
+  }
+  tbody tr{cursor:pointer;transition:background .12s}
+  tbody tr:hover{background:var(--brand-soft)}
+  tbody tr + tr td{border-top:1px solid var(--border)}
+  td.task{color:var(--text);white-space:nowrap}
+  td.task .tag{font-size:11px;color:var(--text-3);margin-left:6px}
+  td.path{font-family:var(--mono);font-size:12.5px;color:var(--text-2);word-break:break-all}
+  td.path .copy{opacity:0;color:var(--brand);margin-left:8px;transition:opacity .12s;font-size:11px}
+  tr:hover .copy{opacity:1}
+  .empty{display:none;text-align:center;color:var(--text-3);padding:26px;font-size:13.5px}
+
+  /* 目录树 */
+  .trees{display:grid;grid-template-columns:1fr;gap:14px}
+  .tree{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  .tree-head{
+    display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;user-select:none;
+    border-bottom:1px solid var(--border);transition:background .12s;
+  }
+  .tree-head:hover{background:var(--brand-soft)}
+  .tree-head .chev{transition:transform .18s;color:var(--text-3);flex:none}
+  .tree.open .chev{transform:rotate(90deg)}
+  .tree-head .name{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--brand)}
+  .tree-head .desc{font-size:12.5px;color:var(--text-3);flex:1}
+  .tree-head .count{font-size:11px;color:var(--text-3);background:var(--brand-soft);
+    border-radius:99px;padding:1px 9px;font-family:var(--mono)}
+  .tree-body{display:none;padding:8px 0}
+  .tree.open .tree-body{display:block}
+  .node{display:flex;align-items:baseline;gap:8px;padding:6px 16px;font-size:13px;cursor:pointer}
+  .node:hover{background:var(--brand-soft)}
+  .node .p{font-family:var(--mono);font-size:12.5px;color:var(--text-2);word-break:break-all}
+  .node .p b{color:var(--text);font-weight:600}
+  .node .d{color:var(--text-3);font-size:12.5px}
+  .node.hidden{display:none}
+
+  /* 文档契约卡片 */
+  .docs{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .doc-card{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow);transition:transform .15s,border-color .15s;
+  }
+  .doc-card:hover{transform:translateY(-2px);border-color:var(--brand)}
+  .doc-card .t{font-weight:700;font-size:14px;margin-bottom:4px}
+  .doc-card .w{font-size:12.5px;color:var(--text-2);margin-bottom:8px}
+  .doc-card .u{font-size:12px;color:var(--text-3)}
+  .doc-card a{color:var(--brand);text-decoration:none;font-family:var(--mono);font-size:12px}
+  .doc-card a:hover{text-decoration:underline}
+
+  /* toast */
+  #toast{
+    position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);
+    background:var(--text);color:var(--bg);font-size:13px;padding:9px 18px;border-radius:99px;
+    opacity:0;pointer-events:none;transition:all .25s cubic-bezier(.2,.8,.3,1);z-index:99;
+    font-family:var(--mono);max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  mark{background:rgba(255,196,0,.35);color:inherit;border-radius:3px;padding:0 1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="cup">☕</span> 流光咖啡馆 · 项目地图</h1>
+    <span class="ver">v1 · 2026-10-18</span>
+  </header>
+  <p class="sub">10 秒定位"要改的东西在哪"。点任意一行即可复制路径。Markdown 版：<a href="项目地图-v1.md">项目地图-v1.md</a> ｜ 协作流程：<a href="团队协作规范-v1.md">团队协作规范-v1.md</a></p>
+
+  <div class="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="q" type="text" placeholder="搜索：接口 / 迁移 / 样式 / 图标 / 模型 / 部署……" autocomplete="off">
+    <button class="clear" id="clearBtn" title="清空">✕</button>
+    <kbd>/</kbd>
+  </div>
+
+  <!-- ① 按任务找位置 -->
+  <section>
+    <div class="sec-title"><span class="dot"></span>按任务找位置<span class="sec-note">点击行复制目标路径</span></div>
+    <table id="taskTable">
+      <thead><tr><th style="width:38%">我要……</th><th>去这里</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="empty" id="taskEmpty">没有匹配的任务，换个关键词试试（比如「迁移」「样式」）</div>
+  </section>
+
+  <!-- ② 目录结构 -->
+  <section>
+    <div class="sec-title"><span class="dot"></span>目录结构<span class="sec-note">点分组标题展开 / 收起，点行复制路径</span></div>
+    <div class="trees" id="trees"></div>
+    <div class="empty" id="treeEmpty">没有匹配的目录条目</div>
+  </section>
+
+  <!-- ③ 文档契约 -->
+  <section>
+    <div class="sec-title"><span class="dot"></span>文档契约<span class="sec-note">产品决策以这三份为准</span></div>
+    <div class="docs" id="docs"></div>
+  </section>
+
+</div>
+<div id="toast"></div>
+
+<script>
+/* ============ 数据（改目录结构时同步这里 + 项目地图-v1.md） ============ */
+
+const TASKS = [
+  {t:"新增 / 改一个 API 接口", tag:"后端", p:"backend/app/routers/ + app/main.py", d:"接口定义先对架构设计 §4"},
+  {t:"改数据表结构", tag:"后端", p:"backend/alembic/versions/", d:"只新增迁移不改旧文件；DDL 对架构设计 §3"},
+  {t:"加 / 改配置项", tag:"后端", p:"backend/app/config.py", d:"同时更新 .env.example + README"},
+  {t:"改后端日志 / 启动行为", tag:"后端", p:"backend/app/logging_conf.py · app/main.py", d:"lifespan 钩子、敏感配置告警"},
+  {t:"改页面结构 / 交互 / 路由", tag:"前端", p:"prototype/v2/assets/js/app.js", d:"改完 bump index.html 的 ?v= 版本号"},
+  {t:"改样式", tag:"前端", p:"prototype/v2/assets/css/main.css", d:"同样记得 bump ?v="},
+  {t:"改演示数据", tag:"前端", p:"prototype/v2/assets/js/data.js", d:"金额一律「分」"},
+  {t:"加图标", tag:"前端", p:"prototype/v2/assets/icons/", d:"放 SVG → icons.js 注册 → data-ic 引用"},
+  {t:"设计 / 改版界面", tag:"前端", p:"prototype/v2/", d:"先查 AGENTS.md §一参考池，拍板后再动代码"},
+  {t:"产品决策变更", tag:"文档", p:"docs/ 三份契约", d:"同步 PRD / 架构设计 / 架构定稿 + 修订记录"},
+  {t:"模型管理（Provider / 默认路由）", tag:"后端", p:"架构设计 §3.2 + §4.3", d:"实现落 routers/admin_models.py（待建）"},
+  {t:"网关对外接口 /gw/v1", tag:"后端", p:"架构设计 §4.9", d:"实现落 routers/gateway.py（待建），n8n 等外部调用"},
+  {t:"n8n 文献抓取联调", tag:"集成", p:"n8n-zh/ + routers/internal.py", d:"README 有汉化包下载命令；internal 不走用户 JWT"},
+  {t:"部署 / 运维", tag:"运维", p:"docker-compose.yml + Caddyfile", d:"README「快速开始」；compose 必须提供 .env"},
+  {t:"参考旧版实现", tag:"参考", p:"old/app/", d:"只读参考，不入版本库，勿往里加新东西"},
+  {t:"查之前为什么这么定", tag:"记忆", p:".workbuddy/memory/MEMORY.md", d:"+ 每日日志；docs 修订记录"},
+];
+
+const TREES = [
+  {name:"backend/", desc:"FastAPI 后端", nodes:[
+    ["app/main.py","FastAPI 入口 + /health，挂新路由来这里"],
+    ["app/config.py","全部配置，LUMEN_ 前缀 → settings"],
+    ["app/db.py","引擎 + 会话 + ORM 基类 Base"],
+    ["app/logging_conf.py","日志"],
+    ["app/security.py","bcrypt 密码哈希 + JWT 签发/校验"],
+    ["app/deps.py","get_current_user / require_permission / internal_token_guard"],
+    ["app/models/","ORM 十六表（架构设计 §3；__init__ 汇总供 Alembic）"],
+    ["app/schemas/","请求/响应模型（auth / admin / me / llm / money / apps）"],
+    ["app/services/","业务服务层（llm_gateway / route_service / money_service / rbac_service / seed / rate_limit / papers_crawl）"],
+    ["app/routers/","auth / admin_users / admin_models / me / money / apps / internal / gateway 已建；待建 chat（T05）"],
+    ["tests/","pytest 独立测试库 lumencafe_test（6 个测试模块 48 用例）"],
+    ["alembic/versions/","迁移文件，只新增不改旧（0001 = 批次1全量 16 表）"],
+    ["requirements.txt · requirements-dev.txt","运行时 / 开发依赖（ruff · pytest）"],
+    ["pyproject.toml","ruff 配置（FastAPI Depends 视为不可变调用）"],
+    [".env.example","环境变量完整清单"],
+    ["Dockerfile","api 镜像，启动自动 alembic upgrade head"],
+  ]},
+  {name:"prototype/v2/", desc:"前端交互原型（拍板用，纯静态）", nodes:[
+    ["index.html","外壳 + 全局弹层 + ?v= 版本号"],
+    ["assets/js/app.js","路由 + 页面模板 + ⌘K 面板 + 全部事件委托"],
+    ["assets/js/data.js","演示数据（金额单位：分）"],
+    ["assets/js/icons.js","data-ic 图标注入"],
+    ["assets/css/main.css","全部样式"],
+    ["assets/icons/","SVG 源 + build-icons.js"],
+    ["assets/fonts/","Manrope woff2（本地）"],
+  ]},
+  {name:"docs/", desc:"产品契约与协作规范", nodes:[
+    ["架构定稿-v1.md","已拍板的架构决策"],
+    ["PRD-v1.md","需求、接口明细、需求池 P0/P1"],
+    ["架构设计-v1.md","实现方案、DDL、任务列表 T 编号"],
+    ["团队协作规范-v1.md","交付流程、Git 规范、DoD"],
+    ["项目地图-v1.md / .html","本文（目录结构变化时同步更新）"],
+  ]},
+  {name:"根目录 & 其他", desc:"配置 · 编排 · 不入库目录", nodes:[
+    ["AGENTS.md","设计强制规则（最高优先级）"],
+    ["README.md","快速开始、目录说明"],
+    ["Caddyfile · Caddyfile.dev","生产 / 开发反代"],
+    ["docker-compose.yml","api / db / caddy / n8n 编排"],
+    ["n8n-zh/","n8n 中文界面包（不入库，按 README 下载）"],
+    ["old/","旧版后端（只读参考，不入库）"],
+    [".workbuddy/","AI 协作记忆（日志 + 长期笔记）"],
+  ]},
+];
+
+const DOCS = [
+  {t:"架构定稿 v1", w:"已拍板的架构决策（模型纯网关 / 批次优先级 / 安全清单）", u:"架构定稿-v1.md"},
+  {t:"PRD v1.1", w:"产品需求：用户故事、接口明细、需求池 P0/P1", u:"PRD-v1.md"},
+  {t:"架构设计 v1.1", w:"实现方案：DDL、接口映射、时序图、任务列表", u:"架构设计-v1.md"},
+  {t:"团队协作规范 v1", w:"八步交付流程、Git 规范、完成定义 DoD", u:"团队协作规范-v1.md"},
+  {t:"AGENTS.md", w:"设计强制规则 + 工程约定（最高优先级）", u:"../AGENTS.md"},
+];
+
+/* ============ 渲染 ============ */
+const $ = s => document.querySelector(s);
+
+function renderTasks(){
+  $("table tbody").innerHTML = TASKS.map((x,i)=>`
+    <tr data-i="${i}" data-hay="${(x.t+x.tag+x.p+x.d).toLowerCase()}">
+      <td class="task">${x.t}<span class="tag">${x.tag}</span></td>
+      <td class="path">${x.p}<span class="copy">⧉ 复制</span><br><span style="font-family:inherit;color:var(--text-3);font-size:12px">${x.d}</span></td>
+    </tr>`).join("");
+  $("table tbody").addEventListener("click", e=>{
+    const tr = e.target.closest("tr"); if(!tr) return;
+    copyPath(TASKS[tr.dataset.i].p);
+  });
+}
+
+function renderTrees(){
+  $("#trees").innerHTML = TREES.map((g,gi)=>`
+    <div class="tree${gi===0?" open":""}" data-g="${gi}">
+      <div class="tree-head">
+        <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="m9 6 6 6-6 6"/></svg>
+        <span class="name">${g.name}</span>
+        <span class="desc">${g.desc}</span>
+        <span class="count">${g.nodes.length}</span>
+      </div>
+      <div class="tree-body">
+        ${g.nodes.map((n,ni)=>`<div class="node" data-g="${gi}" data-n="${ni}" data-hay="${(n[0]+n[1]).toLowerCase()}"><span class="p">├─ <b>${n[0]}</b></span><span class="d">${n[1]}</span></div>`).join("")}
+      </div>
+    </div>`).join("");
+  $("#trees").addEventListener("click", e=>{
+    const node = e.target.closest(".node");
+    if(node){ copyPath(TREES[node.dataset.g].nodes[node.dataset.n][0]); return; }
+    const head = e.target.closest(".tree-head");
+    if(head) head.parentElement.classList.toggle("open");
+  });
+}
+
+function renderDocs(){
+  $("#docs").innerHTML = DOCS.map(d=>`
+    <div class="doc-card" data-hay="${(d.t+d.w+d.u).toLowerCase()}">
+      <div class="t">${d.t}</div>
+      <div class="w">${d.w}</div>
+      <a href="${d.u}">${d.u}</a>
+    </div>`).join("");
+}
+
+/* ============ 搜索 & 复制 ============ */
+function filter(kw){
+  kw = kw.trim().toLowerCase();
+  let hitTask=0, hitTree=0;
+  document.querySelectorAll("#taskTable tbody tr").forEach(tr=>{
+    const hit = !kw || tr.dataset.hay.includes(kw);
+    tr.style.display = hit ? "" : "none"; if(hit) hitTask++;
+  });
+  document.querySelectorAll(".tree").forEach(tree=>{
+    let n=0;
+    tree.querySelectorAll(".node").forEach(node=>{
+      const hit = !kw || node.dataset.hay.includes(kw);
+      node.classList.toggle("hidden", !hit); if(hit) n++;
+    });
+    const gHit = !kw || n>0 || tree.querySelector(".tree-head .name").textContent.toLowerCase().includes(kw);
+    tree.style.display = gHit ? "" : "none";
+    if(kw && n>0) tree.classList.add("open");
+    hitTree += n;
+  });
+  document.querySelectorAll(".doc-card").forEach(c=>{
+    c.style.display = (!kw || c.dataset.hay.includes(kw)) ? "" : "none";
+  });
+  $("#taskEmpty").style.display = hitTask ? "none" : "";
+  $("#treeEmpty").style.display = hitTree ? "none" : "";
+}
+
+let toastTimer;
+function copyPath(p){
+  navigator.clipboard.writeText(p).then(()=>{
+    const t = $("#toast");
+    t.textContent = "已复制  " + p;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>t.classList.remove("show"), 1600);
+  });
+}
+
+renderTasks(); renderTrees(); renderDocs();
+const q = $("#q");
+q.addEventListener("input", ()=>{ filter(q.value); $("#clearBtn").style.display = q.value ? "" : "none"; });
+$("#clearBtn").addEventListener("click", ()=>{ q.value=""; filter(""); q.focus(); });
+document.addEventListener("keydown", e=>{
+  if(e.key==="/" && document.activeElement!==q){ e.preventDefault(); q.focus(); }
+  if(e.key==="Escape" && document.activeElement===q){ q.value=""; filter(""); }
+});
+</script>
+</body>
+</html>

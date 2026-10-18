@@ -13,6 +13,8 @@
 | v1.1-rev1 | 2026-10-14 | 微调（版本不变）：① Q4 已拍板——「AI 记一笔」（POST /money/parse）本期实施；② 文献抓取调度改为 **n8n 定时触发**，后端提供内部令牌触发接口（取代进程内定时器） |
 | v1.1-rev2 | 2026-10-15 | 微调（版本不变）：对话应用由「树洞 + 旅行规划」两个合并为**单一通用对话应用**（app_id=chat，对标 DeepSeek 对话界面）；用户故事、绑定描述、需求池、前端组件描述同步更新 |
 | v1.1-rev3 | 2026-10-15 | 范围收敛清理：删除「已移出（无限期推迟）」清单整节、Q3 作废条目、附录已砍应用映射行；全文清除已砍应用残留，文档仅保留平台层 + 对话 + 记账 + 文献 |
+| v1.1-rev4 | 2026-10-15 | 删除「应用级绑定」设计：模型管理回归纯网关——Provider CRUD + 调官方 `GET /models` 拉取模型（按 Agent/Token 套餐分组展示）；对话与记账解析统一走网关默认路由；系统提示词改为内置常量；§2.1 G2、§3.2、§3.3、§4.3、§4.6、US-7、P0-3、附录同步 |
+| v1.1-rev5 | 2026-10-18 | 模型选择与网关令牌：① Provider 条目 = 厂商 × 套餐平级（`llm_models.plan` 列移除），fetch-models 返回平铺模型列表，支持自定义模型（custom 标记，409 重名）；② `llm_models.meta` 固定 capabilities（vision/files/context_tokens），驱动对话文件上传显隐；③ `/chat` 增加可选 `model_id`（选择值用表 id；绑定会话级 `chat_conversations.model_id`，缺省走默认路由），新增 `GET /chat/models` 用户侧模型池；④ 新增 `gateway_tokens` 表与 `/admin/gateway-tokens*`（对外 `/gw/v1` 鉴权改查表，首个令牌由 `LUMEN_INTERNAL_TOKEN` 种子）；§4.3、§4.6、US-7、P0-3 同步 |
 
 ---
 
@@ -41,7 +43,7 @@
 | # | 目标 | 衡量标准 |
 | --- | --- | --- |
 | G1 | 两位使用者拥有统一的个人 AI 应用入口 | 卡片工作台 + 应用中心数据驱动；第一批应用（对话、记账）上线即可用 |
-| G2 | 对话能力完全配置驱动，零代码新增对话应用 | 新增一个对话应用 = 注册应用 + 配置提示词/模型，不写新接口 |
+| G2 | 对话与解析统一走 AI 网关，换模型/换供应商零代码 | 更换对话或记账解析的模型 = 网关层改默认 Provider，对话/解析接口与前端零改动 |
 | G3 | 记账可用自然语言快速入账并按月看清收支 | 「AI 记一笔」一句话成账；月度统计覆盖分类汇总 + 近 6 个月趋势 |
 | G4 | 开源后其他自部署者可一条 Docker 命令部署并自行扩展 | MIT 发布；README 含部署文档与「如何添加新应用」开发者文档 |
 
@@ -62,7 +64,7 @@
 | US-4 | 作为使用者，我想查看本月按分类汇总的支出、收支合计和近 6 个月趋势，以便掌握财务状况 | 记账 | 第一批 |
 | US-5 | 作为使用者，我想用自然语言说一句话就自动生成一条账目草稿，确认后入账，以便极简记账 | 记账（AI 记一笔） | 第一批（已决实施） |
 | US-6 | 作为使用者，我想每天看到按我订阅关键词抓到的 PubMed 新文献，能收藏、写笔记、一键 AI 解读（含中文摘要），以便跟踪研究领域 | 文献 | 第二批 |
-| US-7 | 作为管理员，我想在管理页配置 LLM Provider、模型清单与每个应用的绑定（模型/系统提示词/参数），以便对话完全配置驱动 | 平台管理 | 基础设施 |
+| US-7 | 作为管理员，我想在管理页配置提供商条目（官方 API / 各套餐）、拉取模型、设定默认路由并管理网关令牌，以便对话界面与外部工具（n8n 等）共享池化模型 | 平台管理 | 基础设施 |
 | US-8 | 作为自部署者，我想通过 `REGISTRATION_OPEN` 控制注册、通过 RBAC 管理成员，以便两人以上共用实例 | 平台管理 | 基础设施 |
 
 ---
@@ -91,8 +93,8 @@ PostgreSQL（user_id 行级隔离）
 | --- | --- | --- |
 | 平台层-账号/RBAC | 注册、登录、JWT 签发、users/roles/permissions 三件套校验 | 不做 OAuth/第三方登录；忘记密码走管理员重置 |
 | 平台层-应用注册表 | 应用元数据（名称/描述/图标/颜色/分类/排序）+ 用户级可见性/工作台固定覆盖，驱动「应用中心」与「卡片工作台」 | 不含应用业务逻辑 |
-| 平台层-模型管理 | Provider CRUD、模型清单、应用级绑定（provider+模型+系统提示词+参数覆盖）、连通性测试 | 不做用量计费 |
-| AI 网关 | 按 app_id 查配置 → 调对应 OpenAI 兼容端点；统一 SSE 流式输出；文献解读/摘要翻译/记账解析复用同一网关 | 不实现非 OpenAI 兼容协议 |
+| 平台层-模型管理 | Provider CRUD、调官方 `GET /models` 拉取模型清单（按套餐分组）、连通性测试、网关默认路由配置 | 不做应用绑定；不做用量计费 |
+| AI 网关 | 按默认路由（默认 Provider/模型）调对应 OpenAI 兼容端点；统一 SSE 流式输出；文献解读/摘要翻译/记账解析复用同一网关 | 不做 per-app 绑定；不实现非 OpenAI 兼容协议 |
 | 应用 API-记账 | 账目 CRUD、自定义分类、月度统计、request_id 幂等 | 不做预算/报销/多人账本 |
 | 应用 API-文献 | 文献流（归属隔离）、收藏、笔记、AI 解读缓存、中文摘要回填；由 n8n 定时触发的抓取任务 | 不做全文 PDF 管理；不做后端进程内调度 |
 | 前端 ChatApp 组件 | 唯一通用对话 React 组件（对标 DeepSeek 对话界面）：左侧会话列表、消息流、SSE 流式渲染、Markdown 渲染 + 代码块高亮、新建/删除会话 | 各对话应用不得自研聊天 UI |
@@ -102,7 +104,7 @@ PostgreSQL（user_id 行级隔离）
 | 数据流 | 说明 |
 | --- | --- |
 | 登录流 | 用户名+密码 → bcrypt 校验 → JWT（30 天）→ 前端存储 → 后续请求 Bearer 携带 |
-| 对话流 | 前端 ChatApp → `POST /chat {app_id, conversation_id, message}` → 校验权限/限流 → 存用户消息 → 组装 system prompt + 历史 → AI 网关 SSE 逐 token 返回 → 完整回复落库 → `[DONE]` |
+| 对话流 | 前端 ChatApp → `POST /chat {app_id, conversation_id, message}` → 校验权限/限流 → 存用户消息 → 组装内置 system prompt + 历史 → AI 网关按默认路由 SSE 逐 token 返回 → 完整回复落库 → `[DONE]` |
 | AI 记一笔流 | 前端输入自然语言 → `POST /money/parse`（Q4 已决，本期实施）→ AI 网关一次性返回结构化草稿 → 用户确认 → 正常走 `POST /money/transactions` 入账（解析与入账分离，解析不落库） |
 | 文献流 | n8n 定时触发内部接口 → 按每用户订阅关键词 esearch/efetch → 去重入库 + 规则打标 + 归属记录 → best-effort LLM 中文摘要 → 用户看到按人隔离的文献流 |
 | 隔离原则 | 所有业务查询必须带 `user_id` 过滤；文献主表全局共享，归属表（paper_users）决定可见性；文献 AI 解读缓存全局共享（架构已定） |
@@ -153,16 +155,24 @@ PostgreSQL（user_id 行级隔离）
 | --- | --- | --- | --- |
 | GET | `/admin/models/providers` | Provider 列表；返回 id/name/vendor/base_url/enabled/has_key/api_key 掩码 | admin:models |
 | POST | `/admin/models/providers` | 新建 Provider；请求 `{name, vendor, base_url, api_key, enabled}`，vendor ∈ deepseek/kimi/openai/自定义/mock | admin:models |
-| GET | `/admin/models/providers/{pid}` | Provider 详情（含模型清单） | admin:models |
+| GET | `/admin/models/providers/{pid}` | Provider 详情（含已拉取的模型清单） | admin:models |
 | PUT | `/admin/models/providers/{pid}` | 更新 Provider；api_key 留空表示不修改 | admin:models |
-| DELETE | `/admin/models/providers/{pid}` | 删除 Provider（被应用绑定引用时返回 409 + 引用列表） | admin:models |
+| DELETE | `/admin/models/providers/{pid}` | 删除 Provider（其下仍有模型被默认路由引用时返回 409） | admin:models |
 | POST | `/admin/models/providers/{pid}/test` | 最小请求测试连通性，返回 `{ok, latency_ms, model?/error?}` | admin:models |
-| PUT | `/admin/models/providers/{pid}/models` | 重设该 Provider 模型清单；请求 `[{name, temperature, max_tokens, top_p}]` | admin:models |
-| GET | `/admin/models/bindings` | 应用级绑定列表：每对话应用 → `{provider_id, model, system_prompt, param_overrides}` | admin:models |
-| PUT | `/admin/models/bindings/{app_id}` | 设置某对话应用的绑定（upsert）；参数覆盖可空 = 用模型默认值 | admin:models |
-| GET | `/admin/models/self-test` | 不发起网络请求，解析各 app_id 当前实际命中的 provider/模型，便于排障 | admin:models |
+| POST | `/admin/models/providers/{pid}/fetch-models` | 调用官方 `GET {base_url}/models` 拉取该 Key 可用模型（平铺列表，套餐身份并入 Provider 条目名）入库并返回 `[{name, meta}]` | admin:models |
+| POST | `/admin/models/providers/{pid}/models` | 手动添加自定义模型 `{name, meta?}`；同 Provider 下重名 409 | admin:models |
+| GET | `/admin/models/default-route` | 当前网关默认路由（默认 Provider + 默认模型），便于排障 | admin:models |
+| PUT | `/admin/models/default-route` | 设置默认路由 `{provider_id, model}`；未设置时取首个启用 Provider 的第一个模型 | admin:models |
 
-说明：Key 存库（自部署威胁模型低），环境变量作首次种子默认值；运行时热生效；对话接口完全配置驱动。
+网关令牌（对外 `/gw/v1` 接入管理，权限点 `admin:models`）：
+
+| 方法 | 路径 | 说明 | 权限 |
+| --- | --- | --- | --- |
+| GET | `/admin/gateway-tokens` | 令牌列表（掩码、模型范围、状态） | admin:models |
+| POST | `/admin/gateway-tokens` | 创建令牌 `{name, model_scope?}`；完整令牌仅创建时返回一次 | admin:models |
+| DELETE | `/admin/gateway-tokens/{tid}` | 吊销令牌，调用方立即失效 | admin:models |
+
+说明：Key 存库（自部署威胁模型低），环境变量作首次种子默认值；运行时热生效；对话与记账解析统一走默认路由，更换模型/供应商只动网关层，业务接口零改动。
 
 ### 4.4 应用注册表 `/apps`（基础设施）
 
@@ -187,7 +197,8 @@ PostgreSQL（user_id 行级隔离）
 
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
-| POST | `/chat` | **SSE**。请求 `{app_id, conversation_id?, message}`。事件流：`data: {delta}` 逐段 → `data: {error}`（流中断）→ `data: [DONE]`。app_id 决定 system prompt/模型/参数（后端查绑定）；`conversation_id` 缺省用最近会话，无则新建 | 该 app 权限点 |
+| POST | `/chat` | **SSE**。请求 `{app_id, conversation_id?, message, model_id?}`。事件流：`data: {delta}` 逐段 → `data: {error}`（流中断）→ `data: [DONE]`。`model_id` 缺省走默认路由；system prompt 为内置常量；`conversation_id` 缺省用最近会话，无则新建 | 该 app 权限点 |
+| GET | `/chat/models` | 对话模型池：启用 Provider 的启用模型 `[{id, name, provider, capabilities, is_default}]`，按 Provider 条目分组；供模型选择器使用 | 登录用户 |
 | GET | `/chat/conversations?app_id=` | 会话列表（updated_at 倒序，含标题） | 该 app 权限点 |
 | POST | `/chat/conversations` | 新建会话 `{app_id, title?}` | 该 app 权限点 |
 | DELETE | `/chat/conversations/{cid}` | 删除会话（级联删消息） | 该 app 权限点 |
@@ -198,7 +209,7 @@ PostgreSQL（user_id 行级隔离）
 
 | 场景 | 行为 |
 | --- | --- |
-| 模型未配置/未绑定 | 503 + 友好文案，引导去管理页配置（对 member 提示联系管理员） |
+| 模型未配置 | 503 + 友好文案，引导去管理页配置（对 member 提示联系管理员） |
 | 超出每日轮数上限 | 429 + 文案（上限机制见 Q1，默认不限） |
 | 会话不存在/不属于本人 | 404 |
 | 流中途失败 | 客户端收到 `{error}` 事件，已产生文字不落库，历史不出现半截回复 |
@@ -207,7 +218,7 @@ PostgreSQL（user_id 行级隔离）
 | 会话标题 | 首条用户消息自动生成标题（截取 16 字） |
 | 并发对话 | 同一用户并发请求各自独立，互不污染上下文 |
 
-说明：对话为单一通用应用（slug `app_id=chat`），对标 DeepSeek 对话界面；系统提示词由 chat 应用绑定配置（管理员可在模型管理页修改），无独立后端接口。
+说明：对话为单一通用应用（slug `app_id=chat`），对标 DeepSeek 对话界面；系统提示词为后端内置常量（通用助手）。模型选择器按 Provider 条目分组展示模型池，选择值 `model_id` 绑定会话（`chat_conversations.model_id`，可空 = 默认路由）。文件上传按钮由模型 capabilities.files 驱动显隐（上传接口 `POST /files` 留待后续批次）。
 
 ### 4.7 记账 `/money`（第一批，新增，权限点 `app:money`）
 
@@ -270,12 +281,12 @@ PostgreSQL（user_id 行级隔离）
 | --- | --- |
 | P0-1 | 【基础设施·所有批次共用】账号体系：注册（`REGISTRATION_OPEN` 默认关）/登录/改密，bcrypt，JWT 30 天 |
 | P0-2 | 【基础设施】RBAC 三件套 + `require_permission` 依赖注入；预置 admin/member；权限点含 `app:money` |
-| P0-3 | 【基础设施】模型管理：Provider CRUD + 模型清单 + 应用级绑定 + 连通性测试 + self-test |
+| P0-3 | 【基础设施】模型管理：Provider（厂商×套餐条目）CRUD + 官方 API 拉取模型（平铺）+ 自定义模型 + 连通性测试 + 默认路由 + 网关令牌 |
 | P0-4 | 【基础设施】应用注册表 + 分类 + 用户级覆盖（hidden/pinned/sort） |
 | P0-5 | 【基础设施】用户设置 `/me/settings` |
 | P0-6 | 【基础设施】React 壳：登录页、卡片工作台 + 应用中心、ChatApp 通用对话组件 |
 | P0-7 | ChatApp 后端：`POST /chat` SSE + 会话管理（user+app 隔离、20 轮上下文、自动标题、错误场景） |
-| P0-8 | 对话应用（通用 AI 对话，app_id=chat）：ChatApp 界面 + chat 应用绑定通用助手提示词（管理员可在模型管理页修改） |
+| P0-8 | 对话应用（通用 AI 对话，app_id=chat）：ChatApp 界面 + 内置通用助手提示词（网关默认路由） |
 | P0-9 | 记账：账目 CRUD + 自定义分类 + request_id 幂等 |
 | P0-10 | 记账：月度统计（分类汇总/收支合计）+ 近 6 个月趋势 |
 | P0-11 | 记账：「AI 记一笔」自然语言解析（Q4 已决：本期实施） |
@@ -346,7 +357,7 @@ PostgreSQL（user_id 行级隔离）
 | AI 记一笔 | 输入一句话 → 解析预览卡片（可改字段）→ 确认入账 |
 | 月度统计 | 分类汇总条形/列表 + 近 6 个月趋势图（简单柱状即可，不引图表库重型依赖——默认决策，见 Q8） |
 | 文献页（第二批） | 标签筛选 chips + 文献卡片流；详情抽屉：摘要中英对照、收藏、笔记编辑、AI 解读（缓存命中秒开） |
-| 管理页 | 仅 admin 可见入口：用户/角色、Provider 与模型清单、应用绑定表单（system prompt 多行编辑 + 参数覆盖） |
+| 管理页 | 仅 admin 可见入口：用户/角色、Provider（厂商×套餐条目）与模型清单（官方拉取 + 自定义模型）、网关默认路由、网关令牌 |
 | 我的 | 个人设置、修改密码、应用版本与账号信息 |
 
 ---
@@ -355,7 +366,7 @@ PostgreSQL（user_id 行级隔离）
 
 | # | 问题 | 默认决策（可先行） |
 | --- | --- | --- |
-| Q1 | 对话每日轮数上限是否保留（旧版有 `chat_daily_limit`） | 默认保留机制：上限做成应用绑定里的可配项，默认 0 = 不限 |
+| Q1 | 对话每日轮数上限是否保留（旧版有 `chat_daily_limit`） | 默认保留机制：上限做成可配项（后续批次落设置），默认 0 = 不限 |
 | Q2 | 上下文保留轮数（旧版 20 轮） | 默认沿用 20 轮，做成全局常量 |
 | Q4 | ~~「AI 记一笔」是否本期实施~~ **已决（2026-10-14）：本期实施** | 已定：实施 `POST /money/parse`。解析/入账分离、解析不落库、可改后确认 |
 | Q5 | 记账预置分类可否删除/隐藏 | 默认 built_in 分类可改名、可隐藏、不可删除 |
@@ -370,7 +381,7 @@ PostgreSQL（user_id 行级隔离）
 | 旧能力（old/） | 新去向 |
 | --- | --- |
 | 微信登录 + whitelist_users | 废弃 → 账号密码登录 + users/RBAC |
-| LLM provider 抽象 + 用途路由 | 演进为 Provider + 模型清单 + 应用级绑定 |
+| LLM provider 抽象 + 用途路由 | 演进为 Provider + 模型清单（网关默认路由，无应用绑定） |
 | 旧版 chat 模块（SSE/会话/限流/标题生成） | 泛化为 ChatApp `/chat`（app_id=chat 通用对话应用），第一批 |
 | 文献 crawler（esearch/efetch/打标/翻译回填） | 保留逻辑，由 n8n 定时触发内部接口，第二批 |
 | space 设置 / 邀请码 / 危险操作双人确认 | space 设置 → 用户设置；邀请码废弃（注册开关替代）；双人确认不做 |

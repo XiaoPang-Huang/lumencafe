@@ -2,6 +2,8 @@
 
 自部署的两人 AI 应用面板。FastAPI + PostgreSQL + Caddy，打磨成熟后计划 MIT 开源。
 
+> **协作硬性规定**：所有界面设计必须先搜索并参考业界成功案例（火山方舟控制台、LobeChat、Supabase、midday 等），禁止凭感觉自行设计。详见 [AGENTS.md](AGENTS.md)。
+
 ## 快速开始（本地）
 
 ```bash
@@ -34,8 +36,11 @@ docker compose up -d n8n
 
 ```
 backend/    FastAPI 后端（第一期：环境地基）
-docs/       架构定稿 v1、PRD v1、架构设计 v1
+docs/       架构定稿 v1、PRD v1、架构设计 v1、团队协作规范 v1
 old/        旧版后端（本地参考，不入版本库）
+prototype/  前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
 ```
+
+找不到要改的文件？先看 [docs/项目地图-v1.md](docs/项目地图-v1.md)（或浏览器打开 `docs/项目地图.html`，可搜索、点选复制路径）。
 
 详细设计见 [docs/架构定稿-v1.md](docs/架构定稿-v1.md)。
