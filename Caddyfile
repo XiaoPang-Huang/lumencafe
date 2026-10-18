@@ -2,28 +2,46 @@
 # SSE 反代关键：flush_interval -1 关闭缓冲，流式输出不卡
 # 前置条件：deploy/docker-compose.prod.yml 把 ./prototype/v2 挂进 caddy 容器的 /srv/frontend
 #
-# ⚠️ 当前为临时端口方案（2026-10-18）：域名 lumenhub.online 未做 ICP 备案，
-# 腾讯云拦截未备案域名的 80/443（公网连接被 RST，Let's Encrypt 无法验证）。
-# 备案通过后恢复标准端口：删掉各处 ":8443" 和下面第 9 行的注释说明即可，
-# Caddy 会自动改走 80/443 并重新签发证书（访问地址随之变回不带端口）。
-# 8443 不在备案拦截范围（拦截只针对 80/443），证书用 TLS-ALPN 在 8443 上验证。
+# ============ IP 直连模式（2026-10-18 启用）============
+# 背景：域名 lumenhub.online 未做 ICP 备案，腾讯云拦截该域名的 80/443
+# （公网连接被 RST，Let's Encrypt 也无法完成验证），故暂时放弃域名、改用 IP 直连。
+# IP 地址不携带域名信息，不在备案拦截范围内。
+#
+# 访问地址：
+#   https://134.175.114.81:8443    保底地址（8443 必然不被拦截）
+#   https://134.175.114.81         若腾讯云不拦「IP 直连的 443」则可用（待实测，先试这个）
+#   http://134.175.114.81          80 端口自动跳上面两个之一
+# 首次打开浏览器提示「证书不受信任」：点 高级 → 继续访问。
+# 证书由 Caddy 内部 CA 自签（on_demand 按 SNI 即时签发；IP 直连无 SNI 也能握手，已实测），
+# 加密有效、只是没有 CA 背书。
+#
+# 恢复域名模式（DNS-01，无需备案、浏览器绿标、自动续期）：
+#   ① cp deploy/Caddyfile.domain Caddyfile
+#   ② docker-compose.yml 的 caddy 恢复 build: ./deploy/caddy（见该处注释）
+#   ③ .env 配 DNSPOD_TOKEN（DNSPod 控制台 → API 令牌，格式「ID,Key」）
+#   ④ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+# 或做 ICP 备案后切回标准端口（无端口网址）。详见 docs/部署指南-v1.md §1.1。
 
-# 通用安全响应头（所有站点复用）
-(common_headers) {
-	header {
-		X-Content-Type-Options nosniff
-		Referrer-Policy no-referrer-when-downgrade
-		-Server
+# IP 站点：443 + 8443 双端口监听，内容相同（哪个不被拦截就用哪个）
+:443, :8443 {
+	# 内部 CA 自签证书；on_demand 让域名访问（有 SNI）也能现场签发
+	tls internal {
+		on_demand
 	}
-}
 
-# 主站：前端静态站 + 同域反代 /api/*（assets/js/api.js 生产模式走此前缀）
-cafe.lumenhub.online:8443 {
-	import common_headers
+	# n8n 控制台：经 n8n.lumenhub.online 访问时路由过去（IP 访问走不到这里；
+	# 急用 n8n 也可临时 http://134.175.114.81:5678，compose 已发布该端口+Basic Auth）
+	@n8n host n8n.lumenhub.online
+	handle @n8n {
+		reverse_proxy n8n:5678
+	}
+
+	# 主站：前端静态站 + 同域反代 /api/*（assets/js/api.js 生产模式走此前缀，IP 访问同样同源）
 	root * /srv/frontend
 	file_server
 
 	# handle_path 会剥掉 /api 前缀再转发（/api/auth/login → /auth/login）
+	# 注意：只代理 /api/*，/internal/* 不会到达 api 容器（落到 file_server 404），内网接口不暴露
 	handle_path /api/* {
 		reverse_proxy api:8000 {
 			flush_interval -1
@@ -31,28 +49,7 @@ cafe.lumenhub.online:8443 {
 	}
 }
 
-# API 子域：供外部客户端（OpenAI 兼容 /gw/v1、移动端）直连
-# /internal/* 只允许 compose 内网调用（n8n → http://api:8000），公网一律 404
-api.lumenhub.online:8443 {
-	import common_headers
-	route {
-		@internal path /internal/*
-		respond @internal 404
-		reverse_proxy api:8000 {
-			flush_interval -1
-		}
-	}
-}
-
-# n8n 编排控制台（可选）：n8n 2.x 首次打开要自建 owner 账号；
-# 域名需与 compose 里 N8N_HOST 一致，否则 webhook URL 会错
-n8n.lumenhub.online:8443 {
-	import common_headers
-	reverse_proxy n8n:5678
-}
-
-# 备用域名统一跳主站（DNS 里已有的 apex / www 记录，避免无证书报错）
-lumenhub.online:8443, www.lumenhub.online:8443, www.cafe.lumenhub.online:8443, www.api.lumenhub.online:8443 {
-	import common_headers
-	redir https://cafe.lumenhub.online:8443{uri} permanent
+# HTTP（80）统一跳 HTTPS 的 8443（保底端口）
+:80 {
+	redir https://{host}:8443{uri} permanent
 }

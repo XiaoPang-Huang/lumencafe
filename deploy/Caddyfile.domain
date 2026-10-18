@@ -1,0 +1,79 @@
+# 【备用配置】域名模式（DNS-01，2026-10-18 存根）——当前未启用，启用方法见 docs/部署指南-v1.md §1.1
+# 这是 2026-10-18 域名版 Caddyfile 的存档。当前生产用根目录 Caddyfile（IP 直连模式）。
+# 启用步骤：① cp deploy/Caddyfile.domain Caddyfile  ② docker-compose.yml 的 caddy
+# 恢复 build: ./deploy/caddy  ③ .env 配 DNSPOD_TOKEN  ④ up -d --build
+#
+# 流光咖啡馆 Caddy 配置（服务器用；本地开发用 Caddyfile.dev）
+# SSE 反代关键：flush_interval -1 关闭缓冲，流式输出不卡
+# 前置条件：deploy/docker-compose.prod.yml 把 ./prototype/v2 挂进 caddy 容器的 /srv/frontend
+#
+# ⚠️ 未备案域名方案（2026-10-18；备案通过后按下面四步整体撤销）：
+# 1. 访客侧：腾讯云拦截未备案域名的 80/443 → 所有站点改用 8443 端口服务
+# 2. 证书侧：Let's Encrypt 只在 80（HTTP-01）/ 443（TLS-ALPN-01）验证，
+#    换端口救不了证书 → 走 DNS-01（dns_tls 片段）：经 DNSPod API 加 TXT 记录验证
+# 3. 依赖：.env 配 DNSPOD_TOKEN；caddy 用 deploy/caddy/Dockerfile 自定义构建
+#
+# 恢复标准端口（备案后）：
+#   ① 删掉各处 ":8443"  ② 删 (dns_tls) 片段和各行 import dns_tls
+#   ③ docker-compose.yml 的 caddy 改回 image: caddy:2-alpine  ④ 删 deploy/caddy/ 和 .env 的 DNSPOD_TOKEN
+# 然后 up -d --build。详见 docs/部署指南-v1.md §1.1
+
+# 通用安全响应头（所有站点复用）
+(common_headers) {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer-when-downgrade
+		-Server
+	}
+}
+
+# DNS-01 证书验证：DNSPOD_TOKEN 格式为「令牌ID,令牌Key」，在 .env 配置
+(dns_tls) {
+	tls {
+		dns dnspod {$DNSPOD_TOKEN}
+	}
+}
+
+# 主站：前端静态站 + 同域反代 /api/*（assets/js/api.js 生产模式走此前缀）
+cafe.lumenhub.online:8443 {
+	import common_headers
+	import dns_tls
+	root * /srv/frontend
+	file_server
+
+	# handle_path 会剥掉 /api 前缀再转发（/api/auth/login → /auth/login）
+	handle_path /api/* {
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
+	}
+}
+
+# API 子域：供外部客户端（OpenAI 兼容 /gw/v1、移动端）直连
+# /internal/* 只允许 compose 内网调用（n8n → http://api:8000），公网一律 404
+api.lumenhub.online:8443 {
+	import common_headers
+	import dns_tls
+	route {
+		@internal path /internal/*
+		respond @internal 404
+		reverse_proxy api:8000 {
+			flush_interval -1
+		}
+	}
+}
+
+# n8n 编排控制台（可选）：n8n 2.x 首次打开要自建 owner 账号；
+# 域名需与 compose 里 N8N_HOST 一致，否则 webhook URL 会错
+n8n.lumenhub.online:8443 {
+	import common_headers
+	import dns_tls
+	reverse_proxy n8n:5678
+}
+
+# 备用域名统一跳主站（DNS 里已有的 apex / www 记录，避免无证书报错）
+lumenhub.online:8443, www.lumenhub.online:8443, www.cafe.lumenhub.online:8443, www.api.lumenhub.online:8443 {
+	import common_headers
+	import dns_tls
+	redir https://cafe.lumenhub.online:8443{uri} permanent
+}

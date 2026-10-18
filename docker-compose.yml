@@ -47,10 +47,19 @@ services:
     # 启动即迁移（Alembic 替代 create_all）
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  # 本地反代：http://cafe.localhost → api（SSE 不缓冲）。服务器部署用根目录 Caddyfile（真实域名+自动 HTTPS）
+  # 本地反代：http://cafe.localhost → api（SSE 不缓冲）。服务器部署用根目录 Caddyfile（IP 直连模式）
   caddy:
+    # IP 直连模式用官方镜像即可（自签证书，无 DNS-01 需求）。
+    # 切域名模式时改回：
+    #   build: ./deploy/caddy
+    #   image: lumencafe-caddy:latest
+    # 详见 deploy/caddy/Dockerfile 与 docs/部署指南-v1.md §1.1
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      # 仅域名模式（DNS-01）需要：DNSPod API 令牌，格式「ID,Key」，在 .env 配置。
+      # IP 模式下不使用，留着备用
+      DNSPOD_TOKEN: ${DNSPOD_TOKEN:-}
     ports:
       - "80:80"
       - "443:443"
