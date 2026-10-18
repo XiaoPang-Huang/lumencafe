@@ -85,8 +85,11 @@ services:
       LUMEN_INTERNAL_TOKEN: ${LUMEN_INTERNAL_TOKEN:-}
     volumes:
       - n8n_data:/home/node/.n8n
-      # 中文界面包（bsi-bcp/n8n-i18n-chinese，版本须与镜像一致）：下载解压出 dist 放到 ./n8n-zh/dist
-      - ./n8n-zh/dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist:ro
+      # 中文界面包挂载已默认移除（2026-10-18）：腾讯云服务器无法从 GitHub Releases
+      # 拉到汉化包，而空目录挂载会把 editor-ui 的 dist 盖成空白导致 n8n 白屏。
+      # 需要中文界面时：按 README「n8n 中文界面」下载解压出 ./n8n-zh/dist 后，
+      # 取消下面一行的注释即可恢复：
+      # - ./n8n-zh/dist:/usr/local/lib/node_modules/n8n/node_modules/n8n-editor-ui/dist:ro
 
 volumes:
   pgdata:
