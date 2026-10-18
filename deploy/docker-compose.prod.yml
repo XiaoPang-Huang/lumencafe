@@ -1,12 +1,12 @@
-# 生产覆盖层：真实域名 + HTTPS + 前端静态目录 + n8n 公网子域
+# 生产覆盖层：IP 直连 + 前端静态目录 + n8n 直连端口
 # 用法（仓库根目录执行）：
 #   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
-# 前置：.env 配好 LUMEN_JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_HOST，
-#       域名 DNS 已 A 记录到服务器，防火墙放行 80/443（Caddy 自动签发证书）
+# 前置：.env 配好 LUMEN_JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_BASIC_AUTH_*，
+#       腾讯云防火墙放行 80/443/8443/5678（域名未备案，全程 IP 直连，见 docs/部署指南-v1.md §1.1）
 services:
   caddy:
     volumes:
-      # 服务器版 Caddyfile（主站 + api 子域 + n8n 子域）
+      # 服务器版 Caddyfile（IP 通配站点 + 自签证书）
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # 前端原型即静态站，无需构建，整目录只读挂载
       - ./prototype/v2:/srv/frontend:ro
@@ -15,12 +15,12 @@ services:
 
   n8n:
     environment:
-      # 公网访问 n8n 控制台用的域名（须与 Caddyfile 中 n8n 站点一致）
-      N8N_HOST: ${N8N_HOST:-n8n.lumenhub.online}
-      N8N_PROTOCOL: "https"
-      WEBHOOK_URL: "https://${N8N_HOST:-n8n.lumenhub.online}/"
-      N8N_PROXY_HOPS: "1"
-      N8N_SECURE_COOKIE: "true"
+      # IP 直连模式：n8n 不经 Caddy，直接 http://IP:5678 访问（Basic Auth）
+      N8N_HOST: ${N8N_HOST:-134.175.114.81}
+      N8N_PROTOCOL: "http"
+      WEBHOOK_URL: "http://${N8N_HOST:-134.175.114.81}:5678/"
+      # 直连是明文 HTTP，Secure Cookie 会被浏览器丢弃导致登录状态保存不了，必须 false
+      N8N_SECURE_COOKIE: "false"
       # n8n 凭据加密密钥：不设则存在 n8n_data 卷里，换机不恢复=凭据全废；建议设并备份
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
       # 文献抓取工作流用 $env.LUMEN_INTERNAL_TOKEN 调 /internal/jobs/*，由 compose 注入

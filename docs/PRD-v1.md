@@ -29,8 +29,7 @@
 | 后端技术栈 | FastAPI + PostgreSQL（沿用架构文档） |
 | 部署形态 | Docker Compose：Caddy + FastAPI + PostgreSQL |
 | GitHub 仓库 | `XiaoPang-Huang/lumencafe` |
-| 前端域名 | `cafe.lumenhub.online` |
-| API 域名 | `api.lumenhub.online` |
+| 访问方式 | **IP 直连**（2026-10-18 起）：主站 `https://IP:8443` 自签证书、n8n `http://IP:5678`。原计划的 `cafe.lumenhub.online` / `api.lumenhub.online` 域名因未备案被腾讯云拦截 80/443 而弃用；域名回归路径（DNS-01 / ICP 备案）见部署指南-v1 §1.1 |
 
 **原始需求复述**：将归档的旧版 FastAPI 后端重写为全新的账号化 AI 应用面板。基础设施（账号/RBAC、模型管理、ChatApp 通用对话件、应用注册表）为所有批次共用；第一批业务应用为对话（单一通用对话应用）与记账（新增），第二批为文献阅读。最终 MIT 开源。
 

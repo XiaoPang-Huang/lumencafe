@@ -21,15 +21,20 @@ docker compose up -d --build
 
 ## 服务器部署
 
-一台 2核4G VPS 即可，Caddy 自动 HTTPS。完整步骤见 [docs/部署指南-v1.md](docs/部署指南-v1.md)，核心三步：
+一台 2核4G VPS 即可。完整步骤见 [docs/部署指南-v1.md](docs/部署指南-v1.md)，核心三步：
 
 ```bash
 git clone <仓库地址> lumencafe && cd lumencafe
-cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN；Caddyfile 改三处域名
+cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_BASIC_AUTH_PASSWORD
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
 ```
 
-部署形态：`cafe.域名` 主站（前端 + /api 同域反代）、`api.域名` 外部客户端、`n8n.域名` 工作流控制台（可选）。
+部署形态（**IP 直连**，2026-10-18 起；域名未备案被腾讯云拦截 80/443，故全程不用域名）：
+
+- 主站 `https://<服务器IP>:8443`——前端 + /api 同源反代，Caddy 自签证书，首次打开点「高级 → 继续访问」
+- n8n `http://<服务器IP>:5678`——Basic Auth，不经 Caddy
+
+防火墙放行 80/443/8443/5678。以后想要域名绿标（DNS-01，无需备案）或标准网址（ICP 备案），见部署指南 §1.1。
 
 ## n8n 中文界面（可选）
 
