@@ -78,7 +78,8 @@ async def clean(client):
         "user_settings, app_registry, app_visibility, categories, "
         "chat_conversations, chat_messages, "
         "providers, llm_models, gateway_tokens, "
-        "money_categories, money_transactions"
+        "money_categories, money_transactions, "
+        "papers, paper_users, paper_favorites, paper_notes, paper_explanations"
     )
     async with SessionLocal() as db:
         await db.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))

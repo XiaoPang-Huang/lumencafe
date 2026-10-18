@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # 对话
     chat_history_turns: int = 20  # 发给模型的最近轮数（PRD Q2，一轮 = 问答两条）
 
+    # 文献抓取（NCBI E-utilities；中译走网关默认路由）
+    ncbi_email: str = ""  # NCBI 建议带联系邮箱（可选）
+    papers_default_keywords: str = ""  # 回落默认订阅关键词（逗号分隔；用户未配置时用）
+    papers_retmax: int = 20  # 每关键词每轮最多抓取篇数
+    papers_days_back: int = 3  # 只抓最近 N 天发表的文献
+
     # CORS（本地开发；生产由 Caddy 同域反代，可留空）
     # NoDecode：环境变量按原始字符串交给下面的拆分校验器，不做 JSON 解析
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]

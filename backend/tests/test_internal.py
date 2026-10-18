@@ -14,7 +14,7 @@ async def test_apps_list_merged_with_visibility(client):
     assert resp.status_code == 200
     data = resp.json()
     app_ids = [a["id"] for a in data["apps"]]
-    assert app_ids == ["chat", "money"]  # 批次 1 种子
+    assert app_ids == ["chat", "money", "papers"]  # 批次 1 + 文献（批次 2）
     chat = next(a for a in data["apps"] if a["id"] == "chat")
     assert chat["mode"] == "chat" and chat["perm_code"] == "app:chat"
     assert chat["hidden"] is False and chat["category_id"] is None
@@ -92,7 +92,7 @@ async def test_internal_disabled_503(client, monkeypatch):
 async def test_internal_same_day_dedup(client, monkeypatch):
     calls = 0
 
-    async def fake_crawl():
+    async def fake_crawl(db):
         nonlocal calls
         calls += 1
         return 0

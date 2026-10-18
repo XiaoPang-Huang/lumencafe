@@ -54,6 +54,16 @@ APPS: list[dict] = [
         "mode": "backend",
         "perm_code": "app:money",
     },
+    {
+        "id": "papers",
+        "name": "文献",
+        "desc": "PubMed 每日新文献跟踪，AI 解读与中译",
+        "color": "#f2f3f5",
+        "icon": "book",
+        "sort": 3,
+        "mode": "data",
+        "perm_code": "app:papers",
+    },
 ]
 
 # 记账内置分类（built_in=true：可改名、可隐藏、不可删除；与原型 data.js 对齐）

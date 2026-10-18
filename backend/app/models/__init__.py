@@ -8,6 +8,13 @@ from app.models.apps import AppRegistry, AppVisibility, Category
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.llm import GatewayToken, LLMModel, Provider
 from app.models.money import MoneyCategory, MoneyTransaction
+from app.models.papers import (
+    Paper,
+    PaperExplanation,
+    PaperFavorite,
+    PaperNote,
+    PaperUser,
+)
 from app.models.user import Permission, Role, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 
@@ -21,6 +28,11 @@ __all__ = [
     "LLMModel",
     "MoneyCategory",
     "MoneyTransaction",
+    "Paper",
+    "PaperExplanation",
+    "PaperFavorite",
+    "PaperNote",
+    "PaperUser",
     "Permission",
     "Provider",
     "Role",
