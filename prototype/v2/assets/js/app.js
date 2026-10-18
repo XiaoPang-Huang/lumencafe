@@ -1,8 +1,8 @@
 /* 流光咖啡馆 v2 · SPA 运行时
  * 参考：midday（外壳+⌘K）、gethomepage（玻璃 Bento）、Homarr（卡片即入口）、
  *       Open WebUI（多板块单外壳）、macOS 系统设置（子应用统一骨架）
- * 联调状态：登录 / 对话 / 记账 已接真实 API（assets/js/api.js → localhost:8000）；
- *          工作台 / 应用中心 / 平台管理 仍为本地演示数据（D.*）。
+ * 联调状态：全部页面已接真实 API（assets/js/api.js → localhost:8000）；
+ *          data.js 仅保留为字体/演示常量来源，页面数据一律来自后端。
  */
 (function () {
   "use strict";
@@ -412,27 +412,21 @@
   }
 
   var PAGES = {
-    /* ---------- 工作台：gethomepage 式玻璃 Bento ----------
+    /* ---------- 工作台：gethomepage 式玻璃 Bento（已联调 /chat /money /admin 活数据） ----------
      * 卡片解剖：头部(图标+名称+状态灯+右侧胶囊/操作) / 内容区(活数据) / 页脚(微型数据 + 一个主操作) */
     workspace: function () {
-      var m = D.monthly, trend = D.trend || [];
-      var expTrend = trend.map(function (t) { return t.expense; });
-      var lastConv = (D.conversations || [])[0];
-      var defModel = defaultModel();
       var cards = [
         /* AI 对话：通知式预览最近一次对话 */
         '<a class="bcard span-6" href="#/chat" draggable="true" data-bcard="chat">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="chat"></i></span>' +
           '<div class="bcard-title"><span class="bcard-name">AI 对话 ' + statusDot(true) + "</span></div>" +
-          '<div class="bcard-tools"><span class="bcard-pill">' + esc(defModel) + "</span>" +
+          '<div class="bcard-tools"><span class="bcard-pill" data-ws-modelpill>…</span>' +
           '<button class="icon-btn xs" type="button" data-new-conv-link aria-label="新建对话"><i data-ic="edit"></i></button></div></div>' +
           '<div class="bcard-body">' +
-            (lastConv
-              ? '<div class="bcard-preview"><span class="bp-text">' + esc(lastConv.title) + '</span><span class="bp-time">' + lastConv.updated + "</span></div>"
-              : '<div class="bcard-preview"><span class="bp-text muted">还没有对话，点击卡片开始聊聊</span></div>') +
+            '<div class="bcard-preview" data-ws-lastconv><span class="bp-text muted">加载中…</span></div>' +
           "</div>" +
-          '<div class="bcard-foot"><span class="bcard-micro">本月 12 次对话</span><span class="bcard-go">继续聊<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-foot"><span class="bcard-micro" data-ws-convs>…</span><span class="bcard-go">继续聊<i data-ic="arrow"></i></span></div>' +
         "</a>",
         /* 记账：迷你趋势（收支数字在顶部指标带） */
         '<a class="bcard span-6" href="#/money" draggable="true" data-bcard="money">' +
@@ -440,9 +434,9 @@
           '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="money"></i></span>' +
           '<div class="bcard-title"><span class="bcard-name">记账本 ' + statusDot(true) + "</span></div></div>" +
           '<div class="bcard-body" style="flex-direction:row;align-items:flex-end;">' +
-            '<div class="spark-wrap" style="margin-left:0;">' + sparkline(expTrend, "ex") + "<small>近 6 月支出</small></div>" +
+            '<div class="spark-wrap" style="margin-left:0;" data-ws-spark><span class="muted" style="font-size:13px;">加载中…</span></div>' +
           "</div>" +
-          '<div class="bcard-foot"><span class="bcard-micro">本月 23 笔 · 餐饮占比最高</span><span class="bcard-go">记一笔<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-foot"><span class="bcard-micro" data-ws-moneyfoot>…</span><span class="bcard-go">记一笔<i data-ic="arrow"></i></span></div>' +
         "</a>",
         /* 文献：第二批（灰态，只留一句短语） */
         '<a class="bcard span-4 is-disabled" href="#/apps" draggable="true" data-bcard="papers">' +
@@ -451,12 +445,12 @@
           '<div class="bcard-title"><span class="bcard-name">文献 ' + statusDot(false) + ' <span class="badge-soon">第二批</span></span></div></div>' +
           '<div class="bcard-body"><span class="bcard-muted">PubMed 每日新文献跟踪</span></div>' +
         "</a>",
-        /* 平台管理：结构化微数据 */
+        /* 平台管理：结构化微数据（仅管理员可见，异步填充时移除） */
         '<a class="bcard span-4" href="#/admin" draggable="true" data-bcard="admin">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="gear"></i></span>' +
           '<div class="bcard-title"><span class="bcard-name">平台管理 ' + statusDot(true) + "</span></div></div>" +
-          '<div class="bcard-foot"><span class="bcard-micro">2 用户 · 2 Provider</span><span class="bcard-go">进入管理<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-foot"><span class="bcard-micro" data-ws-adminmicro>…</span><span class="bcard-go">进入管理<i data-ic="arrow"></i></span></div>' +
         "</a>",
         /* 应用中心 */
         '<a class="bcard span-4" href="#/apps" draggable="true" data-bcard="apps">' +
@@ -476,13 +470,13 @@
       });
       /* 概览指标带（火山方舟 overview 模式：大数字 + 小标题） */
       var stats =
-        '<div class="stat-cell"><small>今日对话</small><b>6<span class="stat-unit">轮</span></b></div>' +
-        '<div class="stat-cell"><small>本月支出</small><b class="ex">' + fenShort(m.expenseTotal) + "</b></div>" +
-        '<div class="stat-cell"><small>本月收入</small><b class="inc">' + fenShort(m.incomeTotal) + "</b></div>" +
-        '<div class="stat-cell"><small>结余</small><b>' + fenShort(m.balance) + "</b></div>";
+        '<div class="stat-cell"><small>本月账目</small><b data-ws-txcount>—</b></div>' +
+        '<div class="stat-cell"><small>本月支出</small><b class="ex" data-ws-expense>—</b></div>' +
+        '<div class="stat-cell"><small>本月收入</small><b class="inc" data-ws-income>—</b></div>' +
+        '<div class="stat-cell"><small>结余</small><b data-ws-balance>—</b></div>';
       return '' +
         '<div class="page-head" style="margin-bottom:16px;"><div><h1 class="page-title">工作台</h1></div>' +
-        '<span class="date">10月18日 星期日</span></div>' +
+        '<span class="date" data-ws-date></span></div>' +
         '<div class="stat-strip">' + stats + "</div>" +
         '<div class="sec-head" style="margin-top:22px;"><span class="sec-title">应用</span>' +
         '<span class="muted" style="font-size:12.5px;">拖拽调整顺序</span></div>' +
@@ -555,36 +549,14 @@
         "</div>";
     },
 
-    /* ---------- 应用中心 ---------- */
+    /* ---------- 应用中心（已联调 GET /apps 注册表；分类分组 + 搜索） ---------- */
     apps: function () {
-      function rows(list) {
-        return list.map(function (a) {
-          var dis = a.disabled ? " is-disabled" : "";
-          var ops;
-          if (a.disabled) ops = '<button class="btn btn-ghost btn-sm" type="button" data-toast="文献应用第二批上线后开放">敬请期待</button>';
-          else ops = '<button class="btn btn-ghost btn-sm" type="button" data-toast="已打开「' + esc(a.name) + '」（演示）">打开</button>';
-          return '<div class="app-row' + dis + '">' +
-            '<span class="ico-box" style="background:' + a.color + ";color:" + a.ink + ';"><i data-ic="' + a.icon + '"></i></span>' +
-            '<div class="grow"><div class="name">' + esc(a.name) + (a.disabled ? '<span class="badge-soon">第二批上线</span>' : "") + "</div>" +
-            '<div class="desc">' + esc(a.desc) + "</div></div>" +
-            '<div class="ops">' + ops + "</div></div>";
-        }).join("");
-      }
-      var byCat = {};
-      (D.apps || []).forEach(function (a) {
-        if (a.internal) return; /* 应用中心自身不列入列表 */
-        (byCat[a.category] = byCat[a.category] || []).push(a);
-      });
-      var catName = { ai: "AI 应用", life: "生活工具", platform: "平台" };
-      var groups = Object.keys(byCat).map(function (cid) {
-        return '<div class="app-group"><div class="app-group-title">' + (catName[cid] || cid) + "</div>" + rows(byCat[cid]) + "</div>";
-      }).join("");
       return '' +
         '<div class="page-head"><div><h1 class="page-title">应用中心</h1>' +
         '<div class="page-desc">全部应用按分类分组，可搜索</div></div></div>' +
         '<div class="search-bar"><i data-ic="search"></i>' +
         '<input type="search" placeholder="搜索应用名称或描述" data-app-search></div>' +
-        groups +
+        '<div data-app-groups><div class="muted" style="padding:14px 4px;">加载中…</div></div>' +
         '<div class="empty-state hide" data-app-empty>没有匹配的应用</div>';
     },
 
@@ -843,6 +815,104 @@
     }).catch(function () {});
   }
 
+  /* ================= 工作台活数据（/chat /money /admin 联调） ================= */
+  function fillWorkspace(view) {
+    view = view || qs("#view");
+    /* 页头日期 */
+    var dEl = qs("[data-ws-date]", view);
+    if (dEl) {
+      var d = new Date();
+      var wk = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
+      dEl.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日 星期" + wk;
+    }
+    /* 对话卡片：默认模型 + 最近会话 + 会话数 */
+    API.get("/chat/models").then(function (models) {
+      liveModels = models || [];
+      var def = liveModels.filter(function (m) { return m.is_default; })[0] || liveModels[0];
+      var pill = qs("[data-ws-modelpill]", view);
+      if (pill) pill.textContent = def ? def.name : "未配置";
+    }).catch(function () {});
+    API.get("/chat/conversations?app_id=chat").then(function (list) {
+      var last = list && list[0];
+      var box = qs("[data-ws-lastconv]", view);
+      if (box) {
+        box.innerHTML = last
+          ? '<span class="bp-text">' + esc(last.title) + '</span><span class="bp-time">' + esc((last.updated_at || "").slice(5, 16).replace("T", " ")) + "</span>"
+          : '<span class="bp-text muted">还没有对话，点击卡片开始聊聊</span>';
+      }
+      var convs = qs("[data-ws-convs]", view);
+      if (convs) convs.textContent = (list ? list.length : 0) + " 个会话";
+    }).catch(function () {});
+    /* 记账卡片 + 指标带 */
+    var mm = monthNow();
+    API.get("/money/stats/monthly?month=" + mm).then(function (s) {
+      function set(sel, v) { var el = qs(sel, view); if (el) el.textContent = v; }
+      set("[data-ws-expense]", fenShort(s.expense_total));
+      set("[data-ws-income]", fenShort(s.income_total));
+      set("[data-ws-balance]", fenShort(s.balance));
+      var top = s.by_category && s.by_category[0];
+      var foot = qs("[data-ws-moneyfoot]", view);
+      if (foot) foot.textContent = top ? "餐饮等支出居多 · " + esc(top.name) + " " + fenShort(top.total) : "本月暂无支出";
+    }).catch(function () {});
+    API.get("/money/stats/trend?months=6").then(function (s) {
+      var box = qs("[data-ws-spark]", view);
+      if (!box || !s || !s.months || !s.months.length) return;
+      var exp = s.months.map(function (m2) { return m2.expense_total; });
+      if (exp.every(function (v) { return v === 0; })) {
+        box.innerHTML = '<span class="muted" style="font-size:13px;">近 6 月暂无支出</span>';
+        return;
+      }
+      box.innerHTML = sparkline(exp, "ex") + "<small>近 6 月支出</small>";
+    }).catch(function () {});
+    API.get("/money/transactions?page=1&page_size=1").then(function (p) {
+      var el = qs("[data-ws-txcount]", view);
+      if (el) el.innerHTML = (p && p.total || 0) + '<span class="stat-unit">笔</span>';
+    }).catch(function () {});
+    /* 平台管理卡片：仅管理员可见并填充微数据 */
+    var adminCard = qs('[data-bcard="admin"]', view);
+    var isAdmin = LC_USER && (LC_USER.roles || []).indexOf("admin") !== -1;
+    if (!isAdmin) {
+      if (adminCard) adminCard.remove();
+      return;
+    }
+    Promise.all([API.get("/admin/users?page_size=1"), API.get("/admin/models/providers")]).then(function (r) {
+      var micro = qs("[data-ws-adminmicro]", view);
+      if (micro) micro.textContent = ((r[0] && r[0].total) || 0) + " 用户 · " + ((r[1] && r[1].length) || 0) + " Provider";
+    }).catch(function () {});
+  }
+
+  /* ================= 应用中心活数据（GET /apps 注册表） ================= */
+  function appRowHtml(a) {
+    return '<div class="app-row" data-app-open="' + esc(a.id) + '" role="button" tabindex="0">' +
+      '<span class="ico-box" style="background:' + esc(a.color || "#f0f6ff") + ';color:#1664ff;"><i data-ic="' + esc(a.icon || "grid") + '"></i></span>' +
+      '<div class="grow"><div class="name">' + esc(a.name) + "</div>" +
+      '<div class="desc">' + esc(a.desc || "") + "</div></div>" +
+      '<div class="ops"><button class="btn btn-ghost btn-sm" type="button">打开</button></div></div>';
+  }
+  function renderAppsPage(view) {
+    API.get("/apps").then(function (d) {
+      var apps = ((d && d.apps) || []).filter(function (a) { return !a.hidden; });
+      var cats = (d && d.categories) || [];
+      var catName = {};
+      cats.forEach(function (c) { catName[c.id] = c.name; });
+      var byCat = {};
+      apps.forEach(function (a) {
+        var k = a.category_id == null ? 0 : a.category_id;
+        (byCat[k] = byCat[k] || []).push(a);
+      });
+      var keys = Object.keys(byCat);
+      var groups = keys.map(function (k) {
+        return '<div class="app-group"><div class="app-group-title">' + esc(k === "0" ? "未分类" : (catName[k] || "分类 " + k)) + "</div>" +
+          byCat[k].map(appRowHtml).join("") + "</div>";
+      }).join("");
+      var box = qs("[data-app-groups]", view);
+      if (box) {
+        box.innerHTML = groups || '<div class="muted" style="padding:14px 4px;">注册表暂无应用</div>';
+        injectIcons(box);
+      }
+    }).catch(function (e) { toast(e.detail || "应用加载失败"); });
+  }
+
   /* ================= 页面初始化 ================= */
   var INITS = {
     workspace: function (view) {
@@ -869,6 +939,12 @@
           grid.insertBefore(dragged, before ? card : card.nextSibling);
         });
       });
+      /* 活数据填充（卡片渲染后异步填充，不干扰拖拽绑定） */
+      fillWorkspace(view);
+    },
+
+    apps: function (view) {
+      renderAppsPage(view);
     },
 
     chat: function (view) {
@@ -899,7 +975,6 @@
       loadMoneyPage(view);
     },
 
-    apps: function () {},
 
     admin: function (view) {
       /* 权限：非管理员给出提示（服务端同样 403 兜底） */
@@ -1494,6 +1569,13 @@
     if (up) {
       if (up.classList.contains("is-disabled")) { toast("当前模型不支持文件，请切换到支持文件上传的模型"); return; }
       toast("文件上传演示：正式版经 POST /files 入库后随消息发送");
+      return;
+    }
+    /* 应用中心：打开应用 */
+    var appRow = el.closest("[data-app-open]");
+    if (appRow) {
+      var appId = appRow.getAttribute("data-app-open");
+      go(appId === "money" ? "money" : appId);
       return;
     }
     /* 管理页标签 */
