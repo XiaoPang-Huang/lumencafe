@@ -29,6 +29,7 @@ from app.schemas.llm import (
     GatewayTokenOut,
     ModelCreate,
     ModelOut,
+    ModelUpdate,
     ProviderCreate,
     ProviderDetailOut,
     ProviderOut,
@@ -278,6 +279,53 @@ async def create_custom_model(
     await db.commit()
     await db.refresh(model)
     return _model_out(model)
+
+
+@router.put("/providers/{pid}/models/{mid}", response_model=ModelOut)
+async def update_model(
+    pid: int,
+    mid: int,
+    body: ModelUpdate,
+    admin: User = Depends(_admin_models),
+    db: AsyncSession = Depends(get_db),
+):
+    """模型级修正：meta 能力元数据（Q16）与启用开关（管理页编辑用）。"""
+    model = (
+        await db.execute(
+            select(LLMModel).where(LLMModel.id == mid, LLMModel.provider_id == pid)
+        )
+    ).scalar_one_or_none()
+    if model is None:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    data = body.model_dump(exclude_unset=True)
+    if data.get("meta") is not None:
+        model.meta = data["meta"]
+    if data.get("enabled") is not None:
+        model.enabled = data["enabled"]
+    await db.commit()
+    await db.refresh(model)
+    return _model_out(model)
+
+
+@router.delete("/providers/{pid}/models/{mid}")
+async def delete_model(
+    pid: int, mid: int, admin: User = Depends(_admin_models), db: AsyncSession = Depends(get_db)
+):
+    """仅自定义模型可删除；官方拉取模型以重新拉取为准（§3.2 注）。"""
+    model = (
+        await db.execute(
+            select(LLMModel).where(LLMModel.id == mid, LLMModel.provider_id == pid)
+        )
+    ).scalar_one_or_none()
+    if model is None:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    if not model.custom:
+        raise HTTPException(status_code=400, detail="官方拉取模型不可删除，可重新拉取或停用")
+    if model.is_default:
+        raise HTTPException(status_code=409, detail="默认路由正在引用该模型，请先切换默认路由")
+    await db.delete(model)
+    await db.commit()
+    return {"ok": True}
 
 
 # ── 默认路由（Q10/Q13）──────────────────────────────────

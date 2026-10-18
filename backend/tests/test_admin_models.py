@@ -96,6 +96,46 @@ async def test_custom_model_and_dup(client):
     assert resp.status_code == 409
 
 
+async def test_model_update_and_delete(client, monkeypatch):
+    """模型级修正（meta/enabled）+ 自定义删除守卫。"""
+    admin = await login(client)
+    providers = (await client.get("/admin/models/providers", headers=admin)).json()
+    pid = providers[0]["id"]
+
+    # 自定义模型：更新 meta 与开关，随后删除
+    resp = await client.post(
+        f"/admin/models/providers/{pid}/models",
+        json={"name": "temp-model", "meta": {"context": "", "vision": False, "files": False}},
+        headers=admin,
+    )
+    mid = resp.json()["id"]
+    resp = await client.put(
+        f"/admin/models/providers/{pid}/models/{mid}",
+        json={"meta": {"context": "256K", "vision": True, "files": True}, "enabled": False},
+        headers=admin,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["meta"]["context"] == "256K"
+    assert resp.json()["meta"]["vision"] is True
+    assert resp.json()["enabled"] is False
+
+    resp = await client.delete(f"/admin/models/providers/{pid}/models/{mid}", headers=admin)
+    assert resp.status_code == 200
+
+    # 官方拉取模型（custom=false）不可删
+    async def fake_fetch(cfg):
+        return ["official-x"]
+
+    monkeypatch.setattr(llm_gateway, "fetch_model_names", fake_fetch)
+    await client.post(f"/admin/models/providers/{pid}/fetch-models", headers=admin)
+    detail = (await client.get(f"/admin/models/providers/{pid}", headers=admin)).json()
+    official = next(m for m in detail["models"] if m["name"] == "official-x")
+    resp = await client.delete(
+        f"/admin/models/providers/{pid}/models/{official['id']}", headers=admin
+    )
+    assert resp.status_code == 400
+
+
 async def test_default_route_switch(client):
     admin = await login(client)
     providers = (await client.get("/admin/models/providers", headers=admin)).json()

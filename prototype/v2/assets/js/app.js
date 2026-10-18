@@ -211,98 +211,204 @@
     btn.title = ok ? "上传文件" : "当前模型不支持文件上传";
   }
 
+  /* 平台管理活数据状态（/admin/* 联调） */
+  var adminState = {
+    users: [], roles: [], perms: [], providers: [], tokens: [],
+    pvDetail: null, defaultRoute: null, addRowOpen: false
+  };
+
   /* 提供商详情面板（管理页右侧，选中切换时局部重绘） */
   function modelRowHtml(m) {
-    return '<div class="mm-model">' +
-      '<button class="switch on" type="button" data-model-enable aria-label="启用该模型"></button>' +
-      '<span class="mname">' + m.name + (m.custom ? '<span class="badge-soon">自定义</span>' : "") + "</span>" +
-      '<span class="mm-meta">' + (m.context || "") + "</span>" +
+    var meta = m.meta || {};
+    return '<div class="mm-model" data-mid="' + m.id + '">' +
+      '<button class="switch' + (m.enabled ? " on" : "") + '" type="button" data-model-enable="' + m.id + '" aria-label="启用该模型"></button>' +
+      '<span class="mname">' + esc(m.name) + (m.custom ? '<span class="badge-soon">自定义</span>' : "") + "</span>" +
+      '<span class="mm-meta">' + esc(meta.context || "") + "</span>" +
       '<span class="mm-caps">' +
-        (m.vision ? '<i class="ic" data-ic="eye" title="支持图片理解"></i>' : "") +
-        (m.files ? '<i class="ic" data-ic="doc" title="支持文件上传"></i>' : "") +
+        (meta.vision ? '<i class="ic" data-ic="eye" title="支持图片理解"></i>' : "") +
+        (meta.files ? '<i class="ic" data-ic="doc" title="支持文件上传"></i>' : "") +
       "</span>" +
       '<span class="flex-spacer"></span>' +
       (m.is_default
         ? '<span class="pill pill-ok">默认</span>'
-        : '<button class="btn btn-ghost btn-sm" type="button" data-set-default="' + m.name + '">设为默认</button>') +
-      (m.custom ? '<button class="btn btn-danger-ghost btn-sm" type="button" data-del-model>删除</button>' : "") +
+        : '<button class="btn btn-ghost btn-sm" type="button" data-set-default="' + m.id + '">设为默认</button>') +
+      (m.custom ? '<button class="btn btn-danger-ghost btn-sm" type="button" data-del-model="' + m.id + '">删除</button>' : "") +
     "</div>";
   }
-  function pvDetailHtml(pid) {
-    var p = (D.providers || []).filter(function (x) { return String(x.id) === String(pid); })[0];
-    if (!p) return "";
+  function pvDetailHtml(p) {
+    if (!p) return '<div class="muted" style="padding:16px;">加载中…</div>';
     var models = p.models || [];
     return '' +
       '<div class="mm-detail-head"><div><div class="mm-name">' + esc(p.name) +
         ' <span class="pill ' + (p.enabled ? "pill-ok" : "pill-mute") + '">' + (p.enabled ? "已启用" : "已停用") + "</span></div>" +
-        '<div class="mm-url">' + p.base_url + "</div></div>" +
-        '<button class="switch' + (p.enabled ? " on" : "") + '" type="button" data-provider-toggle aria-label="启用该提供商"></button></div>' +
+        '<div class="mm-url">' + esc(p.base_url || "（未配置 Base URL，mock 占位）") + "</div></div>" +
+        '<button class="switch' + (p.enabled ? " on" : "") + '" type="button" data-provider-toggle="' + p.id + '" aria-label="启用该提供商"></button></div>' +
       '<div class="mm-grid">' +
-        '<div class="field" style="margin-bottom:0;"><label>Base URL</label><input type="text" value="' + p.base_url + '"></div>' +
-        '<div class="field" style="margin-bottom:0;"><label>API Key</label><input type="text" value="" autocomplete="off" placeholder="已配置 ' + p.key_mask + "（留空不修改）\"></div>" +
+        '<div class="field" style="margin-bottom:0;"><label>Base URL</label><input type="text" data-pv-base value="' + esc(p.base_url) + '"></div>' +
+        '<div class="field" style="margin-bottom:0;"><label>API Key</label><input type="text" data-pv-key value="" autocomplete="off" placeholder="' + (p.has_key ? "已配置 " + esc(p.api_key_masked) + "（留空不修改）" : "sk-…") + '"></div>' +
       "</div>" +
       '<div class="mm-ops">' +
         '<button class="btn btn-ghost btn-sm" type="button" data-fetch="' + p.id + '"><i data-ic="spark"></i><span class="bl">拉取模型</span></button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-toast="连通性测试通过 · 延迟 412ms">测试连通性</button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-toast="配置已保存（演示）">保存</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-test-pv="' + p.id + '"><i data-ic="zap"></i><span class="bl">测试连通性</span></button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-save-pv="' + p.id + '">保存</button>' +
       "</div>" +
       '<div class="mm-models"><div class="mm-models-head"><span>模型（' + models.length + "）</span>" +
-        '<button class="btn btn-ghost btn-sm" type="button" data-add-model><i data-ic="plus"></i>添加模型</button></div>' +
-        '<div class="mm-model-list">' + models.map(modelRowHtml).join("") + "</div></div>";
+        '<button class="btn btn-ghost btn-sm" type="button" data-add-model="' + p.id + '"><i data-ic="plus"></i>添加模型</button></div>' +
+        '<div class="mm-model-list" data-mm-list>' + models.map(modelRowHtml).join("") + "</div>" +
+        '<div class="mm-add hide" data-mm-add>' +
+          '<input type="text" data-am-name placeholder="模型名，如 kimi-k2">' +
+          '<button class="btn btn-sm" type="button" data-confirm-add="' + p.id + '">确认添加</button>' +
+        "</div></div>";
   }
-  function renderPvDetail(pid) {
+  function renderPvDetail() {
     var box = qs("#mm-detail");
     if (!box) return;
-    box.innerHTML = pvDetailHtml(pid);
+    box.innerHTML = pvDetailHtml(adminState.pvDetail);
     injectIcons(box);
   }
   function pvListHtml(activeId) {
-    return (D.providers || []).map(function (p) {
-      var def = (p.models || []).filter(function (m) { return m.is_default; })[0];
+    var html = adminState.providers.map(function (p) {
+      var def = null;
+      if (adminState.pvDetail && adminState.pvDetail.id === p.id) {
+        def = (adminState.pvDetail.models || []).filter(function (m) { return m.is_default; })[0];
+      }
       return '<div class="mm-item' + (String(p.id) === String(activeId) ? " active" : "") + '" data-pv="' + p.id + '" role="button" tabindex="0">' +
-        '<span class="ico-box" style="background:' + (p.custom ? "#f2f3f5" : "#f0f6ff") + ";color:" + (p.custom ? "#4e5969" : "#1664ff") + ';"><i data-ic="plug"></i></span>' +
+        '<span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="plug"></i></span>' +
         '<div class="grow"><div class="name">' + esc(p.name) + "</div>" +
-        '<div class="sub">' + (p.models || []).length + " 模型" + (def ? " · 默认 " + def.name : "") + "</div></div>" +
+        '<div class="sub">' + esc(p.vendor) + (p.is_default ? " · 默认渠道" : "") + "</div></div>" +
         '<span class="pill ' + (p.enabled ? "pill-ok" : "pill-mute") + '">' + (p.enabled ? "启用" : "停用") + "</span></div>";
-    }).join("") +
-    '<button class="btn btn-ghost btn-sm" type="button" data-toast="添加自定义提供商（名称 + base_url + Key）"><i data-ic="plus"></i>添加提供商</button>';
+    }).join("");
+    return html + '<button class="btn btn-ghost btn-sm" type="button" data-add-provider><i data-ic="plus"></i>添加提供商</button>';
   }
-  function permSw(on) {
-    return '<button class="switch' + (on ? " on" : "") + '" type="button" data-perm-switch aria-label="切换权限"></button>';
+  function renderPvList(activeId) {
+    var box = qs("#mm-list");
+    if (!box) return;
+    box.innerHTML = pvListHtml(activeId);
+    injectIcons(box);
+  }
+  function selectProvider(pid) {
+    adminState.pvDetail = null;
+    renderPvList(pid);
+    API.get("/admin/models/providers/" + pid).then(function (d) {
+      adminState.pvDetail = d;
+      renderPvDetail();
+      renderPvList(pid);
+    }).catch(function (e) { toast(e.detail || "加载失败"); });
+  }
+  function permSw(on, code, label) {
+    return '<button class="switch' + (on ? " on" : "") + '" type="button" data-perm-switch="' + code + '" aria-label="' + esc(label) + '"></button>';
   }
   function tokenRowHtml(t) {
     return "<tr><td>" + esc(t.name) + "</td>" +
-      '<td><code class="mono-mask">' + t.mask + "</code></td>" +
-      "<td>" + t.scope + "</td><td>" + t.created + "</td>" +
+      '<td><code class="mono-mask">' + esc(t.token_mask) + "</code></td>" +
+      "<td>" + (t.model_scope && t.model_scope.length ? esc(t.model_scope.join("、")) : "全部模型") + "</td>" +
+      "<td>" + esc((t.created_at || "").slice(0, 10) || "—") + "</td>" +
       "<td>" + (t.active ? '<span class="pill pill-ok">生效中</span>' : '<span class="pill pill-mute">已吊销</span>') + "</td>" +
       "<td>" + (t.active
         ? '<button class="link-op danger" type="button" data-revoke-token="' + t.id + '">吊销</button>'
         : '<span class="muted" style="font-size:12.5px;">—</span>') + "</td></tr>";
   }
-  /* 成员详情抽屉（Supabase 侧栏模式） */
+  function renderTokenRows() {
+    var tb = qs("#gw-token-rows");
+    if (tb) tb.innerHTML = adminState.tokens.map(tokenRowHtml).join("");
+  }
+  /* 成员详情抽屉（Supabase 侧栏模式）：u = /admin/users/{id} 详情 */
   function udrawerHtml(u) {
-    var isAdmin = u.roles === "admin";
-    function swRow(label, on) {
-      return '<div class="ud-sw"><span>' + label + "</span>" + permSw(on) + "</div>";
+    function has(code) { return (u.permissions || []).indexOf(code) !== -1; }
+    function swRow(label, code) {
+      return '<div class="ud-sw"><span>' + label + "</span>" + permSw(has(code), code, label) + "</div>";
     }
+    var roleNames = (u.roles || []).map(function (r) { return r.name; }).join("、") || "未分配";
     return '' +
-      '<div class="ud-head"><span class="avatar">' + (u.avatar || u.nickname.slice(0, 1)) + "</span>" +
-      "<div style=\"flex:1;min-width:0;\"><div class=\"ud-name\">" + u.nickname + "</div>" +
-      '<div class="ud-sub">@' + u.username + " · " + (isAdmin ? "管理员" : "成员") + "</div></div>" +
+      '<div class="ud-head"><span class="avatar">' + esc((u.nickname || u.username).slice(0, 1)) + "</span>" +
+      "<div style=\"flex:1;min-width:0;\"><div class=\"ud-name\">" + esc(u.nickname || u.username) + "</div>" +
+      '<div class="ud-sub">@' + esc(u.username) + " · " + esc(roleNames) + "</div></div>" +
       '<button class="icon-btn" type="button" data-ud-close aria-label="关闭"><i data-ic="close"></i></button></div>' +
       '<div class="ud-body">' +
-      '<div class="ud-sec">权限</div>' +
-      swRow("使用对话", u.perms && u.perms.chat) +
-      swRow("使用记账", u.perms && u.perms.money) +
-      (isAdmin ? swRow("管理用户与角色", u.perms && u.perms.users) + swRow("管理模型与网关", u.perms && u.perms.models) : "") +
+      '<div class="ud-sec">权限（应用到角色：' + esc(roleNames) + "）</div>" +
+      swRow("使用 AI 对话", "app:chat") +
+      swRow("使用记账", "app:money") +
+      swRow("使用文献（第二批）", "app:papers") +
+      swRow("管理用户与角色", "admin:users") +
+      swRow("管理模型与网关", "admin:models") +
       '<div class="ud-sec">账号</div>' +
-      '<div class="ud-kv"><span>状态</span><span>启用</span></div>' +
-      '<div class="ud-kv"><span>最后活跃</span><span>' + (u.lastActive || "—") + "</span></div>" +
-      '<div class="ud-kv"><span>注册时间</span><span>' + (u.joined || "—") + "</span></div>" +
+      '<div class="ud-kv"><span>状态</span><span>' + (u.is_active ? "启用" : "已停用") + "</span></div>" +
+      '<div class="ud-kv"><span>注册时间</span><span>' + esc((u.created_at || "").slice(0, 10) || "—") + "</span></div>" +
+      '<div class="ud-kv" data-reset-result style="display:none;"><span>新密码</span><span class="mono-mask" style="font-size:12px;"></span></div>' +
       "</div>" +
       '<div class="ud-foot">' +
-      '<button class="btn btn-ghost btn-sm" type="button" data-toast="已生成一次性新密码（演示）"><i data-ic="key"></i>重置密码</button>' +
-      '<button class="btn btn-danger-ghost btn-sm" type="button" data-toast="账号已禁用（演示）">禁用账号</button></div>';
+      '<button class="btn btn-ghost btn-sm" type="button" data-reset-pass="' + u.id + '"' + (u.is_active ? "" : " disabled") + '><i data-ic="key"></i>重置密码</button>' +
+      '<button class="btn btn-danger-ghost btn-sm" type="button" data-disable-account="' + u.id + '"' + (u.is_active ? "" : " disabled") + ">" + (u.is_active ? "停用账号" : "已停用") + "</button></div>";
+  }
+  /* 成员表 + 角色矩阵渲染 */
+  function userRowHtml(u) {
+    var rid = u.roles && u.roles.length ? u.roles[0].id : 0;
+    return '<tr class="u-row" data-user-row="' + u.id + '">' +
+      '<td><span class="u-cell"><span class="avatar">' + esc((u.nickname || u.username).slice(0, 1)) + '</span>' +
+        '<span><span class="u-name">' + esc(u.nickname || u.username) + '</span><span class="u-sub">' + esc(u.username) + "</span></span></span></td>" +
+      '<td><span class="role-cell">' +
+        '<button class="role-pill' + (u.roles && u.roles.length && u.roles[0].name === "admin" ? " is-admin" : "") + '" type="button" data-role-picker>' +
+          esc(u.roles && u.roles.length ? u.roles[0].name : "未分配") + '<i data-ic="down"></i></button>' +
+        '<span class="role-pop hide">' +
+          adminState.roles.map(function (r) {
+            return '<span class="role-opt" data-role-opt="' + r.id + '" data-uid="' + u.id + '"><b>' + esc(r.name) + "</b><small>" + esc(r.description || "") + "</small></span>";
+          }).join("") +
+        "</span></span></td>" +
+      '<td><span class="muted" style="font-size:13px;">' + (u.roles && u.roles.length ? "见角色权限" : "未分配") + "</span></td>" +
+      '<td><span class="st' + (u.is_active ? "" : " off") + '"><i></i>' + (u.is_active ? "启用" : "停用") + "</span></td>" +
+      '<td><span class="muted" style="font-size:13px;">' + esc((u.created_at || "").slice(0, 10) || "—") + "</span></td>" +
+      '<td class="t-right"><button class="icon-btn xs" type="button" data-toast="点击成员行查看与设置权限" aria-label="详情" title="详情"><i data-ic="eye"></i></button></td>' +
+    "</tr>";
+  }
+  function renderUsersTab() {
+    var tb = qs("[data-u-rows]");
+    if (tb) tb.innerHTML = adminState.users.length
+      ? adminState.users.map(userRowHtml).join("")
+      : '<tr><td colspan="6" class="muted" style="padding:14px;">暂无成员</td></tr>';
+  }
+  function renderRoleMatrix() {
+    var box = qs("[data-role-matrix]");
+    if (!box || !adminState.roles.length || !adminState.perms.length) return;
+    function has(r, code) {
+      return r.permissions.some(function (p) { return p.code === code; });
+    }
+    var head = adminState.roles.map(function (r) { return "<th>" + esc(r.name) + "</th>"; }).join("");
+    var rows = adminState.perms.map(function (p) {
+      var cells = adminState.roles.map(function (r) {
+        return "<td>" + (has(r, p.code)
+          ? '<span class="mx-yes"><i data-ic="check"></i></span>'
+          : '<span class="mx-none">—</span>') + "</td>";
+      }).join("");
+      return "<tr><td>" + esc(p.name) + "</td>" + cells + "</tr>";
+    }).join("");
+    box.innerHTML = '<table class="table mx-table"><thead><tr><th>权限</th>' + head + "</tr></thead><tbody>" + rows + "</tbody></table>";
+  }
+  function loadAdminTabData() {
+    API.get("/admin/users?page_size=100").then(function (p) {
+      adminState.users = (p && p.items) || [];
+      renderUsersTab();
+    }).catch(function (e) { toast(e.detail || "成员加载失败"); });
+    API.get("/admin/roles").then(function (r) {
+      adminState.roles = r || [];
+      renderUsersTab();
+      renderRoleMatrix();
+    }).catch(function () {});
+    API.get("/admin/permissions").then(function (p) {
+      adminState.perms = p || [];
+      renderRoleMatrix();
+    }).catch(function () {});
+    API.get("/admin/models/providers").then(function (p) {
+      adminState.providers = p || [];
+      renderPvList(adminState.pvDetail ? adminState.pvDetail.id : (p && p.length ? p[0].id : null));
+      if (!adminState.pvDetail && p && p.length) selectProvider(p[0].id);
+    }).catch(function (e) { toast(e.detail || "渠道加载失败"); });
+    API.get("/admin/models/gateway-tokens").then(function (t) {
+      adminState.tokens = t || [];
+      renderTokenRows();
+    }).catch(function () {});
+    API.get("/admin/models/default-route").then(function (d) {
+      adminState.defaultRoute = d;
+    }).catch(function () {});
   }
 
   var PAGES = {
@@ -482,44 +588,8 @@
         '<div class="empty-state hide" data-app-empty>没有匹配的应用</div>';
     },
 
-    /* ---------- 平台管理：用户与角色（Supabase 式表格 + 角色矩阵 + 详情抽屉）/ 模型管理（LobeChat 式双栏）/ 网关令牌 ---------- */
+    /* ---------- 平台管理：用户与角色（Supabase 式表格 + 角色矩阵 + 详情抽屉）/ 模型管理（LobeChat 式双栏）/ 网关令牌（已联调 /admin/*） ---------- */
     admin: function () {
-      /* 成员表（参考 Supabase Auth Users）：权限不铺列（应用多了会拥挤），点击行在抽屉里设置 */
-      var users = (D.users || []).map(function (u) {
-        var isAdmin = u.roles === "admin";
-        var permCount = u.perms ? Object.keys(u.perms).filter(function (k) { return u.perms[k]; }).length : 0;
-        return '<tr class="u-row" data-user-row="' + u.id + '">' +
-          '<td><span class="u-cell"><span class="avatar">' + (u.avatar || u.nickname.slice(0, 1)) + '</span>' +
-            '<span><span class="u-name">' + u.nickname + '</span><span class="u-sub">' + u.username + "</span></span></span></td>" +
-          '<td><span class="role-cell">' +
-            '<button class="role-pill ' + (isAdmin ? "is-admin" : "") + '" type="button" data-role-picker>' +
-              (isAdmin ? "管理员" : "成员") + '<i data-ic="down"></i></button>' +
-            '<span class="role-pop hide">' +
-              '<span class="role-opt" data-role-opt="管理员"><b>管理员</b><small>全部权限，含平台管理</small></span>' +
-              '<span class="role-opt" data-role-opt="成员"><b>成员</b><small>仅应用使用权限</small></span>' +
-            "</span></span></td>" +
-          '<td><span class="muted" style="font-size:13px;">' + permCount + ' 项权限</span></td>' +
-          '<td><span class="st"><i></i>启用</span></td>' +
-          '<td><span class="muted" style="font-size:13px;">' + (u.lastActive || "—") + "</span></td>" +
-          '<td class="t-right"><button class="icon-btn xs" type="button" data-toast="已生成一次性新密码（演示）" aria-label="重置密码" title="重置密码"><i data-ic="key"></i></button></td>' +
-        "</tr>";
-      }).join("");
-      /* 角色权限矩阵（thefrontkit 模式：行=权限点，列=角色） */
-      var roleCols = (D.roles || []);
-      function hasPerm(r, code) { return (r.permissions || []).indexOf(code) !== -1; }
-      var mxRows = [
-        ["使用对话", "app:chat"], ["使用记账", "app:money"], ["使用文献（第二批）", "app:papers"],
-        ["管理用户与角色", "admin:users"], ["管理模型与网关", "admin:models"]
-      ].map(function (row) {
-        var cells = roleCols.map(function (r) {
-          return "<td>" + (hasPerm(r, row[1])
-            ? '<span class="mx-yes"><i data-ic="check"></i></span>'
-            : '<span class="mx-none">—</span>') + "</td>";
-        }).join("");
-        return "<tr><td>" + row[0] + "</td>" + cells + "</tr>";
-      }).join("");
-      var mxHead = roleCols.map(function (r) { return "<th>" + r.label + "</th>"; }).join("");
-      var tokens = (D.gatewayTokens || []).map(tokenRowHtml).join("");
       return '' +
         '<div class="page-head"><div><h1 class="page-title">平台管理</h1>' +
         '<div class="page-desc">成员、模型与网关</div></div></div>' +
@@ -531,15 +601,13 @@
         /* 用户与角色 */
         '<div class="admin-pane active" id="pane-users">' +
           '<div class="sec-head"><span class="sec-title">成员</span>' +
-            '<button class="btn btn-sm" type="button" data-toast="注册开关关闭时暂不可邀请（演示）"><i data-ic="plus"></i>邀请成员</button></div>' +
+            '<button class="btn btn-sm" type="button" data-toast="注册开关关闭时暂不可邀请（可用 /admin/users 接口创建）"><i data-ic="plus"></i>邀请成员</button></div>' +
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table u-table"><thead>' +
-          "<tr><th>成员</th><th>角色</th><th>权限</th><th>状态</th><th>最后活跃</th><th></th></tr></thead><tbody>" + users +
-          '</tbody></table></div>' +
-          '<div style="font-size:12.5px;color:var(--ink-3);margin-top:10px;">点击成员行设置应用与管理权限</div>' +
+          "<tr><th>成员</th><th>角色</th><th>权限</th><th>状态</th><th>注册时间</th><th></th></tr></thead>" +
+          '<tbody data-u-rows><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+          '<div style="font-size:12.5px;color:var(--ink-3);margin-top:10px;">点击成员行设置权限（应用到其角色）</div>' +
           '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">角色权限</span></div>' +
-          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table mx-table"><thead>' +
-          "<tr><th>权限</th>" + mxHead + "</tr></thead><tbody>" + mxRows +
-          '</tbody></table></div>' +
+          '<div class="card role-matrix" style="padding:8px 6px;overflow-x:auto;" data-role-matrix><div class="muted" style="padding:14px;">加载中…</div></div>' +
           /* 成员详情抽屉（Supabase 侧栏模式） */
           '<div class="ud-mask hide" data-ud-mask></div>' +
           '<aside class="udrawer hide" data-udrawer></aside>' +
@@ -547,18 +615,18 @@
         /* 模型管理（方案 1：左列表 + 右详情） */
         '<div class="admin-pane" id="pane-models">' +
           '<div class="mm-layout">' +
-            '<div class="mm-list" id="mm-list">' + pvListHtml(1) + "</div>" +
-            '<div class="card mm-detail" id="mm-detail">' + pvDetailHtml(1) + "</div>" +
+            '<div class="mm-list" id="mm-list"><div class="muted" style="padding:12px;">加载中…</div></div>' +
+            '<div class="card mm-detail" id="mm-detail"><div class="muted" style="padding:16px;">加载中…</div></div>' +
           "</div>" +
         "</div>" +
         /* 网关令牌 */
         '<div class="admin-pane" id="pane-tokens">' +
           '<div class="gw-endpoint"><span class="gw-endpoint-label">接入地址</span>' +
-            '<code class="mono-mask" id="gw-url">https://api.lumenhub.online/gw/v1</code>' +
+            '<code class="mono-mask" id="gw-url">' + esc(API.BASE) + '/gw/v1</code>' +
             '<button class="btn btn-ghost btn-sm" type="button" data-copy-text="#gw-url">复制</button></div>' +
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
           "<tr><th>名称</th><th>令牌</th><th>模型范围</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>" +
-          '<tbody id="gw-token-rows">' + tokens + "</tbody></table></div>" +
+          '<tbody id="gw-token-rows"><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
           '<button class="btn btn-sm mt8" type="button" data-modal-open="#modal-token"><i data-ic="plus"></i>新建令牌</button>' +
         "</div>";
     },
@@ -833,7 +901,16 @@
 
     apps: function () {},
 
-    admin: function () {},
+    admin: function (view) {
+      /* 权限：非管理员给出提示（服务端同样 403 兜底） */
+      if (!LC_USER || (LC_USER.roles || []).indexOf("admin") === -1) {
+        view.innerHTML = '<div class="page-head"><div><h1 class="page-title">平台管理</h1>' +
+          '<div class="page-desc">需要管理员权限（admin:users / admin:models）</div></div></div>';
+        return;
+      }
+      adminState.pvDetail = null;
+      loadAdminTabData();
+    },
 
     me: function () {},
 
@@ -1112,13 +1189,15 @@
       }).then(function () { parseBtn.disabled = false; });
       return;
     }
-    /* 成员行 → 详情抽屉（Supabase 侧栏模式） */
+    /* 成员行 → 详情抽屉（Supabase 侧栏模式）：拉详情后渲染 */
     var urow = el.closest("[data-user-row]");
     if (urow && !el.closest(".switch") && !el.closest(".role-cell") && !el.closest("button")) {
-      var uu = (D.users || []).filter(function (x) { return String(x.id) === urow.getAttribute("data-user-row"); })[0];
-      var dr = qs("[data-udrawer]"), mk = qs("[data-ud-mask]");
-      if (uu && dr) { dr.innerHTML = udrawerHtml(uu); injectIcons(dr); dr.classList.remove("hide"); }
-      if (mk) mk.classList.remove("hide");
+      var uid = urow.getAttribute("data-user-row");
+      API.get("/admin/users/" + uid).then(function (uu) {
+        var dr = qs("[data-udrawer]"), mk = qs("[data-ud-mask]");
+        if (uu && dr) { dr.innerHTML = udrawerHtml(uu); injectIcons(dr); dr.classList.remove("hide"); }
+        if (mk) mk.classList.remove("hide");
+      }).catch(function (e) { toast(e.detail || "详情加载失败"); });
       return;
     }
     if (el.closest("[data-ud-close]") || el.closest("[data-ud-mask]")) {
@@ -1127,7 +1206,7 @@
       if (mk2) mk2.classList.add("hide");
       return;
     }
-    /* 角色下拉（Zeda 模式：选项带权限说明） */
+    /* 角色下拉（Zeda 模式：选项带权限说明）→ 整体重设角色 */
     if (el.closest("[data-role-picker]")) {
       var rpPop = el.closest(".role-cell").querySelector(".role-pop");
       if (rpPop) rpPop.classList.toggle("hide");
@@ -1135,88 +1214,215 @@
     }
     var roleOpt = el.closest("[data-role-opt]");
     if (roleOpt) {
+      var rid2 = parseInt(roleOpt.getAttribute("data-role-opt"), 10);
+      var uid2 = roleOpt.getAttribute("data-uid");
       var cellEl = roleOpt.closest(".role-cell");
-      var pill = cellEl.querySelector(".role-pill");
-      var txt = roleOpt.getAttribute("data-role-opt");
-      if (pill && pill.firstChild) pill.firstChild.textContent = txt + " ";
-      pill.classList.toggle("is-admin", txt === "管理员");
       cellEl.querySelector(".role-pop").classList.add("hide");
-      toast("角色已切换为 " + txt + "（演示）");
+      API.put("/admin/users/" + uid2 + "/roles", { role_ids: [rid2] }).then(function () {
+        return API.get("/admin/users?page_size=100");
+      }).then(function (p) {
+        adminState.users = (p && p.items) || [];
+        renderUsersTab();
+        toast("角色已更新");
+      }).catch(function (e) { toast(e.detail || "角色更新失败"); });
       return;
     }
-    /* 通用滑动开关（提供商启用 / 模型启用 / 权限开关） */
+    /* 抽屉权限开关：应用到该用户的全部角色（整体重设） */
+    var permSwEl = el.closest("[data-perm-switch]");
+    if (permSwEl && el.closest("[data-udrawer]")) {
+      permSwEl.classList.toggle("on");
+      var drawer = el.closest("[data-udrawer]");
+      var codes = qsa("[data-perm-switch].on", drawer).map(function (s) { return s.getAttribute("data-perm-switch"); });
+      var head = drawer.querySelector(".ud-sub");
+      var username = head ? (head.textContent.match(/@([^\s·]+)/) || [])[1] : null;
+      var target = adminState.users.filter(function (u) { return u.username === username; })[0];
+      if (!target) return;
+      var roleIds = (target.roles || []).map(function (r) { return r.id; });
+      Promise.all(roleIds.map(function (rid3) {
+        return API.put("/admin/roles/" + rid3 + "/permissions", { permissions: codes });
+      })).then(function () {
+        toast("权限已应用到角色");
+        return API.get("/admin/roles");
+      }).then(function (r) {
+        adminState.roles = r || [];
+        renderRoleMatrix();
+      }).catch(function (e) { toast(e.detail || "权限更新失败"); });
+      return;
+    }
+    /* 提供商启用开关 */
+    var pvToggle = el.closest("[data-provider-toggle]");
+    if (pvToggle) {
+      var tpid = pvToggle.getAttribute("data-provider-toggle");
+      var cur = adminState.pvDetail;
+      API.put("/admin/models/providers/" + tpid, { enabled: !(cur && cur.enabled) }).then(function () {
+        toast("渠道状态已更新");
+        selectProvider(tpid);
+      }).catch(function (e) { toast(e.detail || "更新失败"); });
+      return;
+    }
+    /* 模型启用开关 */
+    var mEnable = el.closest("[data-model-enable]");
+    if (mEnable) {
+      var mid3 = mEnable.getAttribute("data-model-enable");
+      var rowEl = mEnable.closest(".mm-model");
+      var nowOn = mEnable.classList.contains("on");
+      API.put("/admin/models/providers/" + adminState.pvDetail.id + "/models/" + mid3, { enabled: !nowOn }).then(function () {
+        mEnable.classList.toggle("on", !nowOn);
+        toast(!nowOn ? "模型已启用" : "模型已停用");
+      }).catch(function (e) { toast(e.detail || "更新失败"); });
+      return;
+    }
+    /* 其他场景的通用滑动开关（演示页兜底） */
     var sw = el.closest(".switch");
-    if (sw) { sw.classList.toggle("on"); toast("已更新（演示）"); return; }
+    if (sw && !el.closest("[data-udrawer]")) { sw.classList.toggle("on"); toast("已更新（演示）"); return; }
 
     /* 模型管理：切换提供商条目 */
     var mmItem = el.closest("[data-pv]");
     if (mmItem && !el.closest(".btn")) {
-      var pid = mmItem.getAttribute("data-pv");
-      qsa("#mm-list .mm-item").forEach(function (i) { i.classList.toggle("active", i === mmItem); });
-      renderPvDetail(pid);
+      selectProvider(mmItem.getAttribute("data-pv"));
       return;
     }
-    /* 设为默认模型 */
+    /* 添加提供商（先用 prompt 链，后续换正式表单） */
+    if (el.closest("[data-add-provider]")) {
+      var pname = window.prompt("提供商名称（如 DeepSeek 主号）");
+      if (!pname) return;
+      var pvendor = window.prompt("vendor（deepseek / kimi / openai / custom / mock）", "custom");
+      if (!pvendor) return;
+      var purl = window.prompt("Base URL（mock 可留空）", "") || "";
+      var pkey = window.prompt("API Key（mock 可留空）", "") || "";
+      API.post("/admin/models/providers", { name: pname, vendor: pvendor, base_url: purl, api_key: pkey }).then(function () {
+        toast("提供商已创建");
+        loadAdminTabData();
+      }).catch(function (e) { toast(e.detail || "创建失败"); });
+      return;
+    }
+    /* 设为默认模型（默认路由两标记切换） */
     var setDef = el.closest("[data-set-default]");
     if (setDef) {
-      var name = setDef.getAttribute("data-set-default");
-      (D.providers || []).forEach(function (p) {
-        (p.models || []).forEach(function (m) { m.is_default = (m.name === name); });
-      });
-      var activePv = qs("#mm-list .mm-item.active");
-      renderPvDetail(activePv ? activePv.getAttribute("data-pv") : 1);
-      var listBox = qs("#mm-list");
-      if (listBox) { listBox.innerHTML = pvListHtml(activePv ? activePv.getAttribute("data-pv") : 1); injectIcons(listBox); }
-      toast("默认模型已切换为 " + name);
+      var mid4 = parseInt(setDef.getAttribute("data-set-default"), 10);
+      API.put("/admin/models/default-route", { provider_id: adminState.pvDetail.id, model_id: mid4 }).then(function () {
+        toast("默认路由已切换");
+        selectProvider(adminState.pvDetail.id);
+      }).catch(function (e) { toast(e.detail || "切换失败"); });
       return;
     }
     /* 删除自定义模型 */
-    if (el.closest("[data-del-model]")) {
-      var row = el.closest(".mm-model");
-      if (row) { row.remove(); toast("自定义模型已删除"); }
+    var delModel = el.closest("[data-del-model]");
+    if (delModel) {
+      var mid5 = delModel.getAttribute("data-del-model");
+      if (!window.confirm("删除该自定义模型？（若被默认路由引用会先报错）")) return;
+      API.del("/admin/models/providers/" + adminState.pvDetail.id + "/models/" + mid5).then(function () {
+        toast("模型已删除");
+        selectProvider(adminState.pvDetail.id);
+      }).catch(function (e) { toast(e.detail || "删除失败"); });
       return;
     }
-    /* 添加自定义模型 */
+    /* 添加自定义模型：先展开输入行 */
     if (el.closest("[data-add-model]")) {
-      var mlist = qs("#mm-detail .mm-model-list");
-      if (mlist) {
-        var n = mlist.children.length + 1;
-        mlist.insertAdjacentHTML("beforeend", modelRowHtml({ name: "custom-model-" + n, context: "—", custom: true }));
-        injectIcons(mlist);
-        toast("已添加自定义模型（演示）");
-      }
+      var addRow = qs("[data-mm-add]");
+      if (addRow) addRow.classList.toggle("hide");
       return;
     }
-    /* 拉取模型（平铺列表） */
+    var confirmAdd = el.closest("[data-confirm-add]");
+    if (confirmAdd) {
+      var nameInput = qs("[data-am-name]");
+      var mname = nameInput ? nameInput.value.trim() : "";
+      if (!mname) { toast("先填模型名"); return; }
+      API.post("/admin/models/providers/" + adminState.pvDetail.id + "/models", { name: mname }).then(function () {
+        toast("自定义模型已添加");
+        selectProvider(adminState.pvDetail.id);
+      }).catch(function (e) { toast(e.detail || "添加失败"); });
+      return;
+    }
+    /* 拉取模型（官方 API 平铺入库） */
     var fetchBtn = el.closest("[data-fetch]");
     if (fetchBtn) {
       var fpid = fetchBtn.getAttribute("data-fetch");
-      var prov = (D.providers || []).filter(function (pp) { return String(pp.id) === fpid; })[0];
-      var mlist2 = qs("#mm-detail .mm-model-list");
-      if (!prov || !mlist2) return;
       var bl = fetchBtn.querySelector(".bl");
       fetchBtn.disabled = true;
       if (bl) bl.textContent = "拉取中…";
-      setTimeout(function () {
+      API.post("/admin/models/providers/" + fpid + "/fetch-models", {}).then(function (arr) {
+        toast("已入库 " + (arr ? arr.length : 0) + " 个模型");
+        selectProvider(fpid);
+      }).catch(function (e) {
+        toast(e.detail || "拉取失败");
         fetchBtn.disabled = false;
-        if (bl) bl.textContent = "重新拉取";
-        var arr = prov.remoteModels || [];
-        mlist2.innerHTML = arr.length
-          ? arr.map(modelRowHtml).join("")
-          : '<div class="muted" style="padding:10px 0;font-size:13px;">该端点未暴露模型列表，请手动添加模型</div>';
-        injectIcons(mlist2);
-        toast(arr.length ? "已从官方 API 拉取 " + arr.length + " 个模型" : "未获取到模型列表，请手动添加");
-      }, 1100);
+        if (bl) bl.textContent = "拉取模型";
+      });
       return;
     }
-    /* 网关令牌：吊销 / 复制 */
+    /* 测试连通性 */
+    var testBtn = el.closest("[data-test-pv]");
+    if (testBtn) {
+      var tpid2 = testBtn.getAttribute("data-test-pv");
+      var bl2 = testBtn.querySelector(".bl");
+      testBtn.disabled = true;
+      if (bl2) bl2.textContent = "测试中…";
+      API.post("/admin/models/providers/" + tpid2 + "/test", {}).then(function (r) {
+        toast(r.ok ? "连通正常 · 延迟 " + r.latency_ms + "ms" : "连接失败：" + (r.error || "未知错误"));
+      }).catch(function (e) { toast(e.detail || "测试失败"); })
+        .then(function () {
+          testBtn.disabled = false;
+          if (bl2) bl2.textContent = "测试连通性";
+        });
+      return;
+    }
+    /* 保存渠道配置（Key 留空不修改） */
+    var savePv = el.closest("[data-save-pv]");
+    if (savePv) {
+      var spid = savePv.getAttribute("data-save-pv");
+      var baseEl = qs("[data-pv-base]");
+      var keyEl = qs("[data-pv-key]");
+      var body = { base_url: baseEl ? baseEl.value.trim() : "" };
+      if (keyEl && keyEl.value.trim()) body.api_key = keyEl.value.trim();
+      API.put("/admin/models/providers/" + spid, body).then(function () {
+        toast("配置已保存");
+        selectProvider(spid);
+      }).catch(function (e) { toast(e.detail || "保存失败"); });
+      return;
+    }
+    /* 抽屉：重置密码 / 停用账号 */
+    var resetBtn = el.closest("[data-reset-pass]");
+    if (resetBtn && !resetBtn.disabled) {
+      var ruid = resetBtn.getAttribute("data-reset-pass");
+      API.post("/admin/users/" + ruid + "/reset-password", {}).then(function (r) {
+        var kv = qs("[data-reset-result]");
+        if (kv) {
+          kv.style.display = "";
+          kv.querySelector("span:last-child").textContent = r.new_password + "（仅显示一次）";
+        }
+        toast("已生成一次性新密码");
+      }).catch(function (e) { toast(e.detail || "重置失败"); });
+      return;
+    }
+    var disableBtn = el.closest("[data-disable-account]");
+    if (disableBtn && !disableBtn.disabled) {
+      var duid = disableBtn.getAttribute("data-disable-account");
+      if (!window.confirm("停用该账号？其将立即无法登录。")) return;
+      API.put("/admin/users/" + duid, { is_active: false }).then(function () {
+        toast("账号已停用");
+        var dr3 = qs("[data-udrawer]"), mk3 = qs("[data-ud-mask]");
+        if (dr3) dr3.classList.add("hide");
+        if (mk3) mk3.classList.add("hide");
+        return API.get("/admin/users?page_size=100");
+      }).then(function (p) {
+        adminState.users = (p && p.items) || [];
+        renderUsersTab();
+      }).catch(function (e) { toast(e.detail || "操作失败"); });
+      return;
+    }
+    /* 网关令牌：吊销 / 复制接入地址 */
     var revoke = el.closest("[data-revoke-token]");
     if (revoke) {
       var tid = revoke.getAttribute("data-revoke-token");
-      (D.gatewayTokens || []).forEach(function (t) { if (String(t.id) === tid) t.active = false; });
-      var tb = qs("#gw-token-rows");
-      if (tb) tb.innerHTML = (D.gatewayTokens || []).map(tokenRowHtml).join("");
-      toast("令牌已吊销，调用方立即失效");
+      if (!window.confirm("吊销该令牌？调用方将立即失效。")) return;
+      API.del("/admin/models/gateway-tokens/" + tid).then(function () {
+        toast("令牌已吊销，调用方立即失效");
+        return API.get("/admin/models/gateway-tokens");
+      }).then(function (t) {
+        adminState.tokens = t || [];
+        renderTokenRows();
+      }).catch(function (e) { toast(e.detail || "吊销失败"); });
       return;
     }
     var copyText = el.closest("[data-copy-text]");
@@ -1227,25 +1433,40 @@
       }
       return;
     }
-    /* 新建网关令牌 */
+    /* 新建网关令牌（完整令牌仅显示一次） */
     var createToken = el.closest("[data-create-token]");
     if (createToken) {
       var tname = qs("#token-name");
       var scopeChip = qs('[data-token-scope] .chip.active');
       var once = qs("#token-once");
       if (!tname || !tname.value.trim()) { toast("先给令牌起个名字，比如 n8n"); return; }
-      var fullKey = "sk-lumen" + Math.random().toString(36).slice(2, 10);
-      var mask = "sk-••••" + fullKey.slice(-4);
-      D.gatewayTokens = D.gatewayTokens || [];
-      D.gatewayTokens.push({ id: Date.now(), name: tname.value.trim(), mask: mask, scope: scopeChip ? scopeChip.textContent.trim() : "全部模型", created: "2026-10-18", active: true });
-      var tb2 = qs("#gw-token-rows");
-      if (tb2) tb2.innerHTML = D.gatewayTokens.map(tokenRowHtml).join("");
-      if (once) {
-        once.classList.remove("hide");
-        var code = once.querySelector("code");
-        if (code) code.textContent = fullKey;
+      var scope = null;
+      if (scopeChip && scopeChip.textContent.trim() === "仅默认模型") {
+        scope = adminState.defaultRoute && adminState.defaultRoute.model ? [adminState.defaultRoute.model.name] : [];
       }
-      toast("令牌已创建，只完整显示这一次");
+      createToken.disabled = true;
+      API.post("/admin/models/gateway-tokens", { name: tname.value.trim(), model_scope: scope }).then(function (r) {
+        if (once) {
+          once.classList.remove("hide");
+          var code = once.querySelector("code");
+          if (code) code.textContent = r.token;
+        }
+        toast("令牌已创建，只完整显示这一次");
+        return API.get("/admin/models/gateway-tokens");
+      }).then(function (t) {
+        adminState.tokens = t || [];
+        renderTokenRows();
+      }).catch(function (e) { toast(e.detail || "创建失败"); })
+        .then(function () { createToken.disabled = false; });
+      return;
+    }
+    /* 令牌一次性明文复制 */
+    var copyOnce = el.closest("[data-copy-once]");
+    if (copyOnce) {
+      var codeEl = copyOnce.closest(".token-once-row").querySelector("code");
+      if (codeEl && navigator.clipboard) {
+        navigator.clipboard.writeText(codeEl.textContent).then(function () { toast("已复制"); }, function () { toast("复制失败"); });
+      }
       return;
     }
     /* 模型选择器 */

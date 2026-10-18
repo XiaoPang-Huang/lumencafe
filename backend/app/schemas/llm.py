@@ -60,6 +60,13 @@ class ModelCreate(BaseModel):
     meta: dict[str, Any] = Field(default_factory=lambda: dict(DEFAULT_MODEL_META))
 
 
+class ModelUpdate(BaseModel):
+    """模型级修正：能力元数据（Q16 固定结构）与启用开关。"""
+
+    enabled: bool | None = None
+    meta: dict[str, Any] | None = None
+
+
 class FetchedModel(BaseModel):
     name: str
     meta: dict[str, Any] = Field(default_factory=dict)
