@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261018u">
+<link rel="stylesheet" href="assets/css/main.css?v=20261018v">
 </head>
 <body data-route="workspace">
 
@@ -29,7 +29,7 @@
     <!-- 侧栏：火山方舟式悬浮灰色菜单卡（位于顶栏下方） -->
     <aside class="sider" id="sider">
       <nav class="sider-nav" id="sider-nav"></nav>
-      <div class="sider-user" role="button" tabindex="0" data-toast="账号详情（演示）">
+      <div class="sider-user" role="button" tabindex="0" data-goto-me>
         <span class="avatar">A</span>
         <span class="sider-user-meta">
           <span class="u-name">admin</span>
@@ -152,7 +152,7 @@
     <div class="modal-body" id="cats-body"></div>
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
-      <button class="btn" type="button" data-toast="分类已创建（演示）">新建</button>
+      <button class="btn" type="button" data-create-cat>新建</button>
     </div>
   </div>
 </div>
@@ -168,17 +168,17 @@
       <input type="text" autocomplete="username" value="admin" aria-hidden="true" tabindex="-1" style="position:absolute;left:-9999px;">
       <div class="field">
         <label>原密码</label>
-        <input type="password" autocomplete="current-password" placeholder="请输入当前密码">
+        <input type="password" autocomplete="current-password" placeholder="请输入当前密码" data-pass-old>
       </div>
       <div class="field" style="margin-bottom:0;">
         <label>新密码</label>
-        <input type="password" autocomplete="new-password" placeholder="至少 8 位，建议混合字母与数字">
+        <input type="password" autocomplete="new-password" placeholder="至少 8 位，建议混合字母与数字" data-pass-new>
         <div class="hint">修改成功后旧密码立即失效；忘记密码请联系管理员重置</div>
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
-      <button class="btn" type="button" data-toast="密码已修改（演示）">确认修改</button>
+      <button class="btn" type="button" data-pass-submit>确认修改</button>
     </div>
   </form>
 </div>
@@ -267,9 +267,9 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="assets/js/data.js?v=20261018u"></script>
-<script src="assets/js/icons.js?v=20261018u"></script>
-<script src="assets/js/api.js?v=20261018u"></script>
-<script src="assets/js/app.js?v=20261018u"></script>
+<script src="assets/js/data.js?v=20261018v"></script>
+<script src="assets/js/icons.js?v=20261018v"></script>
+<script src="assets/js/api.js?v=20261018v"></script>
+<script src="assets/js/app.js?v=20261018v"></script>
 </body>
 </html>

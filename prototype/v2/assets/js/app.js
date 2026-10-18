@@ -1667,6 +1667,63 @@
       return;
     }
     /* 我的：文献订阅关键词编辑（PUT /me/settings subscribe_keywords） */
+    if (el.closest("[data-goto-me]")) { go("me"); return; }
+    /* 修改密码（POST /auth/change-password） */
+    if (el.closest("[data-pass-submit]")) {
+      var oldEl = qs("[data-pass-old]"), newEl = qs("[data-pass-new]");
+      var oldPass = oldEl ? oldEl.value : "";
+      var newPass = newEl ? newEl.value : "";
+      if (!oldPass || !newPass) { toast("请填写原密码与新密码"); return; }
+      if (newPass.length < 6) { toast("新密码至少 6 位"); return; }
+      var passBtn = el.closest("[data-pass-submit]");
+      passBtn.disabled = true;
+      API.post("/auth/change-password", { old_password: oldPass, new_password: newPass }).then(function () {
+        var mm = qs("#modal-pass");
+        if (mm) mm.classList.remove("open");
+        if (oldEl) oldEl.value = "";
+        if (newEl) newEl.value = "";
+        toast("密码已修改，下次登录请用新密码");
+      }).catch(function (e) { toast(e.detail || "修改失败"); })
+        .then(function () { passBtn.disabled = false; });
+      return;
+    }
+    /* 分类管理：新建自定义分类 */
+    if (el.closest("[data-create-cat]")) {
+      var nameInput = qs("[data-new-cat-name]");
+      var catName = nameInput ? nameInput.value.trim() : "";
+      if (!catName) { toast("先填分类名称"); return; }
+      var createBtn = el.closest("[data-create-cat]");
+      createBtn.disabled = true;
+      API.post("/money/categories", { name: catName, kind: "both" }).then(function () {
+        if (nameInput) nameInput.value = "";
+        toast("分类已创建");
+        return API.get("/money/categories");
+      }).then(function (cats) {
+        moneyCats = cats || [];
+        renderMoneyChips();
+        renderTxCatChips();
+        renderCatsModal();
+      }).catch(function (e) { toast(e.detail || "创建失败"); })
+        .then(function () { createBtn.disabled = false; });
+      return;
+    }
+    /* 分类管理：删除自定义分类 */
+    var delCat = el.closest("[data-del-cat]");
+    if (delCat) {
+      var delCid = delCat.getAttribute("data-del-cat");
+      if (!window.confirm("删除该分类？名下有账目时会失败。")) return;
+      API.del("/money/categories/" + delCid).then(function () {
+        toast("分类已删除");
+        return API.get("/money/categories");
+      }).then(function (cats) {
+        moneyCats = cats || [];
+        renderMoneyChips();
+        renderTxCatChips();
+        renderCatsModal();
+        loadMoneyPage();
+      }).catch(function (e) { toast(e.detail || "删除失败"); });
+      return;
+    }
     if (el.closest('[data-modal-open="#modal-set-apps"]')) {
       API.get("/me").then(function (m) {
         var kws = ((m.settings || {}).subscribe_keywords || {}).keywords || [];
