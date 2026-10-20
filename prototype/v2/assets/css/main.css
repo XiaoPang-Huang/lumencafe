@@ -128,7 +128,11 @@ p { margin: 0; }
   border-radius: 50%; background: var(--brand-soft); color: var(--brand-strong);
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 13px; font-weight: 600;
+  overflow: hidden;
 }
+/* 用户自定义头像：img 铺满 / 色底首字铺满（由 app.js avatarInnerHtml 注入） */
+.avatar .avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar .avatar-initial { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 
 /* 内容列 */
 .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -530,14 +534,15 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 
 .msg { display: flex; gap: 12px; }
 .msg .avatar { width: 30px; height: 30px; font-size: 12.5px; margin-top: 2px; background: #eef0f3; color: var(--ink-2); }
-.msg.ai .avatar { background: var(--brand); color: #ffffff; font-weight: 600; }
+.msg.ai .avatar { background: var(--brand); color: #ffffff; }
+.msg.ai .avatar .ic { width: 17px; height: 17px; }
 .msg-body { min-width: 0; flex: 1; }
 .msg-text { font-size: 15px; line-height: 1.85; text-wrap: pretty; }
 .msg-text p + p { margin-top: 8px; }
 
-/* 用户消息：右侧浅灰圆角气泡、无头像（WorkBuddy 参考）；AI 保持左侧头像 + 纯文本无气泡 */
-.msg.user { justify-content: flex-end; }
-.msg.user .avatar { display: none; }
+/* 用户消息：右侧浅灰圆角气泡 + 右侧头像（row-reverse 镜像，头像在最右、气泡紧邻其左）；AI 保持左侧头像 + 纯文本无气泡 */
+.msg.user { flex-direction: row-reverse; justify-content: flex-start; }
+.msg.user .avatar { background: #eef0f3; color: var(--ink-2); }
 .msg.user .msg-body {
   flex: 0 1 auto;                 /* 覆盖默认 flex:1，气泡随内容收缩 */
   max-width: min(75%, 640px);     /* 桌面端气泡宽度上限 */
@@ -755,6 +760,18 @@ a.me-item:hover { background: var(--bg-soft); }
 .set-row .grow { flex: 1; min-width: 0; }
 .set-row .val { color: var(--ink-3); font-size: 13px; }
 
+/* 设置弹层：头像区块（通用设置 · #modal-set-general） */
+.set-avatar { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; padding: 14px 0 16px; }
+.set-avatar-preview { width: 44px; height: 44px; font-size: 16px; }
+.set-avatar-meta { flex: 1; min-width: 0; }
+.set-avatar-title { font-size: 14.5px; font-weight: 600; }
+.set-avatar-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.set-avatar-actions { display: flex; gap: 8px; }
+.set-avatar-dots { display: flex; align-items: center; gap: 10px; width: 100%; padding-top: 12px; border-top: 1px dashed var(--line); }
+.avatar-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; padding: 0; cursor: pointer; transition: transform .15s var(--ease-out), box-shadow .15s; }
+.avatar-dot:hover { transform: scale(1.12); }
+.avatar-dot.active { border-color: var(--surface); box-shadow: 0 0 0 2px var(--brand); }
+
 /* 滑动开关 */
 .switch {
   width: 38px; height: 22px; flex: none;
@@ -830,12 +847,13 @@ a.me-item:hover { background: var(--bg-soft); }
 .model-picker {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12.5px; color: var(--ink-2);
-  border: none; border-radius: 8px;
-  padding: 5px 9px; background: transparent;
-  transition: background .18s, color .18s;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  padding: 4px 11px; background: var(--surface);
+  transition: background .18s, color .18s, border-color .18s;
   font-family: var(--mono);
 }
-.model-picker:hover { background: var(--bg-soft); color: var(--ink); }
+/* hover 语言与 .chip 一致：浅蓝底 + 品牌蓝边框，视觉权重低于发送按钮 */
+.model-picker:hover { background: var(--brand-soft); border-color: var(--brand); color: var(--ink); }
 .model-picker .ic { width: 13px; height: 13px; }
 .chat-head-note { font-size: 12px; color: var(--ink-3); }
 .mp-pop {

@@ -96,6 +96,76 @@
     toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2200);
   }
 
+  /* ================= 用户头像（localStorage: lc_avatar） =================
+   * 形状约定：{"type":"img","data":"<dataURL>"} 或 {"type":"initial","color":"<hex>"}；
+   * 未设置 / 解析失败 → 回退用户名首字 + 灰底（AGENTS.md：用户头像锚定身份、允许自定义） */
+  var AVATAR_FALLBACK_BG = "#eef0f3";
+  function avatarSetting() {
+    try {
+      var raw = localStorage.getItem("lc_avatar");
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (o && o.type === "img" && typeof o.data === "string" && o.data.indexOf("data:image/") === 0) return o;
+      if (o && o.type === "initial" && typeof o.color === "string" && /^#[0-9a-fA-F]{6}$/.test(o.color)) return o;
+    } catch (err) {}
+    return null;
+  }
+  function userInitial() {
+    var name = LC_USER ? (LC_USER.nickname || LC_USER.username || "") : "";
+    name = String(name).trim();
+    return name ? name.slice(0, 1) : "?";
+  }
+  /* 头像内层：img 填充，或色底白字首字（未设置时灰底深字回退） */
+  function avatarInnerHtml() {
+    var s = avatarSetting();
+    if (s && s.type === "img") return '<img class="avatar-img" src="' + esc(s.data) + '" alt="">';
+    var color = (s && s.type === "initial" && s.color) ? s.color : AVATAR_FALLBACK_BG;
+    var fg = color === AVATAR_FALLBACK_BG ? "var(--ink-2)" : "#ffffff";
+    return '<span class="avatar-initial" style="background:' + color + ";color:" + fg + ';">' + esc(userInitial()) + "</span>";
+  }
+  function saveAvatar(obj) {
+    try {
+      localStorage.setItem("lc_avatar", JSON.stringify(obj));
+    } catch (err) {
+      toast("头像保存失败：浏览器存储空间不足");
+      return;
+    }
+    applyUserAvatar();
+    toast("头像已更新");
+  }
+  /* 设置弹窗：预览 + 预设色点选中态 */
+  function refreshAvatarPanel() {
+    var prev = qs("[data-avatar-preview]");
+    if (prev) prev.innerHTML = avatarInnerHtml();
+    var s = avatarSetting();
+    var cur = (s && s.type === "initial" && s.color) ? s.color : null;
+    qsa("[data-avatar-color]").forEach(function (d) {
+      d.classList.toggle("active", d.getAttribute("data-avatar-color") === cur);
+    });
+  }
+  /* 全局应用：顶栏 / 侧栏 / 已渲染对话消息 / 我的页 / 设置弹窗预览 */
+  function applyUserAvatar() {
+    var top = qs("#topbar-avatar");
+    if (top) top.innerHTML = avatarInnerHtml();
+    qsa(".sider-user .avatar").forEach(function (a) { a.innerHTML = avatarInnerHtml(); });
+    qsa(".msg.user .avatar").forEach(function (a) { a.innerHTML = avatarInnerHtml(); });
+    qsa(".me-card .avatar").forEach(function (a) { a.innerHTML = avatarInnerHtml(); });
+    refreshAvatarPanel();
+  }
+  /* 上传头像：仅图片、≤200KB（FileReader → dataURL） */
+  function handleAvatarFile(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { toast("请选择图片文件"); return; }
+    if (file.size > 200 * 1024) { toast("图片超过 200KB，请压缩后再上传"); return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      saveAvatar({ type: "img", data: String(reader.result || "") });
+    };
+    reader.onerror = function () { toast("图片读取失败，请重试"); };
+    reader.readAsDataURL(file);
+  }
+
   /* ================= 路由 ================= */
   var ROUTES = ["workspace", "chat", "money", "papers", "apps", "admin", "me", "login"];
   var NAV = [
@@ -146,6 +216,7 @@
     view.innerHTML = PAGES[r]();
     view.classList.add("view-in");
     injectIcons(view);
+    applyUserAvatar();
     window.scrollTo(0, 0);
     closeDrawers();
     if (INITS[r]) INITS[r](view);
@@ -631,7 +702,7 @@
       return '' +
         '<div class="page-head"><div><h1 class="page-title">我的</h1>' +
         '<div class="page-desc">账号信息、设置与关于</div></div></div>' +
-        '<div class="card me-card"><span class="avatar">' + esc((u.nickname || u.username || "?").slice(0, 1)) + "</span>" +
+        '<div class="card me-card"><span class="avatar">' + avatarInnerHtml() + "</span>" +
         '<div style="flex:1;"><div class="nick">' + esc(u.nickname || u.username) + '</div><div class="sub">' + esc(u.username) + " · " + (isAdmin ? "管理员" : "成员") + "</div></div>" +
         '<button class="btn btn-ghost btn-sm" type="button" data-logout><i data-ic="logout"></i>退出登录</button></div>' +
         '<div class="section-title">设置</div>' +
@@ -722,12 +793,12 @@
   function renderChatMessages(messages) {
     var inner = qs("[data-chat-inner]");
     if (!inner) return;
-    var who = LC_USER ? LC_USER.nickname : "我";
     inner.innerHTML = messages.map(function (m) {
       var isAi = m.role === "assistant";
-      return '<div class="msg ' + (isAi ? "ai" : "user") + '"><span class="avatar">' + (isAi ? "馆" : esc(who)) + "</span>" +
+      return '<div class="msg ' + (isAi ? "ai" : "user") + '"><span class="avatar">' + (isAi ? '<i data-ic="bot"></i>' : avatarInnerHtml()) + "</span>" +
         '<div class="msg-body"><div class="msg-text"><p>' + esc(m.content) + "</p></div></div></div>";
     }).join("");
+    injectIcons(inner);
     var sc = qs(".chat-scroll");
     if (sc) sc.scrollTop = sc.scrollHeight;
   }
@@ -1197,7 +1268,29 @@
     }
 
     var opener = el.closest("[data-modal-open]");
-    if (opener) { openModal(opener.getAttribute("data-modal-open")); return; }
+    if (opener) {
+      var targetSel = opener.getAttribute("data-modal-open");
+      openModal(targetSel);
+      if (targetSel === "#modal-set-general") refreshAvatarPanel();
+      return;
+    }
+    /* 头像设置（#modal-set-general 内，data-* 事件委托） */
+    var avatarDot = el.closest("[data-avatar-color]");
+    if (avatarDot) {
+      saveAvatar({ type: "initial", color: avatarDot.getAttribute("data-avatar-color") });
+      return;
+    }
+    if (el.closest("[data-avatar-upload]")) {
+      var fileInput = qs("[data-avatar-file]");
+      if (fileInput) fileInput.click();
+      return;
+    }
+    if (el.closest("[data-avatar-reset]")) {
+      localStorage.removeItem("lc_avatar");
+      applyUserAvatar();
+      toast("已恢复默认头像");
+      return;
+    }
     /* 弹层间切换：关掉当前，打开目标 */
     var switcher = el.closest("[data-modal-switch]");
     if (switcher) {
@@ -1948,6 +2041,14 @@
   });
   qs("#palette-input").addEventListener("input", function (e) { filterPalette(e.target.value); });
 
+  /* 头像设置：上传文件（change 事件委托） */
+  document.addEventListener("change", function (e) {
+    var f = e.target.closest ? e.target.closest("[data-avatar-file]") : null;
+    if (!f) return;
+    handleAvatarFile(f);
+    f.value = ""; /* 清空，允许再次选择同一文件 */
+  });
+
   /* 对话发送：POST /chat SSE 流式渲染（delta 逐段 + [DONE]） */
   function sendMessage() {
     var composer = qs(".composer textarea");
@@ -1955,12 +2056,11 @@
     if (!composer || !inner || chatState.sending) return;
     var text = composer.value.trim();
     if (!text) return;
-    var who = LC_USER ? LC_USER.nickname : "我";
     var emptyEl = qs("[data-chat-empty]");
     if (emptyEl) emptyEl.remove();
     var userMsg = document.createElement("div");
     userMsg.className = "msg user";
-    userMsg.innerHTML = '<span class="avatar">' + esc(who) + '</span><div class="msg-body"><div class="msg-text"><p></p></div></div>';
+    userMsg.innerHTML = '<span class="avatar">' + avatarInnerHtml() + '</span><div class="msg-body"><div class="msg-text"><p></p></div></div>';
     userMsg.querySelector("p").textContent = text;
     inner.appendChild(userMsg);
     composer.value = "";
@@ -1968,7 +2068,8 @@
 
     var reply = document.createElement("div");
     reply.className = "msg ai cursor";
-    reply.innerHTML = '<span class="avatar">馆</span><div class="msg-body"><div class="msg-text"><span class="thinking"><i></i><i></i><i></i></span><span class="stream-text"></span></div></div>';
+    reply.innerHTML = '<span class="avatar"><i data-ic="bot"></i></span><div class="msg-body"><div class="msg-text"><span class="thinking"><i></i><i></i><i></i></span><span class="stream-text"></span></div></div>';
+    injectIcons(reply);
     inner.appendChild(reply);
     var node = reply.querySelector(".stream-text");
     var sc = qs(".chat-scroll");
@@ -2018,13 +2119,9 @@
   /* ================= 启动 ================= */
   function applyUserChrome() {
     if (!LC_USER) return;
-    var initial = esc((LC_USER.nickname || LC_USER.username || "?").slice(0, 1));
-    var avatar = qs("#topbar-avatar");
-    if (avatar) avatar.textContent = initial;
+    applyUserAvatar();
     var siderUser = qs(".sider-user");
     if (siderUser) {
-      var a = siderUser.querySelector(".avatar");
-      if (a) a.textContent = initial;
       var name = siderUser.querySelector(".u-name");
       if (name) name.textContent = LC_USER.username;
       var role = siderUser.querySelector(".u-role");

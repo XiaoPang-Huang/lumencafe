@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261018y">
+<link rel="stylesheet" href="assets/css/main.css?v=20261020a">
 </head>
 <body data-route="workspace">
 
@@ -191,6 +191,25 @@
       <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
     </div>
     <div class="modal-body" style="padding-top:8px;">
+      <div class="set-avatar">
+        <span class="avatar set-avatar-preview" data-avatar-preview>A</span>
+        <div class="set-avatar-meta">
+          <div class="set-avatar-title">头像</div>
+          <div class="set-avatar-sub">应用于对话消息、顶栏与侧栏</div>
+        </div>
+        <div class="set-avatar-actions">
+          <button class="btn btn-ghost btn-sm" type="button" data-avatar-upload>上传图片</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-avatar-reset>恢复默认</button>
+        </div>
+        <div class="set-avatar-dots" data-avatar-dots>
+          <button class="avatar-dot" type="button" data-avatar-color="#1664ff" style="background:#1664ff;" aria-label="品牌蓝"></button>
+          <button class="avatar-dot" type="button" data-avatar-color="#7c5cff" style="background:#7c5cff;" aria-label="紫"></button>
+          <button class="avatar-dot" type="button" data-avatar-color="#0ea5a4" style="background:#0ea5a4;" aria-label="青"></button>
+          <button class="avatar-dot" type="button" data-avatar-color="#e8632c" style="background:#e8632c;" aria-label="橙"></button>
+          <button class="avatar-dot" type="button" data-avatar-color="#667085" style="background:#667085;" aria-label="灰"></button>
+        </div>
+        <input type="file" accept="image/*" data-avatar-file class="hide" aria-hidden="true" tabindex="-1">
+      </div>
       <div class="set-row">
         <i data-ic="lock"></i><span class="grow">修改密码</span>
         <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-pass">修改</button>
@@ -306,8 +325,8 @@
 <div class="toast" id="toast"></div>
 
 <script src="assets/js/data.js?v=20261018w"></script>
-<script src="assets/js/icons.js?v=20261018w"></script>
+<script src="assets/js/icons.js?v=20261020a"></script>
 <script src="assets/js/api.js?v=20261018w"></script>
-<script src="assets/js/app.js?v=20261018y"></script>
+<script src="assets/js/app.js?v=20261020a"></script>
 </body>
 </html>
