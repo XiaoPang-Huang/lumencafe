@@ -377,7 +377,8 @@
       "<td>" + esc((t.created_at || "").slice(0, 10) || "—") + "</td>" +
       "<td>" + (t.active ? '<span class="pill pill-ok">生效中</span>' : '<span class="pill pill-mute">已吊销</span>') + "</td>" +
       "<td>" + (t.active
-        ? '<button class="link-op danger" type="button" data-revoke-token="' + t.id + '">吊销</button>'
+        ? '<button class="link-op" type="button" data-rotate-token="' + t.id + '">重新生成</button>' +
+          '<button class="link-op danger" type="button" data-revoke-token="' + t.id + '" style="margin-left:8px;">吊销</button>'
         : '<span class="muted" style="font-size:12.5px;">—</span>') + "</td></tr>";
   }
   function renderTokenRows() {
@@ -475,7 +476,8 @@
       if (!adminState.pvDetail && p && p.length) selectProvider(p[0].id);
     }).catch(function (e) { toast(e.detail || "渠道加载失败"); });
     API.get("/admin/models/gateway-tokens").then(function (t) {
-      adminState.tokens = t || [];
+      /* 列表只展示生效中令牌：已吊销的（含种子数据）一律过滤掉 */
+      adminState.tokens = (t || []).filter(function (x) { return x.active; });
       renderTokenRows();
     }).catch(function () {});
     API.get("/admin/models/default-route").then(function (d) {
@@ -1271,6 +1273,15 @@
     if (opener) {
       var targetSel = opener.getAttribute("data-modal-open");
       openModal(targetSel);
+      /* 打开新建令牌弹窗时恢复创建场景的标题与一次性明文文案（重新生成场景会改写它们） */
+      if (targetSel === "#modal-token") {
+        var tTitle = qs("#modal-token-title");
+        if (tTitle) tTitle.textContent = "新建网关令牌";
+        var tOnceLabel = qs("#token-once-label");
+        if (tOnceLabel) tOnceLabel.textContent = "令牌已创建，只完整显示这一次，请立即复制";
+        var tOnceBox = qs("#token-once");
+        if (tOnceBox) tOnceBox.classList.add("hide");
+      }
       if (targetSel === "#modal-set-general") refreshAvatarPanel();
       return;
     }
@@ -1685,7 +1696,47 @@
       }).catch(function (e) { toast(e.detail || "操作失败"); });
       return;
     }
-    /* 网关令牌：吊销 / 复制接入地址 */
+    /* 网关令牌：重新生成 / 吊销 / 复制接入地址 */
+    var rotate = el.closest("[data-rotate-token]");
+    if (rotate) {
+      var rotId = rotate.getAttribute("data-rotate-token");
+      var oldTok = null;
+      adminState.tokens.forEach(function (x) { if (String(x.id) === String(rotId)) oldTok = x; });
+      if (!oldTok) { toast("令牌不存在或已吊销"); return; }
+      if (!window.confirm("重新生成将立即吊销旧令牌并生成同名新令牌，调用方需更换密钥。继续？")) return;
+      rotate.disabled = true;
+      var rotName = oldTok.name;
+      var rotScope = oldTok.model_scope === undefined ? null : oldTok.model_scope;
+      /* 组合 DELETE（立即吊销旧）+ POST（同名同模型范围新建），后端零改动 */
+      API.del("/admin/models/gateway-tokens/" + rotId).then(function () {
+        return API.post("/admin/models/gateway-tokens", { name: rotName, model_scope: rotScope });
+      }).then(function (r) {
+        var onceEl = qs("#token-once");
+        if (onceEl) {
+          onceEl.classList.remove("hide");
+          var codeEl2 = onceEl.querySelector("code");
+          if (codeEl2) codeEl2.textContent = r.token;
+          var lblEl = onceEl.querySelector("#token-once-label");
+          if (lblEl) lblEl.textContent = "令牌已重新生成，旧令牌已失效，只完整显示这一次，请立即复制";
+        }
+        var ttlEl = qs("#modal-token-title");
+        if (ttlEl) ttlEl.textContent = "重新生成令牌";
+        toast("已重新生成，旧令牌已失效");
+        openModal("#modal-token");
+        return API.get("/admin/models/gateway-tokens");
+      }).then(function (t) {
+        adminState.tokens = (t || []).filter(function (x) { return x.active; });
+        renderTokenRows();
+      }).catch(function (e) {
+        /* DELETE 已成功但 POST 失败：旧令牌已不可逆吊销，提示手动补建 */
+        toast("旧令牌已吊销，新建失败，请手动新建" + (e && e.detail ? "（" + e.detail + "）" : ""));
+        API.get("/admin/models/gateway-tokens").then(function (t) {
+          adminState.tokens = (t || []).filter(function (x) { return x.active; });
+          renderTokenRows();
+        }).catch(function () {});
+      }).then(function () { rotate.disabled = false; });
+      return;
+    }
     var revoke = el.closest("[data-revoke-token]");
     if (revoke) {
       var tid = revoke.getAttribute("data-revoke-token");
@@ -1694,7 +1745,8 @@
         toast("令牌已吊销，调用方立即失效");
         return API.get("/admin/models/gateway-tokens");
       }).then(function (t) {
-        adminState.tokens = t || [];
+        /* 已吊销行直接从列表移除，不再显示「已吊销」残留 */
+        adminState.tokens = (t || []).filter(function (x) { return x.active; });
         renderTokenRows();
       }).catch(function (e) { toast(e.detail || "吊销失败"); });
       return;
@@ -1728,7 +1780,7 @@
         toast("令牌已创建，只完整显示这一次");
         return API.get("/admin/models/gateway-tokens");
       }).then(function (t) {
-        adminState.tokens = t || [];
+        adminState.tokens = (t || []).filter(function (x) { return x.active; });
         renderTokenRows();
       }).catch(function (e) { toast(e.detail || "创建失败"); })
         .then(function () { createToken.disabled = false; });
