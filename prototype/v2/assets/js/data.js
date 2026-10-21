@@ -180,7 +180,7 @@ window.LC_DATA = {
     }
   ],
 
-  /* 网关对外令牌（GET /admin/gateway-tokens；/gw/v1 鉴权，供 n8n 等外部工具接入） */
+  /* 网关对外密钥（GET /admin/gateway-tokens；/gw/v1 鉴权，供 n8n 等外部工具接入） */
   gatewayTokens: [
     { id: 1, name: "n8n", mask: "sk-••••8f2a", scope: "全部模型", created: "2026-10-15", active: true }
   ],

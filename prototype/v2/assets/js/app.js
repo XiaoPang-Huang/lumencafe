@@ -347,7 +347,7 @@
       return '<div class="mm-item' + (String(p.id) === String(activeId) ? " active" : "") + '" data-pv="' + p.id + '" role="button" tabindex="0">' +
         '<span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="plug"></i></span>' +
         '<div class="grow"><div class="name">' + esc(p.name) + "</div>" +
-        '<div class="sub">' + esc(p.vendor) + (p.is_default ? " · 默认渠道" : "") + "</div></div>" +
+        '<div class="sub">' + esc(p.vendor) + (p.is_default ? " · 默认提供商" : "") + "</div></div>" +
         '<span class="pill ' + (p.enabled ? "pill-ok" : "pill-mute") + '">' + (p.enabled ? "启用" : "停用") + "</span></div>";
     }).join("");
     return html + '<button class="btn btn-ghost btn-sm" type="button" data-modal-open="#modal-add-pv"><i data-ic="plus"></i>添加提供商</button>';
@@ -375,10 +375,10 @@
       '<td><code class="mono-mask">' + esc(t.token_mask) + "</code></td>" +
       "<td>" + (t.model_scope && t.model_scope.length ? esc(t.model_scope.join("、")) : "全部模型") + "</td>" +
       "<td>" + esc((t.created_at || "").slice(0, 10) || "—") + "</td>" +
-      "<td>" + (t.active ? '<span class="pill pill-ok">生效中</span>' : '<span class="pill pill-mute">已吊销</span>') + "</td>" +
+      "<td>" + (t.active ? '<span class="pill pill-ok">生效中</span>' : '<span class="pill pill-mute">已删除</span>') + "</td>" +
       "<td>" + (t.active
         ? '<button class="link-op" type="button" data-rotate-token="' + t.id + '">重新生成</button>' +
-          '<button class="link-op danger" type="button" data-revoke-token="' + t.id + '" style="margin-left:8px;">吊销</button>'
+          '<button class="link-op danger" type="button" data-revoke-token="' + t.id + '" style="margin-left:8px;">删除</button>'
         : '<span class="muted" style="font-size:12.5px;">—</span>') + "</td></tr>";
   }
   function renderTokenRows() {
@@ -474,9 +474,9 @@
       adminState.providers = p || [];
       renderPvList(adminState.pvDetail ? adminState.pvDetail.id : (p && p.length ? p[0].id : null));
       if (!adminState.pvDetail && p && p.length) selectProvider(p[0].id);
-    }).catch(function (e) { toast(e.detail || "渠道加载失败"); });
+    }).catch(function (e) { toast(e.detail || "提供商加载失败"); });
     API.get("/admin/models/gateway-tokens").then(function (t) {
-      /* 列表只展示生效中令牌：已吊销的（含种子数据）一律过滤掉 */
+      /* 列表只展示生效中密钥：已删除的（含种子数据）一律过滤掉 */
       adminState.tokens = (t || []).filter(function (x) { return x.active; });
       renderTokenRows();
     }).catch(function () {});
@@ -654,7 +654,7 @@
         '<aside class="udrawer hide" data-pp-drawer></aside>';
     },
 
-    /* ---------- 平台管理：用户与角色（Supabase 式表格 + 角色矩阵 + 详情抽屉）/ 模型管理（LobeChat 式双栏）/ 网关令牌（已联调 /admin/*） ---------- */
+    /* ---------- 平台管理：用户与角色（Supabase 式表格 + 角色矩阵 + 详情抽屉）/ 模型管理（LobeChat 式双栏）/ 网关密钥（已联调 /admin/*） ---------- */
     admin: function () {
       return '' +
         '<div class="page-head"><div><h1 class="page-title">平台管理</h1>' +
@@ -662,7 +662,7 @@
         '<div class="admin-tabs">' +
           '<button class="admin-tab active" type="button" data-admin-tab="#pane-users"><i data-ic="users" style="vertical-align:-3px;"></i> 用户与角色</button>' +
           '<button class="admin-tab" type="button" data-admin-tab="#pane-models"><i data-ic="plug" style="vertical-align:-3px;"></i> 模型管理</button>' +
-          '<button class="admin-tab" type="button" data-admin-tab="#pane-tokens"><i data-ic="token" style="vertical-align:-3px;"></i> 网关令牌</button>' +
+          '<button class="admin-tab" type="button" data-admin-tab="#pane-tokens"><i data-ic="token" style="vertical-align:-3px;"></i> 网关密钥</button>' +
         "</div>" +
         /* 用户与角色 */
         '<div class="admin-pane active" id="pane-users">' +
@@ -685,15 +685,15 @@
             '<div class="card mm-detail" id="mm-detail"><div class="muted" style="padding:16px;">加载中…</div></div>' +
           "</div>" +
         "</div>" +
-        /* 网关令牌 */
+        /* 网关密钥 */
         '<div class="admin-pane" id="pane-tokens">' +
           '<div class="gw-endpoint"><span class="gw-endpoint-label">接入地址</span>' +
             '<code class="mono-mask" id="gw-url">' + esc(API.BASE) + '/gw/v1</code>' +
             '<button class="btn btn-ghost btn-sm" type="button" data-copy-text="#gw-url">复制</button></div>' +
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
-          "<tr><th>名称</th><th>令牌</th><th>模型范围</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>" +
+          "<tr><th>名称</th><th>密钥</th><th>模型范围</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>" +
           '<tbody id="gw-token-rows"><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
-          '<button class="btn btn-sm mt8" type="button" data-modal-open="#modal-token"><i data-ic="plus"></i>新建令牌</button>' +
+          '<button class="btn btn-sm mt8" type="button" data-modal-open="#modal-token"><i data-ic="plus"></i>新建密钥</button>' +
         "</div>";
     },
 
@@ -1273,12 +1273,12 @@
     if (opener) {
       var targetSel = opener.getAttribute("data-modal-open");
       openModal(targetSel);
-      /* 打开新建令牌弹窗时恢复创建场景的标题与一次性明文文案（重新生成场景会改写它们） */
+      /* 打开新建密钥弹窗时恢复创建场景的标题与一次性明文文案（重新生成场景会改写它们） */
       if (targetSel === "#modal-token") {
         var tTitle = qs("#modal-token-title");
-        if (tTitle) tTitle.textContent = "新建网关令牌";
+        if (tTitle) tTitle.textContent = "新建网关密钥";
         var tOnceLabel = qs("#token-once-label");
-        if (tOnceLabel) tOnceLabel.textContent = "令牌已创建，只完整显示这一次，请立即复制";
+        if (tOnceLabel) tOnceLabel.textContent = "密钥已创建，只完整显示这一次，请立即复制";
         var tOnceBox = qs("#token-once");
         if (tOnceBox) tOnceBox.classList.add("hide");
       }
@@ -1529,7 +1529,7 @@
       var tpid = pvToggle.getAttribute("data-provider-toggle");
       var cur = adminState.pvDetail;
       API.put("/admin/models/providers/" + tpid, { enabled: !(cur && cur.enabled) }).then(function () {
-        toast("渠道状态已更新");
+        toast("提供商状态已更新");
         selectProvider(tpid);
       }).catch(function (e) { toast(e.detail || "更新失败"); });
       return;
@@ -1652,7 +1652,7 @@
         });
       return;
     }
-    /* 保存渠道配置（Key 留空不修改） */
+    /* 保存提供商配置（Key 留空不修改） */
     var savePv = el.closest("[data-save-pv]");
     if (savePv) {
       var spid = savePv.getAttribute("data-save-pv");
@@ -1696,18 +1696,18 @@
       }).catch(function (e) { toast(e.detail || "操作失败"); });
       return;
     }
-    /* 网关令牌：重新生成 / 吊销 / 复制接入地址 */
+    /* 网关密钥：重新生成 / 删除 / 复制接入地址 */
     var rotate = el.closest("[data-rotate-token]");
     if (rotate) {
       var rotId = rotate.getAttribute("data-rotate-token");
       var oldTok = null;
       adminState.tokens.forEach(function (x) { if (String(x.id) === String(rotId)) oldTok = x; });
-      if (!oldTok) { toast("令牌不存在或已吊销"); return; }
-      if (!window.confirm("重新生成将立即吊销旧令牌并生成同名新令牌，调用方需更换密钥。继续？")) return;
+      if (!oldTok) { toast("密钥不存在或已删除"); return; }
+      if (!window.confirm("重新生成将立即删除旧密钥并生成同名新密钥，调用方需更换密钥。继续？")) return;
       rotate.disabled = true;
       var rotName = oldTok.name;
       var rotScope = oldTok.model_scope === undefined ? null : oldTok.model_scope;
-      /* 组合 DELETE（立即吊销旧）+ POST（同名同模型范围新建），后端零改动 */
+      /* 组合 DELETE（立即删除旧）+ POST（同名同模型范围新建），后端零改动 */
       API.del("/admin/models/gateway-tokens/" + rotId).then(function () {
         return API.post("/admin/models/gateway-tokens", { name: rotName, model_scope: rotScope });
       }).then(function (r) {
@@ -1717,19 +1717,19 @@
           var codeEl2 = onceEl.querySelector("code");
           if (codeEl2) codeEl2.textContent = r.token;
           var lblEl = onceEl.querySelector("#token-once-label");
-          if (lblEl) lblEl.textContent = "令牌已重新生成，旧令牌已失效，只完整显示这一次，请立即复制";
+          if (lblEl) lblEl.textContent = "密钥已重新生成，旧密钥已失效，只完整显示这一次，请立即复制";
         }
         var ttlEl = qs("#modal-token-title");
-        if (ttlEl) ttlEl.textContent = "重新生成令牌";
-        toast("已重新生成，旧令牌已失效");
+        if (ttlEl) ttlEl.textContent = "重新生成密钥";
+        toast("已重新生成，旧密钥已失效");
         openModal("#modal-token");
         return API.get("/admin/models/gateway-tokens");
       }).then(function (t) {
         adminState.tokens = (t || []).filter(function (x) { return x.active; });
         renderTokenRows();
       }).catch(function (e) {
-        /* DELETE 已成功但 POST 失败：旧令牌已不可逆吊销，提示手动补建 */
-        toast("旧令牌已吊销，新建失败，请手动新建" + (e && e.detail ? "（" + e.detail + "）" : ""));
+        /* DELETE 已成功但 POST 失败：旧密钥已不可逆删除，提示手动补建 */
+        toast("旧密钥已删除，新建失败，请手动新建" + (e && e.detail ? "（" + e.detail + "）" : ""));
         API.get("/admin/models/gateway-tokens").then(function (t) {
           adminState.tokens = (t || []).filter(function (x) { return x.active; });
           renderTokenRows();
@@ -1740,15 +1740,15 @@
     var revoke = el.closest("[data-revoke-token]");
     if (revoke) {
       var tid = revoke.getAttribute("data-revoke-token");
-      if (!window.confirm("吊销该令牌？调用方将立即失效。")) return;
+      if (!window.confirm("删除该密钥？调用方将立即失效。")) return;
       API.del("/admin/models/gateway-tokens/" + tid).then(function () {
-        toast("令牌已吊销，调用方立即失效");
+        toast("密钥已删除，调用方立即失效");
         return API.get("/admin/models/gateway-tokens");
       }).then(function (t) {
-        /* 已吊销行直接从列表移除，不再显示「已吊销」残留 */
+        /* 已删除行直接从列表移除，不再显示「已删除」残留 */
         adminState.tokens = (t || []).filter(function (x) { return x.active; });
         renderTokenRows();
-      }).catch(function (e) { toast(e.detail || "吊销失败"); });
+      }).catch(function (e) { toast(e.detail || "删除失败"); });
       return;
     }
     var copyText = el.closest("[data-copy-text]");
@@ -1759,13 +1759,13 @@
       }
       return;
     }
-    /* 新建网关令牌（完整令牌仅显示一次） */
+    /* 新建网关密钥（完整密钥仅显示一次） */
     var createToken = el.closest("[data-create-token]");
     if (createToken) {
       var tname = qs("#token-name");
       var scopeChip = qs('[data-token-scope] .chip.active');
       var once = qs("#token-once");
-      if (!tname || !tname.value.trim()) { toast("先给令牌起个名字，比如 n8n"); return; }
+      if (!tname || !tname.value.trim()) { toast("先给密钥起个名字，比如 n8n"); return; }
       var scope = null;
       if (scopeChip && scopeChip.textContent.trim() === "仅默认模型") {
         scope = adminState.defaultRoute && adminState.defaultRoute.model ? [adminState.defaultRoute.model.name] : [];
@@ -1777,7 +1777,7 @@
           var code = once.querySelector("code");
           if (code) code.textContent = r.token;
         }
-        toast("令牌已创建，只完整显示这一次");
+        toast("密钥已创建，只完整显示这一次");
         return API.get("/admin/models/gateway-tokens");
       }).then(function (t) {
         adminState.tokens = (t || []).filter(function (x) { return x.active; });
@@ -1786,7 +1786,7 @@
         .then(function () { createToken.disabled = false; });
       return;
     }
-    /* 令牌一次性明文复制 */
+    /* 密钥一次性明文复制 */
     var copyOnce = el.closest("[data-copy-once]");
     if (copyOnce) {
       var codeEl = copyOnce.closest(".token-once-row").querySelector("code");
