@@ -15,6 +15,7 @@ from app.models.papers import (
     PaperNote,
     PaperUser,
 )
+from app.models.skill import UserSkill
 from app.models.user import Permission, Role, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 
@@ -40,4 +41,5 @@ __all__ = [
     "User",
     "UserRole",
     "UserSetting",
+    "UserSkill",
 ]

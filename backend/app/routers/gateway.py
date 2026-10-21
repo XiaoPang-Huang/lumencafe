@@ -121,8 +121,10 @@ async def _stream_reply(
     cfg: llm_gateway.ClientCfg, model_name: str, messages: list[dict[str, Any]]
 ) -> AsyncIterator[str]:
     try:
-        async for delta in llm_gateway.chat_stream(cfg, messages):
-            yield _chunk(model_name, delta)
+        async for chunk in llm_gateway.chat_stream(cfg, messages):
+            # 对外 /gw/v1 协议不变（N-增1）：reasoning 双流帧不透出，仅转发正文
+            if chunk.delta:
+                yield _chunk(model_name, chunk.delta)
     except llm_gateway.UpstreamError:
         yield f"data: {json.dumps({'error': '上游模型调用失败'}, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"

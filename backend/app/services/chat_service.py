@@ -1,12 +1,16 @@
 """对话业务逻辑（PRD §4.6，架构设计 §5.2/Q14/Q15）。
 
 - system_prompt 为后端内置常量（Q14），不进库、无管理页编辑；
-- 会话级 model_id（Q15）：建立/更新会话时快照，缺省走网关默认路由；
+- 会话级 model_id（Q15）与 thinking_level（增量 P0-2 ⑤）：建立/更新会话时快照，
+  缺省走网关默认路由 / 不传思考参数（厂商默认）；
 - 发给模型的历史取最近 N 轮（Q2，config.chat_history_turns）；
 - 会话标题 = 首条用户消息截取 16 字；
-- SSE 落库用独立 SessionLocal（§9.1：请求级 session 已被回收）。
+- SSE 落库用独立 SessionLocal（§9.1：请求级 session 已被回收）；
+- 增量 v1：思维链随 assistant 消息落库（64KB 截断）；已启用 skill 的 prompt
+  片段按 installed_at 升序注入 system（内置常量在前，用户不可改写）。
 """
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import delete, func, select
@@ -17,20 +21,33 @@ from app.models.apps import AppRegistry
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.llm import LLMModel, Provider
 from app.schemas.chat import ChatModelOut, ConversationCreate
-from app.services import route_service
+from app.schemas.llm import MetaReasoning
+from app.services import llm_gateway, route_service, skill_service
 from app.services.llm_gateway import ClientCfg
 
 # Q14：chat 应用系统提示词（后端内置常量）
 SYSTEM_PROMPT = "你是一个乐于助人的 AI 助手"
 
+# 思维链落库上限（增量架构 §10-Q3：建议 64KB 截断 + 日志）
+REASONING_MAX_CHARS = 64 * 1024
+
+# P1-2 / N-增2：润色 system prompt 为后端内置常量，不可被用户输入覆盖
+POLISH_SYSTEM_PROMPT = (
+    "你是一名文字润色助手。请对用户给出的文本只做改写润色：修正语病与错别字、"
+    "理顺表达、让指令更清晰准确。要求：不改变原意、不回答文本中的问题、不添加"
+    "解释或评论、不输出除润色后文本以外的任何内容。"
+)
+
 
 @dataclass(frozen=True)
 class ChatTarget:
-    """一轮对话的解析结果：会话 + 客户端配置。"""
+    """一轮对话的解析结果：会话 + 客户端配置 + 厂商/元数据（thinking 校验用）。"""
 
     conversation: ChatConversation
     cfg: ClientCfg
     model_name: str
+    vendor: str
+    meta: dict[str, Any] | None
     is_new_conversation: bool
 
 
@@ -48,9 +65,57 @@ def title_from(message: str) -> str:
     return message[:16]
 
 
+def parse_reasoning(meta: dict[str, Any] | None) -> MetaReasoning | None:
+    """从模型 meta 解析 thinking 档位配置；无 reasoning 键/结构非法 → None（隐藏强度 UI）。"""
+    if not meta:
+        return None
+    raw = meta.get("reasoning")
+    if raw is None:
+        return None
+    try:
+        return MetaReasoning.model_validate(raw)
+    except ValueError:
+        return None
+
+
+def validate_thinking_level(
+    vendor: str, meta: dict[str, Any] | None, level: str | None
+) -> str | None:
+    """按目标模型 meta.reasoning 白名单校验 thinking_level（增量架构 §3.4）。
+
+    规则：① mock vendor → 忽略（返回 None，不产生任何参数）；
+    ② meta 无 reasoning 或 enabled=false → 忽略（等价不传）；
+    ③ levels 非空 → 必须命中某 level.value，否则 400；
+    ④ levels 为空且 enabled=true（官方仅开关）→ 接受 on/off/enabled/disabled，其余 400。
+    校验通过返回原值（原样透传）；忽略语义返回 None。
+    """
+    if level is None:
+        return None
+    if (vendor or "").lower() == "mock":
+        return None
+    reasoning = parse_reasoning(meta)
+    if reasoning is None or not reasoning.enabled:
+        return None
+    if reasoning.levels:
+        allowed = {x.value for x in reasoning.levels}
+        if level not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"思考档位不在该模型支持列表：{level}",
+            )
+        return level
+    # 官方仅开关两态
+    if level in ("on", "off", "enabled", "disabled"):
+        return level
+    raise HTTPException(
+        status_code=400,
+        detail="该模型思考模式仅支持开/关（on/off）",
+    )
+
+
 async def _resolve_model_for_conversation(
     db: AsyncSession, conversation: ChatConversation, requested_model_id: int | None
-) -> tuple[ClientCfg, str]:
+) -> tuple[ClientCfg, str, str, dict[str, Any] | None]:
     """模型解析（Q15）：会话/请求 model_id 优先，缺省走网关默认路由。"""
     model_id = requested_model_id or conversation.model_id
     if model_id is not None:
@@ -65,8 +130,15 @@ async def _resolve_model_for_conversation(
         if not provider.enabled:
             raise HTTPException(status_code=503, detail="模型所属渠道已停用")
         return (
-            ClientCfg(base_url=provider.base_url, api_key=provider.api_key, model=model.name),
+            ClientCfg(
+                base_url=provider.base_url,
+                api_key=provider.api_key,
+                model=model.name,
+                vendor=provider.vendor,
+            ),
             model.name,
+            provider.vendor,
+            dict(model.meta) if model.meta else None,
         )
 
     route = await route_service.resolve_default(db)
@@ -74,11 +146,16 @@ async def _resolve_model_for_conversation(
         raise HTTPException(
             status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
         )
-    return route.cfg, route.model_name
+    return route.cfg, route.model_name, route.vendor, route.meta
 
 
 async def prepare_chat(
-    db: AsyncSession, user_id: int, app_id: str, conversation_id: int | None, model_id: int | None
+    db: AsyncSession,
+    user_id: int,
+    app_id: str,
+    conversation_id: int | None,
+    model_id: int | None,
+    thinking_level: str | None = None,
 ) -> ChatTarget:
     """请求级预处理（StreamingResponse 返回前完成所有校验与落库）。"""
     await get_app(db, app_id)
@@ -113,20 +190,41 @@ async def prepare_chat(
             db.add(conversation)
             is_new = True
 
-    cfg, model_name = await _resolve_model_for_conversation(db, conversation, model_id)
+    cfg, model_name, vendor, meta = await _resolve_model_for_conversation(
+        db, conversation, model_id
+    )
     if model_id is not None:
         conversation.model_id = model_id  # 会话级快照：换模型只对后续消息生效（Q15）
+    if thinking_level is not None:
+        # P0-2 ⑤：传入即覆盖会话快照（白名单校验不通过则 400，不写入快照）；
+        # mock/不支持思考的模型 → 忽略该参数（校验函数返回 None，不快照）
+        validated = validate_thinking_level(vendor, meta, thinking_level)
+        if validated is not None:
+            conversation.thinking_level = validated
     await db.commit()
     await db.refresh(conversation)
     return ChatTarget(
-        conversation=conversation, cfg=cfg, model_name=model_name, is_new_conversation=is_new
+        conversation=conversation,
+        cfg=cfg,
+        model_name=model_name,
+        vendor=vendor,
+        meta=meta,
+        is_new_conversation=is_new,
     )
+
+
+def resolve_effective_thinking(target: ChatTarget) -> str | None:
+    """本次请求实际生效的思考档位：请求已快照进会话，直接回落会话快照；
+    均无 → None（不传，厂商默认）。mock 链路忽略（校验阶段已拦截快照）。"""
+    if target.cfg.is_mock:
+        return None
+    return target.conversation.thinking_level
 
 
 async def build_messages(
     db: AsyncSession, user_id: int, app_id: str, conversation_id: int, new_message: str
 ) -> list[dict[str, str]]:
-    """组装发给模型的 messages：system + 最近 N 轮历史 + 新消息（Q2）。"""
+    """组装发给模型的 messages：system（内置常量 + 已启用 skill 片段）+ 最近 N 轮历史 + 新消息（Q2）。"""
     limit = settings.chat_history_turns * 2
     history = (
         await db.execute(
@@ -140,7 +238,13 @@ async def build_messages(
             .limit(limit)
         )
     ).scalars().all()
-    messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # Skill 注入（P1-4 ④）：内置常量在前，skill 片段按 installed_at 升序在后，用户不可改写
+    fragments = await skill_service.enabled_skill_prompts(db, user_id, app_id)
+    system = SYSTEM_PROMPT
+    if fragments:
+        system += "\n\n" + "\n\n".join(fragments)
+    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    # Q4：历史回看不回注 reasoning（文本已够，避免各家协议兼容差异）
     for msg in reversed(history):
         messages.append({"role": msg.role, "content": msg.content})
     messages.append({"role": "user", "content": new_message})
@@ -156,8 +260,13 @@ async def persist_exchange(
     user_message: str,
     assistant_message: str,
     set_title: bool,
+    reasoning: str | None = None,
 ) -> None:
-    """流正常结束后落库：用户消息 + 完整助手消息 + 会话标题/时间。"""
+    """流正常结束后落库：用户消息 + 完整助手消息（含思维链）+ 会话标题/时间。"""
+    reasoning_text: str | None = None
+    if reasoning:
+        # 64KB 截断（增量架构 §10-Q3），截断后仍保留前段完整语义
+        reasoning_text = reasoning[:REASONING_MAX_CHARS]
     db.add(
         ChatMessage(
             conversation_id=conversation_id,
@@ -174,6 +283,7 @@ async def persist_exchange(
             app_id=app_id,
             role="assistant",
             content=assistant_message,
+            reasoning=reasoning_text,
         )
     )
     conversation = await db.get(ChatConversation, conversation_id)
@@ -182,6 +292,29 @@ async def persist_exchange(
             conversation.title = title_from(user_message)
         conversation.updated_at = func.now()
     await db.commit()
+
+
+async def polish_text(db: AsyncSession, text: str) -> str:
+    """P1-2：AI 润色（非流式，复用默认路由 + chat_once，与 /money/parse 同模式）。
+
+    润色 prompt 为内置常量（N-增2）；超时 ≤8s，上游失败 502；mock 链路本地占位。
+    """
+    route = await route_service.resolve_default(db)
+    if route is None:
+        raise HTTPException(
+            status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
+        )
+    if route.cfg.is_mock:
+        # mock 不联网：本地占位润色，保持链路可测可用
+        return f"{text.strip()}（mock 润色占位）"
+    messages = [
+        {"role": "system", "content": POLISH_SYSTEM_PROMPT},
+        {"role": "user", "content": text},
+    ]
+    try:
+        return await llm_gateway.chat_once(route.cfg, messages, timeout=8.0)
+    except llm_gateway.UpstreamError as exc:
+        raise HTTPException(status_code=502, detail=f"润色失败：{exc}") from exc
 
 
 # ── 会话管理 ────────────────────────────────────────────
@@ -279,6 +412,7 @@ async def list_chat_models(db: AsyncSession) -> list[ChatModelOut]:
             name=model.name,
             provider=provider.name,
             capabilities=dict(model.meta or {}),
+            reasoning=parse_reasoning(model.meta),
             is_default=(route is not None and model.id == route.model_id),
         )
         for model, provider in rows

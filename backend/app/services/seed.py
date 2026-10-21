@@ -207,6 +207,14 @@ async def _seed_llm(db: AsyncSession) -> None:
     )
     db.add(provider)
     await db.flush()
+    seed_meta: dict = dict(DEFAULT_MODEL_META)
+    if provider_key == "mock":
+        # 增量 v1：mock 种子带思考两态档位（演示/回归用；mock 链路忽略映射参数）
+        seed_meta["reasoning"] = {
+            "enabled": True,
+            "levels": [{"value": "on", "label": "开"}, {"value": "off", "label": "关"}],
+            "default_level": "on",
+        }
     db.add(
         LLMModel(
             provider_id=provider.id,
@@ -214,7 +222,7 @@ async def _seed_llm(db: AsyncSession) -> None:
             is_default=True,
             custom=False,
             enabled=True,
-            meta=dict(DEFAULT_MODEL_META),
+            meta=seed_meta,
             sort=1,
         )
     )

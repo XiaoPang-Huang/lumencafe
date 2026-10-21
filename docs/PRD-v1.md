@@ -15,6 +15,7 @@
 | v1.1-rev3 | 2026-10-15 | 范围收敛清理：删除「已移出（无限期推迟）」清单整节、Q3 作废条目、附录已砍应用映射行；全文清除已砍应用残留，文档仅保留平台层 + 对话 + 记账 + 文献 |
 | v1.1-rev4 | 2026-10-15 | 删除「应用级绑定」设计：模型管理回归纯网关——Provider CRUD + 调官方 `GET /models` 拉取模型（按 Agent/Token 套餐分组展示）；对话与记账解析统一走网关默认路由；系统提示词改为内置常量；§2.1 G2、§3.2、§3.3、§4.3、§4.6、US-7、P0-3、附录同步 |
 | v1.1-rev5 | 2026-10-18 | 模型选择与网关令牌：① Provider 条目 = 厂商 × 套餐平级（`llm_models.plan` 列移除），fetch-models 返回平铺模型列表，支持自定义模型（custom 标记，409 重名）；② `llm_models.meta` 固定 capabilities（vision/files/context_tokens），驱动对话文件上传显隐；③ `/chat` 增加可选 `model_id`（选择值用表 id；绑定会话级 `chat_conversations.model_id`，缺省走默认路由），新增 `GET /chat/models` 用户侧模型池；④ 新增 `gateway_tokens` 表与 `/admin/gateway-tokens*`（对外 `/gw/v1` 鉴权改查表，首个令牌由 `LUMEN_INTERNAL_TOKEN` 种子）；§4.3、§4.6、US-7、P0-3 同步 |
+| v1.1-rev6 | 2026-10-21 | 对话思考双流与润色（按《PRD-增量-对话思考与润色-v1.md》v1.1 与《架构设计-增量 v1》实施）：① §4.6 `POST /chat` 请求体增可选 `thinking_level`（R1 白名单内唯一可开放调用参数；会话级快照 `chat_conversations.thinking_level`，不传 = 厂商默认）；② SSE 事件流增 `data: {reasoning_delta}`（思维双流，R3），既有 `{delta}`/`{error}`/`[DONE]` 不变，`chat_messages` 增列 `reasoning`（可空 TEXT）；③ 新增 `POST /chat/polish`（AI 润色，内置 prompt 常量，≤8s，502/429）；④ `GET /chat/models` 每模型增 `reasoning`（`{enabled, levels:[{value,label}], default_level}`，R5）；⑤ 系统提示词注入决策：内置常量在前、用户已安装 skill 片段在后（增量 §7，不占调用参数白名单） |
 
 ---
 
@@ -196,8 +197,9 @@ PostgreSQL（user_id 行级隔离）
 
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
-| POST | `/chat` | **SSE**。请求 `{app_id, conversation_id?, message, model_id?}`。事件流：`data: {delta}` 逐段 → `data: {error}`（流中断）→ `data: [DONE]`。`model_id` 缺省走默认路由；system prompt 为内置常量；`conversation_id` 缺省用最近会话，无则新建 | 该 app 权限点 |
-| GET | `/chat/models` | 对话模型池：启用 Provider 的启用模型 `[{id, name, provider, capabilities, is_default}]`，按 Provider 条目分组；供模型选择器使用 | 登录用户 |
+| POST | `/chat` | **SSE**。请求 `{app_id, conversation_id?, message, model_id?, thinking_level?}`。事件流：`data: {reasoning_delta}`（思维双流，增量 rev6）→ `data: {delta}` 正文逐段 → `data: {error}`（流中断）→ `data: [DONE]`。`model_id` 缺省走默认路由；`thinking_level` 为可选思考档位（按目标模型 `meta.reasoning.levels` 白名单校验，会话级快照，不传 = 厂商默认）；system prompt 为内置常量（已启用 skill 片段按序注入其后，见增量文档 §7）；`conversation_id` 缺省用最近会话，无则新建 | 该 app 权限点 |
+| POST | `/chat/polish` | AI 润色 `{text}`（1–4000 字）→ `{polished}`；复用默认路由非流式调用，system prompt 内置常量，≤8s、失败 502、限流 429（增量 rev6，P1-2） | 该 app 权限点 |
+| GET | `/chat/models` | 对话模型池：启用 Provider 的启用模型 `[{id, name, provider, capabilities, reasoning, is_default}]`，按 Provider 条目分组；供模型选择器使用。`reasoning = {enabled, levels:[{value,label}], default_level}`（无该键 = 不支持思考，R5） | 登录用户 |
 | GET | `/chat/conversations?app_id=` | 会话列表（updated_at 倒序，含标题） | 该 app 权限点 |
 | POST | `/chat/conversations` | 新建会话 `{app_id, title?}` | 该 app 权限点 |
 | DELETE | `/chat/conversations/{cid}` | 删除会话（级联删消息） | 该 app 权限点 |

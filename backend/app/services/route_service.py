@@ -5,6 +5,7 @@
 解析严格只认标记（Q13：未配置或 provider 停用 → 视为无默认路由）。
 """
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,7 @@ class ResolvedRoute:
     model_id: int
     model_name: str
     cfg: ClientCfg
+    meta: dict[str, Any] | None = None  # 增量 v1：模型 meta（thinking 白名单校验用）
 
 
 async def resolve_default(db: AsyncSession) -> ResolvedRoute | None:
@@ -47,6 +49,10 @@ async def resolve_default(db: AsyncSession) -> ResolvedRoute | None:
         model_id=model.id,
         model_name=model.name,
         cfg=ClientCfg(
-            base_url=provider.base_url, api_key=provider.api_key, model=model.name
+            base_url=provider.base_url,
+            api_key=provider.api_key,
+            model=model.name,
+            vendor=provider.vendor,
         ),
+        meta=dict(model.meta) if model.meta else None,
     )

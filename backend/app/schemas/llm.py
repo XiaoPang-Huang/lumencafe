@@ -1,13 +1,55 @@
-"""请求/响应模型：模型管理与网关令牌（PRD §4.3，架构设计 Q10/Q16/Q17）。"""
+"""请求/响应模型：模型管理与网关令牌（PRD §4.3，架构设计 Q10/Q16/Q17）。
+
+增量 v1（R4/R5）：ModelMeta 增 reasoning（思考档位结构）/tools/custom_protocol
+预留位；meta 列为 schemaless JSON，新增键无 DDL（架构设计-增量 §3.1）。
+"""
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 VENDOR_WHITELIST = ("deepseek", "kimi", "openai", "custom", "mock")
 
 # Q16：meta 固定结构 {"context": "128K", "vision": false, "files": true}
 DEFAULT_MODEL_META: dict[str, Any] = {"context": "", "vision": False, "files": False}
+
+
+# ── meta.reasoning 思考档位结构（R5：档位跟模型官方走）─────────
+class ReasoningLevel(BaseModel):
+    """单个思考档位：value 为协议透传值（官方原样），label 仅展示用。"""
+
+    value: str = Field(min_length=1, max_length=32)  # off/high/max/32768…
+    label: str = Field(min_length=1, max_length=32)  # 高/超高、think-high…（官方命名不翻译）
+
+
+class MetaReasoning(BaseModel):
+    """llm_models.meta.reasoning 固定结构（P1-1 ①）。
+
+    - levels 为空 = 官方仅开关：前端显示「思考 开/关」二态（R5 边界①）；
+    - default_level 必须是 levels 中的一项（levels 非空时校验）。
+    """
+
+    enabled: bool = False
+    levels: list[ReasoningLevel] = Field(default_factory=list)
+    default_level: str | None = Field(default=None, max_length=32)
+
+    @field_validator("default_level", mode="after")
+    @classmethod
+    def _in_levels(cls, v: str | None, info) -> str | None:
+        if v and info.data.get("levels") and v not in {x.value for x in info.data["levels"]}:
+            raise ValueError("default_level 必须是 levels 中的一项")
+        return v
+
+
+class ModelMeta(BaseModel):
+    """llm_models.meta 固定结构（Q16 + R4/R5）：管理端读写统一校验入口。"""
+
+    context: str | None = None
+    vision: bool = False
+    files: bool = False
+    reasoning: MetaReasoning | None = None  # 无该键 = 不支持思考（enabled=false 等效）
+    tools: bool = False  # R4 预留位：本期只落数据不落功能
+    custom_protocol: bool = False  # R4 预留位：同上
 
 
 # ── Provider ────────────────────────────────────────────

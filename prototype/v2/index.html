@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261020a">
+<link rel="stylesheet" href="assets/css/main.css?v=20261021b">
 </head>
 <body data-route="workspace">
 
@@ -242,6 +242,11 @@
         <span class="val">后端内置常量</span>
       </div>
       <div class="set-row">
+        <i data-ic="spark"></i><span class="grow">AI 对话 · 已安装技能</span>
+        <span class="val" data-skill-count>—</span>
+        <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-skills">管理</button>
+      </div>
+      <div class="set-row">
         <i data-ic="book"></i><span class="grow">文献 · 订阅关键词</span>
         <span class="val" data-kw-val>未配置</span>
         <button class="btn btn-ghost btn-sm" type="button" data-kw-edit>设置</button>
@@ -280,6 +285,70 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
       <button class="btn" type="button" data-create-token>创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 已安装技能（我的 → 应用设置 → 对话；列表/开关/卸载，P1-4 ③） -->
+<div class="modal-mask" id="modal-skills">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>已安装技能</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" data-myskills-body>
+      <div class="muted" style="padding:12px 0;font-size:13px;">加载中…</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-modal-close>完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑模型：能力元数据 + 思考档位配置（P1-1；工具调用/自定义协议仅落数据不落功能） -->
+<div class="modal-mask" id="modal-model-meta">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>编辑模型</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>模型名</label>
+        <input type="text" data-mm-name disabled>
+      </div>
+      <div class="mm-grid">
+        <div class="field" style="margin-bottom:0;"><label>上下文窗口</label><input type="text" data-mm-context placeholder="如 128K"></div>
+        <div class="field" style="margin-bottom:0;"><label>能力</label>
+          <div class="mm-checks">
+            <label class="chk"><input type="checkbox" data-mm-vision> 图片输入</label>
+            <label class="chk"><input type="checkbox" data-mm-files> 文件上传</label>
+          </div>
+        </div>
+      </div>
+      <div class="set-row" style="margin-top:12px;">
+        <i data-ic="spark"></i><span class="grow">思考模式</span>
+        <button class="switch" type="button" data-mm-reasoning-enabled aria-label="思考模式开关"></button>
+      </div>
+      <div class="mm-reasoning hide" data-mm-reasoning-box>
+        <div class="mm-lv-head">
+          <span>思考档位（跟模型官方走，value 为协议透传值）</span>
+          <button class="btn btn-ghost btn-sm" type="button" data-mm-lv-add><i data-ic="plus"></i>增行</button>
+        </div>
+        <div data-mm-lv-rows></div>
+        <div class="field" style="margin-bottom:0;"><label>默认档</label>
+          <select data-mm-default></select>
+        </div>
+      </div>
+      <div class="mm-checks" style="margin-top:12px;">
+        <label class="chk"><input type="checkbox" data-mm-tools> 工具调用 <span class="badge-soon">预留</span></label>
+        <label class="chk"><input type="checkbox" data-mm-custom> 自定义协议 <span class="badge-soon">预留</span></label>
+      </div>
+      <div class="hint" style="margin-top:10px;">「工具调用 / 自定义协议」本期仅保存配置不落功能；档位配置保存后，对话模型弹层按此处渲染强度选择。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn" type="button" data-mm-save>保存</button>
     </div>
   </div>
 </div>
@@ -326,7 +395,7 @@
 
 <script src="assets/js/data.js?v=20261020c"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
-<script src="assets/js/api.js?v=20261018w"></script>
-<script src="assets/js/app.js?v=20261020c"></script>
+<script src="assets/js/api.js?v=20261021a"></script>
+<script src="assets/js/app.js?v=20261021b"></script>
 </body>
 </html>

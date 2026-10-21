@@ -28,6 +28,7 @@ from app.schemas.llm import (
     GatewayTokenCreated,
     GatewayTokenOut,
     ModelCreate,
+    ModelMeta,
     ModelOut,
     ModelUpdate,
     ProviderCreate,
@@ -44,6 +45,68 @@ router = APIRouter(prefix="/admin/models", tags=["admin-models"])
 
 async def _admin_models(user: User = Depends(require_permission("admin:models"))) -> User:
     return user
+
+
+# 增量 v1（§10-Q5）：fetch-models 按厂商预填思考档位（官方文档映射，管理员可改；
+# 预填表随官方文档演进手工维护）。levels 为空 = 官方仅开关两态（R5 边界①）。
+VENDOR_REASONING_PRESETS: dict[str, dict] = {
+    "deepseek": {
+        "enabled": True,
+        "levels": [
+            {"value": "high", "label": "高"},
+            {"value": "max", "label": "超高"},
+        ],
+        "default_level": "high",
+    },
+    "kimi": {
+        "enabled": True,
+        "levels": [
+            {"value": "high", "label": "高"},
+            {"value": "max", "label": "超高"},
+        ],
+        "default_level": "high",
+    },
+    "openai": {
+        "enabled": True,
+        "levels": [
+            {"value": "low", "label": "low"},
+            {"value": "medium", "label": "medium"},
+            {"value": "high", "label": "high"},
+            {"value": "xhigh", "label": "xhigh"},
+        ],
+        "default_level": "medium",
+    },
+    "custom": {
+        "enabled": True,
+        "levels": [
+            {"value": "low", "label": "low"},
+            {"value": "medium", "label": "medium"},
+            {"value": "high", "label": "high"},
+        ],
+        "default_level": "medium",
+    },
+    # mock：两态开关，便于本地双流链路演示
+    "mock": {
+        "enabled": True,
+        "levels": [{"value": "on", "label": "开"}, {"value": "off", "label": "关"}],
+        "default_level": "on",
+    },
+}
+
+
+def merge_model_meta(old: dict | None, new: dict | None) -> dict:
+    """meta 顶层键整体合并（以请求体为准，不回退历史键）→ ModelMeta 校验后整体写回。
+
+    增量 v1（R4/R5）：reasoning 走 MetaReasoning 结构校验（default_level 必须在
+    levels 内）；tools/custom_protocol 仅预留位。校验失败抛 400（结构非法不落库）。
+    """
+    merged = dict(old or {})
+    if new:
+        merged.update(new)
+    try:
+        return ModelMeta.model_validate(merged).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"meta 结构非法：{exc}") from exc
 
 
 def mask_key(key: str) -> str:
@@ -95,7 +158,7 @@ def _check_vendor(vendor: str) -> None:
 
 def _cfg_of(provider: Provider, model: str) -> llm_gateway.ClientCfg:
     return llm_gateway.ClientCfg(
-        base_url=provider.base_url, api_key=provider.api_key, model=model
+        base_url=provider.base_url, api_key=provider.api_key, model=model, vendor=provider.vendor
     )
 
 
@@ -225,16 +288,22 @@ async def fetch_models(
             await db.execute(select(LLMModel).where(LLMModel.provider_id == pid))
         ).scalars().all()
     }
+    # Q5：新入库模型按厂商预填思考档位（已存在的行保留原 meta 不回填）
+    vendor = (provider.vendor or "").lower()
+    preset_reasoning = VENDOR_REASONING_PRESETS.get(vendor)
     result: list[FetchedModel] = []
     for sort, name in enumerate(names, start=1):
         row = existing.get(name)
         if row is None:
+            meta = dict(DEFAULT_MODEL_META)
+            if preset_reasoning is not None:
+                meta["reasoning"] = dict(preset_reasoning)
             row = LLMModel(
                 provider_id=pid,
                 name=name,
                 custom=False,
                 enabled=True,
-                meta=dict(DEFAULT_MODEL_META),
+                meta=meta,
                 sort=sort,
             )
             db.add(row)
@@ -272,7 +341,7 @@ async def create_custom_model(
         name=body.name,
         custom=True,
         enabled=True,
-        meta=body.meta or dict(DEFAULT_MODEL_META),
+        meta=merge_model_meta(None, body.meta or dict(DEFAULT_MODEL_META)),
         sort=(max_sort or 0) + 1,
     )
     db.add(model)
@@ -289,7 +358,10 @@ async def update_model(
     admin: User = Depends(_admin_models),
     db: AsyncSession = Depends(get_db),
 ):
-    """模型级修正：meta 能力元数据（Q16）与启用开关（管理页编辑用）。"""
+    """模型级修正：meta 能力元数据（Q16 + R4/R5）与启用开关（管理页编辑用）。
+
+    meta 顶层键整体合并后按 ModelMeta 校验（reasoning 档位结构非法 400）。
+    """
     model = (
         await db.execute(
             select(LLMModel).where(LLMModel.id == mid, LLMModel.provider_id == pid)
@@ -299,7 +371,7 @@ async def update_model(
         raise HTTPException(status_code=404, detail="模型不存在")
     data = body.model_dump(exclude_unset=True)
     if data.get("meta") is not None:
-        model.meta = data["meta"]
+        model.meta = merge_model_meta(model.meta, data["meta"])
     if data.get("enabled") is not None:
         model.enabled = data["enabled"]
     await db.commit()

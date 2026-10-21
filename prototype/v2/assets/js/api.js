@@ -57,7 +57,9 @@
   }
   function del(path) { return request(path, { method: "DELETE" }); }
 
-  /* SSE 流式 POST（/chat）：返回 {response, onEvent, done} 手动消费 */
+  /* SSE 流式 POST（/chat）：返回 Promise 手动消费。
+   * 事件帧按 JSON 键分发（增量 v1 R3 起含 reasoning_delta），调用方 onEvent 自行区分：
+   * {delta} 正文 / {reasoning_delta} 思维 / {error} 失败 / {done:true} 结束。 */
   function stream(path, body, onEvent) {
     var token = getToken();
     return fetch(BASE + path, {
@@ -98,5 +100,17 @@
     });
   }
 
-  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream };
+  /* 增量 v1：AI 润色（P1-2，POST /chat/polish {text} → {polished}） */
+  function polish(text) { return post("/chat/polish", { text: text }); }
+
+  /* 增量 v1：SkillHub 代理 + 已安装技能（安装位置固定 app_id=chat） */
+  var skills = {
+    catalog: function (q) { return get("/skills/catalog?q=" + encodeURIComponent(q || "")); },
+    install: function (skillhubId) { return post("/skills/install", { skillhub_id: skillhubId }); },
+    mine: function () { return get("/skills/mine?app_id=chat"); },
+    setEnabled: function (id, enabled) { return put("/skills/" + id + "/enabled", { enabled: enabled }); },
+    uninstall: function (id) { return del("/skills/" + id); }
+  };
+
+  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, polish: polish, skills: skills };
 })();

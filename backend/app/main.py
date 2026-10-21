@@ -22,6 +22,7 @@ from app.routers import (
     me,
     money,
     papers,
+    skills,
 )
 from app.services.seed import run_seed
 
@@ -51,6 +52,7 @@ app.include_router(apps.router)
 app.include_router(internal.router)
 app.include_router(gateway.router)
 app.include_router(chat.router)
+app.include_router(skills.router)
 app.include_router(papers.router)
 
 # 本地开发跨域；生产由 Caddy 同域反代，可将 LUMEN_CORS_ORIGINS 留空

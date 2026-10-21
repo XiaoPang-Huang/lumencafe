@@ -1,7 +1,9 @@
 """通用对话接口（PRD §4.6，架构设计 §4.6/§5.2/Q14/Q15）。
 
-- POST /chat：SSE 事件流（delta → [DONE]；中途失败 {error} → [DONE]，半截回复不落库）；
-  校验（应用/权限/会话/模型）全部在返回 StreamingResponse 之前完成；
+- POST /chat：SSE 事件流（reasoning_delta → delta → [DONE]；中途失败 {error} → [DONE]，
+  半截回复不落库）；校验（应用/权限/会话/模型/thinking_level 白名单）全部在返回
+  StreamingResponse 之前完成；增量 v1：思维双流透传（R3）+ 档位快照（P0-2 ⑤）；
+- POST /chat/polish：AI 润色（P1-2，非流式复用 chat_once，≤8s，失败 502，限流 N14）；
 - 权限按注册表 perm_code 判定（require_permission 语义，查库取 code）；
 - SSE 期间落库用独立 SessionLocal（§9.1）。
 """
@@ -22,10 +24,15 @@ from app.schemas.chat import (
     ConversationCreate,
     ConversationOut,
     HistoryResponse,
+    PolishIn,
+    PolishOut,
 )
-from app.services import chat_service, llm_gateway, rbac_service
+from app.services import chat_service, llm_gateway, rate_limit, rbac_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+# 润色限流（N14）：每用户每分钟 10 次（与 /money/parse 同模式）
+_POLISH_LIMIT = 10
 
 
 async def _check_app_permission(db: AsyncSession, user: User, app_id: str) -> None:
@@ -43,19 +50,25 @@ def _sse(payload: dict) -> str:
 async def _chat_stream(
     user: User, body: ChatRequest, target: chat_service.ChatTarget, messages: list[dict[str, str]]
 ) -> AsyncIterator[str]:
-    """SSE 生成器：流式转发 → 成功后落库（校验与预处理已在路由层完成）。"""
+    """SSE 生成器：双流转发 → 成功后落库（校验与预处理已在路由层完成）。"""
     collected: list[str] = []
+    collected_reasoning: list[str] = []
+    thinking = chat_service.resolve_effective_thinking(target)
     try:
-        async for delta in llm_gateway.chat_stream(target.cfg, messages):
-            collected.append(delta)
-            yield _sse({"delta": delta})
+        async for chunk in llm_gateway.chat_stream(target.cfg, messages, thinking=thinking):
+            if chunk.reasoning_delta:
+                collected_reasoning.append(chunk.reasoning_delta)
+                yield _sse({"reasoning_delta": chunk.reasoning_delta})
+            elif chunk.delta:
+                collected.append(chunk.delta)
+                yield _sse({"delta": chunk.delta})
     except llm_gateway.UpstreamError:
-        # 流中途失败：已产生文字不落库（PRD §4.6）
+        # 流中途失败：已产生文字（含思维）不落库（PRD §4.6）
         yield _sse({"error": "刚刚卡了一下，没听清，要不再说一次？"})
         yield "data: [DONE]\n\n"
         return
 
-    # 流正常结束：完整助手消息落库后发送 [DONE]
+    # 流正常结束：完整助手消息（含思维链，64KB 截断在 service 层）落库后发送 [DONE]
     async with SessionLocal() as db:
         await chat_service.persist_exchange(
             db,
@@ -64,6 +77,7 @@ async def _chat_stream(
             conversation_id=target.conversation.id,
             user_message=body.message,
             assistant_message="".join(collected),
+            reasoning="".join(collected_reasoning) or None,
             set_title=target.is_new_conversation,
         )
     yield "data: [DONE]\n\n"
@@ -72,9 +86,9 @@ async def _chat_stream(
 @router.post("")
 async def chat(body: ChatRequest, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     await _check_app_permission(db, user, body.app_id)
-    # 校验/会话/模型解析全部在返回 SSE 之前完成：此处抛错可正常返回 4xx/503
+    # 校验/会话/模型/档位白名单全部在返回 SSE 之前完成：此处抛错可正常返回 4xx/503
     target = await chat_service.prepare_chat(
-        db, user.id, body.app_id, body.conversation_id, body.model_id
+        db, user.id, body.app_id, body.conversation_id, body.model_id, body.thinking_level
     )
     messages = await chat_service.build_messages(
         db, user.id, body.app_id, target.conversation.id, body.message
@@ -84,6 +98,21 @@ async def chat(body: ChatRequest, user: User = Depends(get_current_user), db: As
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── 润色（P1-2：composer 魔棒按钮）────────────────────────
+@router.post("/polish", response_model=PolishOut)
+async def polish(
+    body: PolishIn,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI 润色输入文本：内置润色 prompt（N-增2），走默认路由，≤8s，失败 502。"""
+    await _check_app_permission(db, user, "chat")
+    if not rate_limit.hit(f"chat-polish:{user.id}", limit=_POLISH_LIMIT):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+    polished = await chat_service.polish_text(db, body.text)
+    return PolishOut(polished=polished)
 
 
 # ── 模型池（Q16 驱动选择器）──────────────────────────────
@@ -99,6 +128,7 @@ def _conversation_out(c: ChatConversation) -> ConversationOut:
         app_id=c.app_id,
         title=c.title,
         model_id=c.model_id,
+        thinking_level=c.thinking_level,
         created_at=c.created_at,
         updated_at=c.updated_at,
     )
@@ -149,7 +179,13 @@ async def get_history(
     return HistoryResponse(
         conversation_title=title,
         messages=[
-            {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at}
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "reasoning": m.reasoning,
+                "created_at": m.created_at,
+            }
             for m in messages
         ],
     )

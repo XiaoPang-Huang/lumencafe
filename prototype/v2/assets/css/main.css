@@ -559,10 +559,10 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 .codeblock pre { margin: 0; padding: 13px 15px; overflow-x: auto; }
 .codeblock code { font-family: var(--mono); font-size: 13px; line-height: 1.7; color: #e4e6eb; }
 
-.thinking { display: inline-flex; gap: 5px; padding: 8px 0; }
-.thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: blink 1.2s infinite; }
-.thinking i:nth-child(2) { animation-delay: .2s; }
-.thinking i:nth-child(3) { animation-delay: .4s; }
+.thinking, .think-dots { display: inline-flex; gap: 5px; padding: 8px 0; }
+.thinking i, .think-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: blink 1.2s infinite; }
+.thinking i:nth-child(2), .think-dots i:nth-child(2) { animation-delay: .2s; }
+.thinking i:nth-child(3), .think-dots i:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
 .cursor::after { content: "▍"; color: var(--brand); animation: blink 1s infinite; }
 
@@ -1153,3 +1153,68 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
 .pp-save.is-on { color: var(--brand); border-color: var(--brand); }
 .pp-abstract { font-size: 13.5px; line-height: 1.75; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
 .pp-note { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 13.5px; resize: vertical; box-sizing: border-box; }
+
+/* ============ 增量 v1：思维面板 / 思考档位 / 功能列 / Skill 面板（2026-10-21） ============ */
+
+/* 思维面板（P0-1：默认折叠，灰阶弱化，不得比正文更抢眼） */
+.think-box { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--bg-soft); }
+.think-head { display: flex; align-items: center; gap: 7px; padding: 7px 12px; font-size: 12.5px; color: var(--ink-3); cursor: pointer; user-select: none; border-radius: 10px; }
+.think-head:hover { color: var(--ink-2); }
+.think-head .ic { width: 14px; height: 14px; flex: none; }
+.think-head .think-title { flex: 1; min-width: 0; }
+.think-caret { transition: transform .2s var(--ease-out); }
+.think-box.open .think-caret { transform: rotate(180deg); }
+.think-body { padding: 2px 12px 10px; font-size: 13px; line-height: 1.8; color: var(--ink-3); white-space: pre-wrap; word-break: break-word; border-top: 1px dashed var(--line); }
+.think-body p { margin: 6px 0 0; }
+.think-box.thinking .think-head { cursor: default; }
+
+/* 模型弹层：思考强度行（P0-2 三分支：多档按钮组 / 开·关二态 / 不渲染） */
+.mp-item { flex-wrap: wrap; }
+.mp-reason { width: 100%; display: flex; align-items: center; gap: 6px; padding: 3px 0 2px 21px; }
+.mp-reason-label { font-size: 11.5px; color: var(--ink-3); flex: none; }
+.lv-chip { font-size: 11.5px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: #fff; color: var(--ink-2); cursor: pointer; font-family: var(--sans); }
+.lv-chip:hover { border-color: var(--brand); }
+.lv-chip.active { border-color: var(--brand); color: var(--brand-strong); background: var(--brand-soft); }
+
+/* 左侧功能列（P1-3：新建会话/收藏/专家/Skill/MCP） */
+.fn-col { padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.fn-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13.5px; color: var(--ink-2); background: none; border: none; cursor: pointer; text-align: left; font-family: var(--sans); }
+.fn-item:hover { background: var(--bg-soft); color: var(--ink); }
+.fn-item .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+
+/* Skill 侧层面板（P1-4） */
+.skill-panel { position: fixed; right: 0; top: 57px; bottom: 0; width: 330px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); z-index: 70; display: none; }
+.skill-panel.open { display: flex; flex-direction: column; animation: slide-in-r .26s var(--ease-out); }
+@keyframes slide-in-r { from { transform: translateX(36px); opacity: .4; } to { transform: none; opacity: 1; } }
+.skill-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.skill-head .t { font-weight: 700; font-size: 15px; }
+.skill-search { display: flex; align-items: center; gap: 8px; margin: 10px 12px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); }
+.skill-search .ic { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+.skill-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: 13px; }
+.skill-list { flex: 1; overflow-y: auto; }
+.skill-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.skill-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--brand-soft); color: var(--brand-strong); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.skill-ico .ic { width: 16px; height: 16px; }
+.skill-name { font-size: 13.5px; font-weight: 600; }
+.skill-desc { font-size: 12px; color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
+
+/* 管理端 · 模型 meta 档位子表单（P1-1） */
+.mm-checks { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 4px 0; }
+.mm-checks .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.mm-checks .chk input { accent-color: var(--brand); }
+.mm-reasoning { margin-top: 4px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; background: var(--bg-soft); }
+.mm-lv-head { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--ink-3); margin-bottom: 8px; }
+.lv-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lv-row input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 12.5px; }
+.lv-row input:focus { outline: none; border-color: var(--brand); }
+
+/* 润色按钮态 */
+.icon-btn.is-disabled { opacity: .38; cursor: not-allowed; }
+.icon-btn.is-loading { opacity: .6; pointer-events: none; }
+
+/* 窄屏：功能列折叠为图标列（P1-3 ②） */
+@media (max-width: 900px) {
+  .fn-item span { display: none; }
+  .fn-item { justify-content: center; padding: 9px 10px; }
+  .skill-panel { top: 0; }
+}

@@ -78,8 +78,8 @@ async def test_chat_reuses_latest_conversation(client):
 async def test_chat_midstream_failure_not_persisted(client, monkeypatch):
     headers = await _chat_user(client)
 
-    async def broken_stream(cfg, messages):
-        yield "半截"
+    async def broken_stream(cfg, messages, thinking=None, timeout=120.0):
+        yield llm_gateway.StreamChunk(delta="半截")
         raise llm_gateway.UpstreamError("boom")
 
     monkeypatch.setattr(llm_gateway, "chat_stream", broken_stream)
