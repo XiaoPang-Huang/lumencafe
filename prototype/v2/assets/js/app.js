@@ -198,7 +198,7 @@
     var html = NAV.map(function (g) {
       return '<div class="sider-group"><div class="sider-group-label">' + g.group + "</div>" +
         g.items.map(function (it) {
-          return '<a class="nav-item" href="#/' + it.route + '" data-route-link="' + it.route + '" title="' + it.label + '"><i data-ic="' + it.icon + '"></i><span class="nav-label">' + it.label + "</span></a>";
+          return '<a class="nav-item" href="#/' + it.route + '" data-route-link="' + it.route + '"><i data-ic="' + it.icon + '"></i>' + it.label + "</a>";
         }).join("") + "</div>";
     }).join("");
     qs("#sider-nav").innerHTML = html;
@@ -662,26 +662,17 @@
           '<aside class="conv-panel">' +
             '<div class="conv-head"><span class="t">AI 对话</span>' +
             '<button class="icon-btn" type="button" data-new-conv aria-label="新建会话"><i data-ic="plus"></i></button></div>' +
-            /* 左侧功能列（P1-3：新建会话/收藏/专家/Skill/MCP；收藏·专家·MCP 占位） */
+            /* 左侧功能列（P1-3：新建会话/收藏/专家/Skill/MCP；收藏·专家·MCP 维持占位 toast 不动） */
             '<div class="fn-col">' +
               '<button class="fn-item" type="button" data-new-conv><i data-ic="plus"></i><span>新建会话</span></button>' +
               '<button class="fn-item" type="button" data-toast="收藏功能即将上线"><i data-ic="star"></i><span>收藏</span></button>' +
               '<button class="fn-item" type="button" data-toast="专家功能即将上线"><i data-ic="users"></i><span>专家</span></button>' +
-              '<button class="fn-item" type="button" data-open-skill-panel><i data-ic="spark"></i><span>Skill</span></button>' +
+              '<button class="fn-item" type="button" data-modal-open="#modal-skillhub"><i data-ic="spark"></i><span>Skill</span></button>' +
               '<button class="fn-item" type="button" data-toast="MCP 功能即将上线"><i data-ic="plug"></i><span>MCP</span></button>' +
             "</div>" +
             '<div class="conv-list" data-conv-list></div>' +
           "</aside>" +
           '<div class="drawer-mask" data-conv-mask></div>' +
-          /* Skill 面板（P1-4：SkillHub 浏览 + 安装，二次确认） */
-          '<div class="drawer-mask" data-skill-mask></div>' +
-          '<aside class="skill-panel" data-skill-panel>' +
-            '<div class="skill-head"><span class="t">Skill</span>' +
-            '<button class="icon-btn" type="button" data-close-skill-panel aria-label="关闭"><i data-ic="close"></i></button></div>' +
-            '<div class="skill-search"><i data-ic="search"></i>' +
-            '<input type="search" placeholder="搜索 Skill" data-skill-search autocomplete="off"></div>' +
-            '<div class="skill-list" data-skill-list><div class="muted" style="padding:14px;font-size:13px;">加载中…</div></div>' +
-          "</aside>" +
           '<div class="chat-main">' +
             '<div class="chat-head">' +
               '<button class="icon-btn" type="button" data-open-conv aria-label="会话列表" id="conv-toggle"><i data-ic="menu"></i></button>' +
@@ -976,7 +967,7 @@
     if (sc) sc.scrollTop = sc.scrollHeight;
   }
 
-  /* ================= Skill 面板（P1-4：SkillHub 浏览 + 安装） ================= */
+  /* ================= SkillHub · 技能中心（中央弹窗：搜索 / 浏览 / 安装） ================= */
   var skillState = { q: "", loading: false };
   function skillRowHtml(it) {
     return '<div class="skill-row">' +
@@ -988,12 +979,12 @@
         : '<button class="btn btn-ghost btn-sm" type="button" data-skill-install="' + esc(it.skillhub_id) + '">安装</button>') +
       "</div>";
   }
-  function renderSkillList(items) {
-    var box = qs("[data-skill-list]");
+  function renderHubList(items) {
+    var box = qs("[data-hub-list]");
     if (!box) return;
     box.innerHTML = (items && items.length)
       ? items.map(skillRowHtml).join("")
-      : '<div class="muted" style="padding:16px;font-size:13px;">没有匹配的 Skill</div>';
+      : '<div class="muted" style="padding:16px 0;font-size:13px;">没有匹配的技能</div>';
     injectIcons(box);
   }
   function loadSkillCatalog() {
@@ -1001,26 +992,15 @@
     skillState.loading = true;
     API.skills.catalog(skillState.q).then(function (d) {
       skillState.loading = false;
-      renderSkillList((d && d.items) || []);
+      renderHubList((d && d.items) || []);
     }).catch(function (e) {
       skillState.loading = false;
-      var box = qs("[data-skill-list]");
-      if (box) box.innerHTML = '<div class="muted" style="padding:16px;font-size:13px;">' + esc(e.detail || "加载失败") + "</div>";
+      var box = qs("[data-hub-list]");
+      if (box) box.innerHTML = '<div class="muted" style="padding:16px 0;font-size:13px;">' + esc(e.detail || "加载失败") + "</div>";
     });
   }
-  function openSkillPanel() {
-    var panel = qs("[data-skill-panel]"), mask = qs("[data-skill-mask]");
-    if (panel) panel.classList.add("open");
-    if (mask) mask.classList.add("open");
-    loadSkillCatalog();
-  }
-  function closeSkillPanel() {
-    var panel = qs("[data-skill-panel]"), mask = qs("[data-skill-mask]");
-    if (panel) panel.classList.remove("open");
-    if (mask) mask.classList.remove("open");
-  }
 
-  /* ================= 已安装技能（我的 → 应用设置 → 对话） ================= */
+  /* ================= 已安装技能（我的 → 应用设置 → 对话；含库中本地包，只读） ================= */
   function renderMySkills() {
     var body = qs("[data-myskills-body]");
     if (!body) return;
@@ -1029,12 +1009,20 @@
       var countEl = qs("[data-skill-count]");
       if (countEl) countEl.textContent = list.length ? list.length + " 个技能" : "未安装";
       body.innerHTML = list.length ? list.map(function (s) {
-        return '<div class="tx-row" style="padding:10px 0;">' +
+        /* 来源徽标 + 存放位置：skillhub=平台安装（可开关/卸载）；local=本地包（只读） */
+        var isLocal = s.source === "local";
+        var metaLine = '<span class="pill ' + (isLocal ? "pill-mute" : "pill-ok") + '">' + (isLocal ? "本地" : "SkillHub") + "</span>" +
+          (s.path ? '<code class="myskill-path">' + esc(s.path) + "</code>" : "");
+        return '<div class="tx-row" style="padding:10px 0;align-items:flex-start;">' +
           '<span class="skill-ico" style="width:28px;height:28px;"><i data-ic="' + esc(s.icon || "spark") + '"></i></span>' +
           '<span class="grow" style="min-width:0;"><div class="cat">' + esc(s.name) + "</div>" +
-          '<div class="note">' + esc(s.description || "") + "</div></span>" +
-          '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
-          '<button class="btn btn-danger-ghost btn-sm" type="button" data-myskill-del="' + s.id + '">卸载</button></div>';
+          '<div class="note">' + esc(s.description || "") + "</div>" +
+          '<div class="myskill-meta">' + metaLine + "</div></span>" +
+          (isLocal
+            ? '<span class="muted" style="font-size:12px;flex:none;">只读</span>'
+            : '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
+              '<button class="btn btn-danger-ghost btn-sm" type="button" data-myskill-del="' + s.id + '">卸载</button>') +
+          "</div>";
       }).join("") : '<div class="muted" style="padding:14px 0;font-size:13px;">还没安装技能——去对话页左侧「Skill」入口浏览 SkillHub 吧</div>';
       injectIcons(body);
     }).catch(function () {
@@ -1563,6 +1551,8 @@
       }
       if (targetSel === "#modal-set-general") refreshAvatarPanel();
       if (targetSel === "#modal-set-apps") renderMySkills();
+      /* SkillHub 技能中心：打开即加载目录 */
+      if (targetSel === "#modal-skillhub") loadSkillCatalog();
       return;
     }
     /* 头像设置（#modal-set-general 内，data-* 事件委托） */
@@ -1842,7 +1832,7 @@
     var myDel = el.closest("[data-myskill-del]");
     if (myDel) {
       var delId2 = myDel.getAttribute("data-myskill-del");
-      if (!window.confirm("卸载该技能？卸载后其提示词将不再注入对话。")) return;
+      if (!window.confirm("卸载该技能？将同时删除本地技能目录，其提示词不再注入对话。")) return;
       API.skills.uninstall(delId2).then(function () {
         toast("已卸载");
         renderMySkills();
@@ -1862,10 +1852,7 @@
       }
       return;
     }
-    /* Skill 面板：打开/关闭 */
-    if (el.closest("[data-open-skill-panel]")) { openSkillPanel(); return; }
-    if (el.closest("[data-close-skill-panel]") || el.closest("[data-skill-mask]")) { closeSkillPanel(); return; }
-    /* Skill 面板：安装（二次确认，P1-4 ②） */
+    /* SkillHub 技能中心：安装（二次确认，P1-4 ②） */
     var skillInstall = el.closest("[data-skill-install]");
     if (skillInstall) {
       var row = skillInstall.closest(".skill-row");
@@ -2465,7 +2452,6 @@
       qsa(".modal-mask.open").forEach(function (m) { m.classList.remove("open"); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       qsa(".role-pop:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
-      closeSkillPanel();
       closeDrawers();
       return;
     }
@@ -2610,8 +2596,8 @@
       syncPolishBtn();
       return;
     }
-    /* Skill 面板搜索（即时过滤） */
-    if (e.target.matches && e.target.matches("[data-skill-search]")) {
+    /* SkillHub 技能中心搜索（即时过滤） */
+    if (e.target.matches && e.target.matches("[data-hub-search]")) {
       skillState.q = e.target.value.trim();
       loadSkillCatalog();
       return;

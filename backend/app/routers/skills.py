@@ -21,7 +21,13 @@ from app.schemas.skill import (
     SkillInstallIn,
     UserSkillOut,
 )
-from app.services import chat_service, rate_limit, rbac_service, skill_service
+from app.services import (
+    chat_service,
+    rate_limit,
+    rbac_service,
+    skill_library,
+    skill_service,
+)
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -51,6 +57,8 @@ def _user_skill_out(s) -> UserSkillOut:
         description=s.description,
         enabled=s.enabled,
         installed_at=s.installed_at,
+        source=getattr(s, "source", "skillhub"),
+        path=getattr(s, "path", ""),
     )
 
 
@@ -75,7 +83,12 @@ async def skill_install(
     await _check_chat_permission(db, user)
     _check_write_limit(user.id)
     skill = await skill_service.install(db, user, body.skillhub_id)
-    return _user_skill_out(skill)
+    out = _user_skill_out(skill)
+    # 回显库内存放位置（skills/<slug>/）
+    entry = skill_library.find_by_skillhub_id(skill.skillhub_id)
+    if entry is not None:
+        out.path = f"skills/{entry.slug}/"
+    return out
 
 
 @router.get("/mine", response_model=list[UserSkillOut])
@@ -84,10 +97,10 @@ async def skill_mine(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """本人已安装列表（应用设置 · 对话 · 已安装技能）。"""
+    """本人已安装列表（应用设置 · 对话 · 已安装技能；含库中本地包，只读）。"""
     await _check_chat_permission(db, user)
     rows = await skill_service.list_mine(db, user.id, app_id)
-    return [_user_skill_out(s) for s in rows]
+    return [UserSkillOut(**s) for s in rows]
 
 
 @router.put("/{skill_id}/enabled")

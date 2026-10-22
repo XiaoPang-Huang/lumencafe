@@ -44,6 +44,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    environment:
+      # Skill 文件夹库根目录（Agent Skills 开放标准：skills/<slug>/SKILL.md）。
+      # 未设置时后端回落默认路径；容器内固定 /app/skills 并挂载宿主机卷持久化
+      SKILL_LIBRARY_DIR: /app/skills
+    volumes:
+      # 技能库持久化：安装的 skill 包存宿主机 ./skills，重建容器不丢失；
+      # 手工放入的本地包（含 SKILL.md）放这里即被识别（管理弹窗显示为「本地」）
+      - ./skills:/app/skills
     # 启动即迁移（Alembic 替代 create_all）
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 

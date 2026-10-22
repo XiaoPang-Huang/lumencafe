@@ -1211,17 +1211,15 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 .fn-item:hover { background: var(--bg-soft); color: var(--ink); }
 .fn-item .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
 
-/* Skill 侧层面板（P1-4） */
-.skill-panel { position: fixed; right: 0; top: 48px; bottom: 0; width: 330px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); z-index: 70; display: none; }
-.skill-panel.open { display: flex; flex-direction: column; animation: slide-in-r .26s var(--ease-out); }
-@keyframes slide-in-r { from { transform: translateX(36px); opacity: .4; } to { transform: none; opacity: 1; } }
-.skill-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-.skill-head .t { font-weight: 700; font-size: 15px; }
+/* SkillHub 技能中心（中央弹窗 #modal-skillhub）与已安装技能列表共用行样式 */
 .skill-search { display: flex; align-items: center; gap: 8px; margin: 10px 12px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); }
 .skill-search .ic { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
 .skill-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: 13px; }
-.skill-list { flex: 1; overflow-y: auto; }
 .skill-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.skill-row:last-child { border-bottom: none; }
+.hub-sub { font-size: 12.5px; color: var(--ink-3); }
+.myskill-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.myskill-path { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); background: var(--bg-soft); border-radius: 6px; padding: 1px 7px; }
 .skill-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--brand-soft); color: var(--brand-strong); display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .skill-ico .ic { width: 16px; height: 16px; }
 .skill-name { font-size: 13.5px; font-weight: 600; }
@@ -1245,5 +1243,4 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 @media (max-width: 900px) {
   .fn-item span { display: none; }
   .fn-item { justify-content: center; padding: 9px 10px; }
-  .skill-panel { top: 0; }
 }

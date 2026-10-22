@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # 对话
     chat_history_turns: int = 20  # 发给模型的最近轮数（PRD Q2，一轮 = 问答两条）
 
+    # Skill 文件夹库（Agent Skills 开放标准：skills/<slug>/SKILL.md 为真相源）。
+    # 解析优先级：环境变量 SKILL_LIBRARY_DIR > 本项 > 默认 <项目根>/skills；
+    # docker-compose 给 api 注入 /app/skills 并挂载 ./skills 卷。
+    skill_library_dir: str = ""
+
     # 文献抓取（NCBI E-utilities；中译走网关默认路由）
     ncbi_email: str = ""  # NCBI 建议带联系邮箱（可选）
     papers_default_keywords: str = ""  # 回落默认订阅关键词（逗号分隔；用户未配置时用）

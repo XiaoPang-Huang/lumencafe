@@ -40,7 +40,11 @@ class SkillEnabledIn(BaseModel):
 
 
 class UserSkillOut(BaseModel):
-    """本人已安装技能条目（prompt 不回显，任何接口不回写编辑）。"""
+    """本人已安装技能条目（prompt 不回显，任何接口不回写编辑）。
+
+    文件夹库（Agent Skills 开放标准）：path 为库内存放位置（skills/<slug>/），
+    source 区分 skillhub（平台安装）/ local（手工放入的本地包，id=0 只读）。
+    """
 
     id: int
     skillhub_id: str
@@ -48,4 +52,6 @@ class UserSkillOut(BaseModel):
     icon: str = ""
     description: str = ""
     enabled: bool
-    installed_at: dt.datetime
+    installed_at: dt.datetime | None = None  # 本地包无安装时间
+    source: str = "skillhub"  # skillhub / local（本地包只读，开关/卸载禁用）
+    path: str = ""  # 相对库根存放位置，如 skills/pdf-reader/

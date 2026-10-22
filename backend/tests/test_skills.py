@@ -4,10 +4,20 @@
 - install：成功 201、重复 409、平台不存在 404；
 - mine/enabled/uninstall：列表、开关（关闭即停止注入）、卸载；
 - 注入：POST /chat 组装 system 时内置常量在前、已启用 skill 片段在后（用户不可改写）。
+- 文件夹库：install 落盘 skills/<slug>/SKILL.md（fixture 重定向 SKILL_LIBRARY_DIR
+  到临时目录，避免测试污染仓库 skills/）。
 """
+
+import pytest
 
 from app.services import llm_gateway
 from tests.conftest import login
+
+
+@pytest.fixture(autouse=True)
+def _skill_library_tmp(tmp_path, monkeypatch):
+    """全部 skill 测试走临时技能库（环境变量覆盖，skill_library 每次调用时读取）。"""
+    monkeypatch.setenv("SKILL_LIBRARY_DIR", str(tmp_path / "skills"))
 
 
 async def _chat_user(client, username="skiller"):
