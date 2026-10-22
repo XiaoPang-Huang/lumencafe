@@ -37,6 +37,9 @@ SOURCE_SKILLHUB_PREFIX = "skillhub:"
 # 本地 skill 的来源前缀（手工放入 skills/ 的包；扫描注册预留）
 SOURCE_LOCAL_PREFIX = "local:"
 
+# 用户上传自制 skill 的 source 固定值（POST /skills/upload 落盘时写入 frontmatter）
+SOURCE_LOCAL_UPLOAD = "local-upload"
+
 # slug 清洗：小写字母/数字/连字符（与目录名安全字符集一致）
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 _SLUG_DASHES = re.compile(r"-{2,}")
@@ -126,6 +129,38 @@ def render_skill_md(slug: str, description: str, source: str, version: str, body
     )
 
 
+def has_frontmatter(text: str) -> bool:
+    """判定文本是否以 `---` 行起始且存在闭合 `---` 行（YAML frontmatter）。"""
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    if not lines or lines[0].strip() != "---":
+        return False
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return True
+    return False
+
+
+def ensure_source(text: str, source: str) -> str:
+    """确保 SKILL.md frontmatter 的 source 键为给定值：已有则替换，缺失则补写。
+
+    调用方须保证文本含合法 frontmatter（上传校验后调用）；输出统一为 LF 换行。
+    """
+    lines = (text or "").replace("\r\n", "\n").split("\n")
+    end = -1
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end = i
+            break
+    if end == -1:
+        return text
+    for i in range(1, end):
+        if lines[i].partition(":")[0].strip() == "source":
+            lines[i] = f"source: {source}"
+            return "\n".join(lines)
+    lines.insert(end, f"source: {source}")
+    return "\n".join(lines)
+
+
 def _read_entry(skill_dir: Path) -> LibraryEntry | None:
     """读取 skills/<slug>/SKILL.md；缺失/解析无正文视为非法包（跳过）。"""
     md = skill_dir / "SKILL.md"
@@ -167,8 +202,13 @@ def scan_library() -> list[LibraryEntry]:
 
 
 def index_by_source() -> dict[str, LibraryEntry]:
-    """source 值 → 库条目 索引（skillhub:<id> / local:<slug>）。"""
+    """source 值 → 库条目 索引（skillhub:<id> / local:<slug> / local-upload）。"""
     return {entry.source: entry for entry in scan_library()}
+
+
+def index_by_slug() -> dict[str, LibraryEntry]:
+    """目录名 slug → 库条目 索引（上传包按 slug 关联 DB 记录用）。"""
+    return {entry.slug: entry for entry in scan_library()}
 
 
 def find_by_skillhub_id(skillhub_id: str) -> LibraryEntry | None:

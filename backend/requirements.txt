@@ -9,3 +9,4 @@ PyJWT==2.15.*
 bcrypt==5.*
 httpx==0.28.*
 greenlet==3.*          # SQLAlchemy asyncio 依赖
+python-multipart==0.0.*        # POST /skills/upload multipart 解析（FastAPI UploadFile 依赖）

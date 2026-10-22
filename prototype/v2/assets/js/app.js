@@ -967,66 +967,70 @@
     if (sc) sc.scrollTop = sc.scrollHeight;
   }
 
-  /* ================= SkillHub · 技能中心（中央弹窗：搜索 / 浏览 / 安装） ================= */
-  var skillState = { q: "", loading: false };
-  function skillRowHtml(it) {
-    return '<div class="skill-row">' +
-      '<span class="skill-ico"><i data-ic="' + esc(it.icon || "spark") + '"></i></span>' +
-      '<div class="grow" style="min-width:0;"><div class="skill-name">' + esc(it.name) + "</div>" +
-      '<div class="skill-desc">' + esc(it.description || "") + "</div></div>" +
-      (it.installed
-        ? '<span class="pill pill-ok">已安装</span>'
-        : '<button class="btn btn-ghost btn-sm" type="button" data-skill-install="' + esc(it.skillhub_id) + '">安装</button>') +
-      "</div>";
-  }
-  function renderHubList(items) {
-    var box = qs("[data-hub-list]");
-    if (!box) return;
-    box.innerHTML = (items && items.length)
-      ? items.map(skillRowHtml).join("")
-      : '<div class="muted" style="padding:16px 0;font-size:13px;">没有匹配的技能</div>';
-    injectIcons(box);
-  }
-  function loadSkillCatalog() {
-    if (skillState.loading) return;
-    skillState.loading = true;
-    API.skills.catalog(skillState.q).then(function (d) {
-      skillState.loading = false;
-      renderHubList((d && d.items) || []);
-    }).catch(function (e) {
-      skillState.loading = false;
-      var box = qs("[data-hub-list]");
-      if (box) box.innerHTML = '<div class="muted" style="padding:16px 0;font-size:13px;">' + esc(e.detail || "加载失败") + "</div>";
-    });
-  }
-
-  /* ================= 已安装技能（我的 → 应用设置 → 对话；含库中本地包，只读） ================= */
-  function renderMySkills() {
+  /* ================= 我的技能（中央弹窗 #modal-skillhub：上传 SKILL.md / 搜索过滤 / 开关 / 卸载） ================= */
+  var mySkillsCache = []; /* 已安装技能全量（缓存，搜索框本地过滤） */
+  var skillFilterQ = "";
+  function loadMySkills() {
     var body = qs("[data-myskills-body]");
     if (!body) return;
     body.innerHTML = '<div class="muted" style="padding:12px 0;font-size:13px;">加载中…</div>';
     API.skills.mine().then(function (list) {
-      var countEl = qs("[data-skill-count]");
-      if (countEl) countEl.textContent = list.length ? list.length + " 个技能" : "未安装";
-      body.innerHTML = list.length ? list.map(function (s) {
-        /* 来源徽标 + 存放位置：skillhub=平台安装（可开关/卸载）；local=本地包（只读） */
-        var isLocal = s.source === "local";
-        var metaLine = '<span class="pill ' + (isLocal ? "pill-mute" : "pill-ok") + '">' + (isLocal ? "本地" : "SkillHub") + "</span>" +
-          (s.path ? '<code class="myskill-path">' + esc(s.path) + "</code>" : "");
-        return '<div class="tx-row" style="padding:10px 0;align-items:flex-start;">' +
-          '<span class="skill-ico" style="width:28px;height:28px;"><i data-ic="' + esc(s.icon || "spark") + '"></i></span>' +
-          '<span class="grow" style="min-width:0;"><div class="cat">' + esc(s.name) + "</div>" +
-          '<div class="note">' + esc(s.description || "") + "</div>" +
-          '<div class="myskill-meta">' + metaLine + "</div></span>" +
-          (isLocal
-            ? '<span class="muted" style="font-size:12px;flex:none;">只读</span>'
-            : '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
-              '<button class="btn btn-danger-ghost btn-sm" type="button" data-myskill-del="' + s.id + '">卸载</button>') +
-          "</div>";
-      }).join("") : '<div class="muted" style="padding:14px 0;font-size:13px;">还没安装技能——去对话页左侧「Skill」入口浏览 SkillHub 吧</div>';
-      injectIcons(body);
+      mySkillsCache = list || [];
+      renderMySkills();
     }).catch(function () {
       body.innerHTML = '<div class="muted" style="padding:12px 0;font-size:13px;">加载失败，请稍后重试</div>';
+    });
+  }
+  function renderMySkills() {
+    var body = qs("[data-myskills-body]");
+    if (!body) return;
+    var countEl = qs("[data-skill-count]");
+    if (countEl) countEl.textContent = mySkillsCache.length ? mySkillsCache.length + " 个技能" : "未安装";
+    var q = (skillFilterQ || "").toLowerCase();
+    var list = q ? mySkillsCache.filter(function (s) {
+      return (s.name || "").toLowerCase().indexOf(q) !== -1 ||
+        (s.description || "").toLowerCase().indexOf(q) !== -1;
+    }) : mySkillsCache;
+    body.innerHTML = list.length ? list.map(function (s) {
+      /* 来源徽标 + 存放位置：skillhub=平台安装；local-upload=本地上传；local=手工包（只读） */
+      var isLocal = s.source === "local";
+      var srcLabel = s.source === "local" ? "本地" : (s.source === "local-upload" ? "本地上传" : "SkillHub");
+      var metaLine = '<span class="pill ' + (isLocal ? "pill-mute" : "pill-ok") + '">' + srcLabel + "</span>" +
+        (s.path ? '<code class="myskill-path">' + esc(s.path) + "</code>" : "");
+      return '<div class="tx-row" style="padding:10px 0;align-items:flex-start;">' +
+        '<span class="skill-ico" style="width:28px;height:28px;"><i data-ic="' + esc(s.icon || "spark") + '"></i></span>' +
+        '<span class="grow" style="min-width:0;"><div class="cat">' + esc(s.name) + "</div>" +
+        '<div class="note">' + esc(s.description || "") + "</div>" +
+        '<div class="myskill-meta">' + metaLine + "</div></span>" +
+        (isLocal
+          ? '<span class="muted" style="font-size:12px;flex:none;">只读</span>'
+          : '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
+            '<button class="btn btn-danger-ghost btn-sm" type="button" data-myskill-del="' + s.id + '">卸载</button>') +
+        "</div>";
+    }).join("") : (q
+      ? '<div class="muted" style="padding:14px 0;font-size:13px;">没有匹配的技能</div>'
+      : '<div class="muted" style="padding:14px 0;font-size:13px;">还没有技能，点击上方上传 SKILL.md</div>');
+    injectIcons(body);
+  }
+  /* 上传技能：仅 .md、≤64KB（后端再校验一遍）；FormData 直传，成功后刷新列表 */
+  var skillUploading = false;
+  function handleSkillFile(input) {
+    var file = input.files && input.files[0];
+    input.value = ""; /* 清空，允许再次选择同一文件 */
+    if (!file || skillUploading) return;
+    if (!/\.md$/i.test(file.name)) { toast("请选择 .md 技能文件"); return; }
+    if (file.size > 64 * 1024) { toast("文件超过 64KB，请精简后再上传"); return; }
+    skillUploading = true;
+    var btn = qs("[data-skill-upload]");
+    if (btn) btn.classList.add("is-loading");
+    API.skills.upload(file).then(function (d) {
+      toast("技能已安装到 " + ((d && d.path) || "skills/"));
+      loadMySkills();
+    }).catch(function (e) {
+      toast((e && e.detail) || "上传失败，请重试");
+    }).then(function () {
+      skillUploading = false;
+      if (btn) btn.classList.remove("is-loading");
     });
   }
 
@@ -1550,9 +1554,9 @@
         if (tOnceBox) tOnceBox.classList.add("hide");
       }
       if (targetSel === "#modal-set-general") refreshAvatarPanel();
-      if (targetSel === "#modal-set-apps") renderMySkills();
-      /* SkillHub 技能中心：打开即加载目录 */
-      if (targetSel === "#modal-skillhub") loadSkillCatalog();
+      /* 我的技能：打开弹窗/应用设置时刷新已安装列表（含条数徽标） */
+      if (targetSel === "#modal-set-apps") loadMySkills();
+      if (targetSel === "#modal-skillhub") loadMySkills();
       return;
     }
     /* 头像设置（#modal-set-general 内，data-* 事件委托） */
@@ -1572,6 +1576,12 @@
       toast("已恢复默认头像");
       return;
     }
+    /* 我的技能：「上传技能」按钮 → 触发隐藏 file input */
+    if (el.closest("[data-skill-upload]")) {
+      var skillFile = qs("[data-skill-file]");
+      if (skillFile) skillFile.click();
+      return;
+    }
     /* 弹层间切换：关掉当前，打开目标 */
     var switcher = el.closest("[data-modal-switch]");
     if (switcher) {
@@ -1579,7 +1589,7 @@
       if (cur) cur.classList.remove("open");
       var switchTarget = switcher.getAttribute("data-modal-switch");
       openModal(switchTarget);
-      if (switchTarget === "#modal-skills") renderMySkills();
+      if (switchTarget === "#modal-skillhub") loadMySkills();
       return;
     }
     var closer = el.closest("[data-modal-close]");
@@ -1818,14 +1828,14 @@
       }).catch(function (e) { toast(e.detail || "更新失败"); });
       return;
     }
-    /* 已安装技能：开关（关闭即停止注入）/ 卸载（应用设置 · 对话 · 已安装技能） */
+    /* 我的技能：开关（关闭即停止注入）/ 卸载（功能列 Skill / 应用设置 · 对话 · 已安装技能） */
     var myToggle = el.closest("[data-myskill-toggle]");
     if (myToggle) {
       var myId = myToggle.getAttribute("data-myskill-toggle");
       var nowOn = myToggle.getAttribute("data-enabled") === "1";
       API.skills.setEnabled(myId, !nowOn).then(function () {
         toast(!nowOn ? "已开启，下次对话生效" : "已关闭，停止注入");
-        renderMySkills();
+        loadMySkills();
       }).catch(function (e) { toast(e.detail || "操作失败"); });
       return;
     }
@@ -1835,7 +1845,7 @@
       if (!window.confirm("卸载该技能？将同时删除本地技能目录，其提示词不再注入对话。")) return;
       API.skills.uninstall(delId2).then(function () {
         toast("已卸载");
-        renderMySkills();
+        loadMySkills();
       }).catch(function (e) { toast(e.detail || "卸载失败"); });
       return;
     }
@@ -1850,22 +1860,6 @@
         if (tb) tb.classList.toggle("hide", !willOpen);
         if (box.hasAttribute && box.hasAttribute("data-think-last")) saveThinkOpenPref(willOpen);
       }
-      return;
-    }
-    /* SkillHub 技能中心：安装（二次确认，P1-4 ②） */
-    var skillInstall = el.closest("[data-skill-install]");
-    if (skillInstall) {
-      var row = skillInstall.closest(".skill-row");
-      var sName = row ? (row.querySelector(".skill-name") || {}).textContent || "" : "";
-      if (!window.confirm("安装「" + sName + "」到「对话」应用？\n安装后其提示词将注入你的全部对话，可随时在「我的 → 应用设置 → 对话」关闭或卸载。")) return;
-      skillInstall.disabled = true;
-      API.skills.install(skillInstall.getAttribute("data-skill-install")).then(function () {
-        toast("安装成功");
-        loadSkillCatalog();
-      }).catch(function (e) {
-        toast(e.detail || "安装失败");
-        skillInstall.disabled = false;
-      });
       return;
     }
     /* 润色按钮（P0-3） */
@@ -2482,6 +2476,13 @@
     f.value = ""; /* 清空，允许再次选择同一文件 */
   });
 
+  /* 我的技能：上传 SKILL.md（change 事件委托，input.value 在 handleSkillFile 内清空） */
+  document.addEventListener("change", function (e) {
+    var f = e.target.closest ? e.target.closest("[data-skill-file]") : null;
+    if (!f) return;
+    handleSkillFile(f);
+  });
+
   /* 对话发送：POST /chat SSE 双流渲染（reasoning_delta → 思维面板「思考中…」计时态；
    * delta → 正文；done → 面板定型可展开；error 语义不变） */
   function sendMessage() {
@@ -2596,10 +2597,10 @@
       syncPolishBtn();
       return;
     }
-    /* SkillHub 技能中心搜索（即时过滤） */
-    if (e.target.matches && e.target.matches("[data-hub-search]")) {
-      skillState.q = e.target.value.trim();
-      loadSkillCatalog();
+    /* 我的技能搜索（即时过滤已安装列表，本地缓存匹配） */
+    if (e.target.matches && e.target.matches("[data-skill-search]")) {
+      skillFilterQ = e.target.value.trim();
+      renderMySkills();
       return;
     }
     /* 管理端档位子表单：value 变化 → 刷新默认档下拉候选 */

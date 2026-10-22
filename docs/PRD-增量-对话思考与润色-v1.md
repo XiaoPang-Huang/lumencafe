@@ -12,6 +12,7 @@
 | v1 | 2026-10-18 | 初版：对话思考展示 + 会话级思考强度（固定三档）+ 润色按钮 + 管理端思考模式勾选 + 专家/Skill/MCP 架构预留 |
 | v1.1 | 2026-10-18 | ① **Q4 修订（用户拍板）**：思考档位不固定三档，改为**跟模型官方走**——meta.reasoning 由布尔升级为结构 `{enabled, levels:[{value,label}], default_level}`；无多档位模型不显示强度选择器（官方仅支持开关的显示「思考 开/关」二态）；P0-2 / P1-1 验收标准同步重写；决策修订清单补 R5 ② Q1/Q2/Q3/Q5/Q6 按产品经理推荐经用户确认，转为已决 ③ **新增需求**：对话左侧功能列 + SkillHub——Skill 本期实装（用户拍板），专家/MCP 占位；新增 P1-3 / P1-4，P2-1 改写 ④ §7 重写（Skill 从「预留」升级为「本期实装」，system 注入点被部分激活）⑤ 新增待确认 Q7–Q9 |
 | v1.2 | 2026-10-22 | ① Skill 存储落地业界标准（用户拍板）：**文件夹库**——skill = `skills/<slug>/SKILL.md`（frontmatter name/description/source/version + 正文，Agent Skills 开放标准），install 真实落盘、管理弹窗显示存放位置与来源、卸载删目录、对话注入读盘；DB 仅存用户安装关系（零新增迁移），旧数据兼容回退读 DB prompt（下版本可删）② SkillHub 发现 = 圆润中央弹窗（搜索/列表/安装），取消侧抽屉；收藏/专家/MCP 占位维持 toast 不动（用户指示收窄，「其他功能同样式」暂不实施） |
+| v1.3 | 2026-10-22 | **技能来源改为用户上传制（用户拍板）**：不接外部 SkillHub 平台，用户在「我的技能」弹窗上传自制 SKILL.md（仅 .md、≤64KB、frontmatter 含 name/description，落盘 `source: local-upload`、重名 409），统一管理（开关/卸载）；应用设置「已安装技能」管理入口与功能列 Skill 入口合并为同一弹窗，旧「已安装技能」独立弹窗下线。SkillHub 平台接入能力保留预留（后端 Provider 契约与 catalog/install 端点不动），自建 SkillHub 后再启用该链路 |
 
 
 ---

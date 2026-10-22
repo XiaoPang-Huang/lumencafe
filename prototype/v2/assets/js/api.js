@@ -103,7 +103,7 @@
   /* 增量 v1：AI 润色（P1-2，POST /chat/polish {text} → {polished}） */
   function polish(text) { return post("/chat/polish", { text: text }); }
 
-  /* 增量 v1：SkillHub 代理 + 已安装技能（安装位置固定 app_id=chat） */
+  /* 增量 v1：SkillHub 代理 + 已安装技能 + 用户上传（安装位置固定 app_id=chat） */
   var skills = {
     catalog: function (q) { return get("/skills/catalog?q=" + encodeURIComponent(q || "")); },
     install: function (skillhubId) { return post("/skills/install", { skillhub_id: skillhubId }); },
@@ -111,6 +111,32 @@
     setEnabled: function (id, enabled) { return put("/skills/" + id + "/enabled", { enabled: enabled }); },
     uninstall: function (id) { return del("/skills/" + id); }
   };
+
+  /* 上传自制 SKILL.md（multipart，不走 JSON 封装：request() 固定 Content-Type）。
+   * 单独 fetch + Bearer；401 处理与 request() 保持一致。 */
+  function uploadSkill(file) {
+    var form = new FormData();
+    form.append("file", file);
+    var headers = {};
+    var token = getToken();
+    if (token) headers["Authorization"] = "Bearer " + token;
+    return fetch(BASE + "/skills/upload", { method: "POST", headers: headers, body: form }).then(function (resp) {
+      if (resp.status === 401 && location.hash !== "#/login") {
+        clearToken();
+        location.hash = "#/login";
+        throw { status: 401, detail: "登录已过期，请重新登录" };
+      }
+      return resp.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) {}
+        if (!resp.ok) {
+          throw { status: resp.status, detail: (data && data.detail) || ("请求失败（" + resp.status + "）") };
+        }
+        return data;
+      });
+    });
+  }
+  skills.upload = uploadSkill;
 
   window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, polish: polish, skills: skills };
 })();

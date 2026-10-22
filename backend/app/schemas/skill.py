@@ -53,5 +53,5 @@ class UserSkillOut(BaseModel):
     description: str = ""
     enabled: bool
     installed_at: dt.datetime | None = None  # 本地包无安装时间
-    source: str = "skillhub"  # skillhub / local（本地包只读，开关/卸载禁用）
+    source: str = "skillhub"  # skillhub（平台安装）/ local-upload（用户上传）/ local（手工包只读）
     path: str = ""  # 相对库根存放位置，如 skills/pdf-reader/

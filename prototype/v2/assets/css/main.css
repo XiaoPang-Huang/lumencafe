@@ -1211,19 +1211,19 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 .fn-item:hover { background: var(--bg-soft); color: var(--ink); }
 .fn-item .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
 
-/* SkillHub 技能中心（中央弹窗 #modal-skillhub）与已安装技能列表共用行样式 */
+/* 我的技能（中央弹窗 #modal-skillhub）：上传按钮 + 搜索工具条 / 已安装列表行样式共用 */
+.skill-toolbar { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.skill-toolbar .skill-search { flex: 1; min-width: 0; margin: 0; }
+.skill-toolbar .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.skill-toolbar .btn .ic { width: 14px; height: 14px; }
 .skill-search { display: flex; align-items: center; gap: 8px; margin: 10px 12px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-soft); }
 .skill-search .ic { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
 .skill-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: 13px; }
-.skill-row { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
-.skill-row:last-child { border-bottom: none; }
 .hub-sub { font-size: 12.5px; color: var(--ink-3); }
 .myskill-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .myskill-path { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); background: var(--bg-soft); border-radius: 6px; padding: 1px 7px; }
 .skill-ico { width: 32px; height: 32px; border-radius: 9px; background: var(--brand-soft); color: var(--brand-strong); display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .skill-ico .ic { width: 16px; height: 16px; }
-.skill-name { font-size: 13.5px; font-weight: 600; }
-.skill-desc { font-size: 12px; color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
 
 /* 管理端 · 模型 meta 档位子表单（P1-1） */
 .mm-checks { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 4px 0; }

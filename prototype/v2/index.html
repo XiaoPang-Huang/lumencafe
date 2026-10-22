@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261022d">
+<link rel="stylesheet" href="assets/css/main.css?v=20261022e">
 </head>
 <body data-route="workspace">
 
@@ -244,7 +244,7 @@
       <div class="set-row">
         <i data-ic="spark"></i><span class="grow">AI 对话 · 已安装技能</span>
         <span class="val" data-skill-count>—</span>
-        <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-skills">管理</button>
+        <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-skillhub">管理</button>
       </div>
       <div class="set-row">
         <i data-ic="book"></i><span class="grow">文献 · 订阅关键词</span>
@@ -289,36 +289,24 @@
   </div>
 </div>
 
-<!-- 已安装技能（我的 → 应用设置 → 对话；列表/开关/卸载，P1-4 ③） -->
-<div class="modal-mask" id="modal-skills">
-  <div class="modal">
-    <div class="modal-head">
-      <h3>已安装技能</h3>
-      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
-    </div>
-    <div class="modal-body" data-myskills-body>
-      <div class="muted" style="padding:12px 0;font-size:13px;">加载中…</div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn" type="button" data-modal-close>完成</button>
-    </div>
-  </div>
-</div>
-
-<!-- SkillHub · 技能中心（中央弹窗：搜索 / 浏览 / 安装；入口 = 对话页左侧功能列 Skill） -->
+<!-- 我的技能（中央弹窗：上传 SKILL.md / 搜索过滤已安装 / 开关 / 卸载；入口 = 功能列 Skill + 应用设置管理） -->
 <div class="modal-mask" id="modal-skillhub">
   <div class="modal modal-lg">
     <div class="modal-head">
-      <h3>SkillHub · 技能中心</h3>
+      <h3>我的技能</h3>
       <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
     </div>
     <div class="modal-body" style="padding-top:10px;">
-      <div class="hub-sub">接入 SkillHub 技能开放平台 · 一键安装到本地技能库，对话自动生效</div>
-      <div class="skill-search" style="margin:12px 0;">
-        <i data-ic="search"></i>
-        <input type="search" placeholder="搜索技能名称或描述" data-hub-search autocomplete="off">
+      <div class="hub-sub">上传 SKILL.md 技能文件，安装后自动注入对话</div>
+      <div class="skill-toolbar">
+        <button class="btn btn-sm" type="button" data-skill-upload><i data-ic="spark"></i>上传技能</button>
+        <div class="skill-search" style="margin:0;">
+          <i data-ic="search"></i>
+          <input type="search" placeholder="搜索已安装技能" data-skill-search autocomplete="off">
+        </div>
       </div>
-      <div data-hub-list><div class="muted" style="padding:14px 0;font-size:13px;">加载中…</div></div>
+      <input type="file" accept=".md" data-skill-file class="hide" aria-hidden="true">
+      <div data-myskills-body><div class="muted" style="padding:14px 0;font-size:13px;">加载中…</div></div>
     </div>
     <div class="modal-foot">
       <button class="btn" type="button" data-modal-close>完成</button>
@@ -416,7 +404,7 @@
 
 <script src="assets/js/data.js?v=20261020c"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
-<script src="assets/js/api.js?v=20261021a"></script>
-<script src="assets/js/app.js?v=20261022d"></script>
+<script src="assets/js/api.js?v=20261022e"></script>
+<script src="assets/js/app.js?v=20261022e"></script>
 </body>
 </html>

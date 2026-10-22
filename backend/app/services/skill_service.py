@@ -4,6 +4,9 @@
 - install：provider.get() 拉 skill 包 → 清洗 slug → 落盘 skills/<slug>/SKILL.md
   （Agent Skills 开放标准：文件夹 + SKILL.md，已存在 409）→ user_skills 记录
   （app_id 固定 chat；name=slug 作文件夹库时代标记，用户拍板）；
+- upload：用户上传自制 SKILL.md（multipart，仅 .md、≤64KB、frontmatter 含
+  name/description 且正文非空，否则 422）→ slug 清洗 → source 置 local-upload 落盘
+  （重名 409）→ 落库（skillhub_id 占位 local-upload:<slug>，可开关/卸载，卸载删目录）；
 - 存储真相源：技能库文件夹（SKILL.md）；DB 仅存用户安装关系（索引/开关/顺序）。
   零新增 DB 迁移；
 - uninstall：删 user_skills 记录 + 删除 skills/<slug>/ 目录（SkillHub 来源）。
@@ -31,11 +34,44 @@ logger = get_logger("skill")
 # skill 包体积上限（N-增5）：prompt（SKILL.md 正文）≤4KB，安装时校验，超出 400
 MAX_SKILL_PROMPT_CHARS = 4096
 
+# 上传 SKILL.md 体积上限（>64KB 422，N-增5 同类安全约束）
+MAX_UPLOAD_BYTES = 64 * 1024
+
 # 安装位置固定 chat（用户拍板，PRD P1-4 ②）
 SKILL_APP_ID = "chat"
 
 # 本地 skill（无 DB 记录）在列表里的占位 id：开关/卸载按钮据此禁用
 LOCAL_SKILL_ID = 0
+
+# 用户上传自制 skill：DB 记录 skillhub_id 占位前缀（无平台 id，以来源标记区分）
+SOURCE_UPLOAD_PREFIX = "local-upload:"
+
+# UserSkillOut.source 取值（上传包；skillhub=平台安装，local=手工放入只读）
+SOURCE_UPLOAD = "local-upload"
+
+
+def _is_upload_row(row: UserSkill) -> bool:
+    """判定是否为「用户上传」记录（skillhub_id 带来源标记前缀）。"""
+    return bool(row.skillhub_id) and row.skillhub_id.startswith(SOURCE_UPLOAD_PREFIX)
+
+
+def _resolve_entry(
+    row: UserSkill,
+    index: dict[str, skill_library.LibraryEntry],
+    slug_index: dict[str, skill_library.LibraryEntry],
+) -> skill_library.LibraryEntry | None:
+    """DB 记录 → 库条目：SkillHub 安装按 source 索引；上传包按 slug 索引。"""
+    entry = index.get(f"{skill_library.SOURCE_SKILLHUB_PREFIX}{row.skillhub_id}")
+    if entry is None and _is_upload_row(row):
+        by_slug = slug_index.get(row.name)
+        if by_slug is not None and by_slug.source == skill_library.SOURCE_LOCAL_UPLOAD:
+            entry = by_slug
+    return entry
+
+
+def _row_source(row: UserSkill) -> str:
+    """UserSkillOut.source 取值：skillhub（平台安装）/ local-upload（用户上传）。"""
+    return SOURCE_UPLOAD if _is_upload_row(row) else "skillhub"
 
 
 def _is_folder_era_row(row: UserSkill) -> bool:
@@ -141,6 +177,65 @@ async def install(db: AsyncSession, user: User, skillhub_id: str) -> UserSkill:
     return skill
 
 
+async def upload(db: AsyncSession, user: User, filename: str, data: bytes) -> UserSkill:
+    """上传自制 SKILL.md：校验 → 写盘 skills/<slug>/SKILL.md → 落库 user_skills。
+
+    校验（全部 422 中文 detail，任何一步失败均不落盘不落库）：
+    - 仅接受 .md 文件（按文件名扩展名判定）；
+    - 体积 ≤64KB；
+    - UTF-8 可解码；
+    - 必须是合法 SKILL.md：YAML frontmatter 且含 name/description，正文非空。
+    slug 由 frontmatter name 清洗生成；目录已存在（重名技能）→ 409。
+    落盘时 frontmatter 的 source 键统一置为 `local-upload`（缺失则补写）。
+    DB 记录 name=slug（文件夹库时代标记），skillhub_id 占位 `local-upload:<slug>`。
+    """
+    if not (filename or "").lower().endswith(".md"):
+        raise HTTPException(status_code=422, detail="仅支持 .md 技能文件")
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=422, detail="文件超过 64KB 上限，请精简后再上传")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=422, detail="文件不是有效的 UTF-8 文本") from None
+
+    if not skill_library.has_frontmatter(text):
+        raise HTTPException(status_code=422, detail="缺少 YAML frontmatter（--- 包裹的元信息区）")
+    parsed = skill_library.parse_skill_md(text)
+    if not parsed["name"].strip():
+        raise HTTPException(status_code=422, detail="缺少 name 字段")
+    if not parsed["description"].strip():
+        raise HTTPException(status_code=422, detail="缺少 description 字段")
+    if not parsed["body"]:
+        raise HTTPException(status_code=422, detail="SKILL.md 缺少指令正文")
+
+    slug = skill_library.sanitize_slug(parsed["name"])
+    if not slug:
+        raise HTTPException(status_code=422, detail="name 字段无法生成合法标识（仅支持字母/数字/连字符）")
+
+    # 落盘技能库；目录已存在 = 重名技能 → 409
+    skill_md = skill_library.ensure_source(text, skill_library.SOURCE_LOCAL_UPLOAD)
+    try:
+        skill_library.install_to_library(slug, skill_md)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="同名技能已存在") from None
+
+    skill = UserSkill(
+        user_id=user.id,
+        app_id=SKILL_APP_ID,
+        skillhub_id=f"{SOURCE_UPLOAD_PREFIX}{slug}",
+        name=slug,
+        icon="spark",
+        description=parsed["description"].strip()[:256],
+        prompt=parsed["body"],
+        enabled=True,
+    )
+    db.add(skill)
+    await db.commit()
+    await db.refresh(skill)
+    logger.info("skill upload: user=%s slug=%s", user.id, slug)
+    return skill
+
+
 async def list_mine(db: AsyncSession, user_id: int, app_id: str) -> list[dict[str, object]]:
     """本人已安装列表（installed_at 升序）+ 库中本地 skill（来源=本地，只读）。
 
@@ -157,10 +252,11 @@ async def list_mine(db: AsyncSession, user_id: int, app_id: str) -> list[dict[st
     ).scalars().all()
 
     index = skill_library.index_by_source()
+    slug_index = skill_library.index_by_slug()
     orphan_ids: list[int] = []
     out: list[dict[str, object]] = []
     for row in rows:
-        entry = index.get(f"{skill_library.SOURCE_SKILLHUB_PREFIX}{row.skillhub_id}")
+        entry = _resolve_entry(row, index, slug_index)
         if entry is None and _is_folder_era_row(row):
             # 文件夹库时代记录（name=slug）但目录缺失 = 手动删除 → 自动清理
             orphan_ids.append(row.id)
@@ -174,7 +270,7 @@ async def list_mine(db: AsyncSession, user_id: int, app_id: str) -> list[dict[st
                 "description": row.description,
                 "enabled": row.enabled,
                 "installed_at": row.installed_at,
-                "source": "skillhub",
+                "source": _row_source(row),
                 "path": _relative_path(entry),
             }
         )
@@ -185,11 +281,14 @@ async def list_mine(db: AsyncSession, user_id: int, app_id: str) -> list[dict[st
 
     # 本地 skill 包（source 非 skillhub:* 且未被 DB 记录引用）→ 只读条目
     hub_sources = {f"{skill_library.SOURCE_SKILLHUB_PREFIX}{r.skillhub_id}" for r in rows}
+    registered_slugs = {r.name for r in rows if _is_folder_era_row(r)}
     for entry in skill_library.scan_library():
         if entry.source.startswith(skill_library.SOURCE_SKILLHUB_PREFIX):
             continue
         if entry.source in hub_sources:
             continue  # 「扫描注册」预留：本地包若已登记 DB 则不重复展示
+        if entry.slug in registered_slugs:
+            continue  # 上传包已登记 DB（来源=本地上传，可开关/卸载），不作只读展示
         out.append(
             {
                 "id": LOCAL_SKILL_ID,
@@ -221,9 +320,9 @@ async def set_enabled(db: AsyncSession, user_id: int, skill_id: int, enabled: bo
 
 
 async def uninstall(db: AsyncSession, user_id: int, skill_id: int) -> None:
-    """卸载：删 user_skills 记录 + 删除 skills/<slug>/ 目录（仅 SkillHub 来源）。
+    """卸载：删 user_skills 记录 + 删除 skills/<slug>/ 目录（SkillHub 与上传来源）。
 
-    单用户场景直接删目录（文件夹由安装流程独占创建）；多用户引用计数为预留
+    单用户场景直接删目录（文件夹由安装/上传流程独占创建）；多用户引用计数为预留
     扩展点。本地包无 DB 记录，不经此路径（UI 只读）。
     """
     skill = (
@@ -233,7 +332,9 @@ async def uninstall(db: AsyncSession, user_id: int, skill_id: int) -> None:
     ).scalar_one_or_none()
     if skill is None:
         raise HTTPException(status_code=404, detail="技能不存在")
-    entry = skill_library.find_by_skillhub_id(skill.skillhub_id)
+    index = skill_library.index_by_source()
+    slug_index = skill_library.index_by_slug()
+    entry = _resolve_entry(skill, index, slug_index)
     await db.delete(skill)
     await db.commit()
     if entry is not None:
@@ -263,10 +364,11 @@ async def enabled_skill_prompts(db: AsyncSession, user_id: int, app_id: str) -> 
     ).scalars().all()
 
     index = skill_library.index_by_source()
+    slug_index = skill_library.index_by_slug()
     prompts: list[str] = []
     orphan_ids: list[int] = []
     for row in rows:
-        entry = index.get(f"{skill_library.SOURCE_SKILLHUB_PREFIX}{row.skillhub_id}")
+        entry = _resolve_entry(row, index, slug_index)
         if entry is not None:
             prompts.append(entry.body)
         elif _is_folder_era_row(row):

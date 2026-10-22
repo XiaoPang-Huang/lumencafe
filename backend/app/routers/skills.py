@@ -1,16 +1,21 @@
-"""SkillHub 代理 + 已安装技能管理（架构设计-增量 v1 §3.6，权限同 app:chat）。
+"""SkillHub 代理 + 已安装技能管理 + 用户上传自制技能（架构设计-增量 v1 §3.6）。
 
 - GET    /skills/catalog?q=&page=&page_size=  SkillHub 目录（后端代理，含 installed 标记）
 - POST   /skills/install                        {skillhub_id} → 拉 skill 包落库；已装 409
+- POST   /skills/upload                         multipart（字段名 file）上传 SKILL.md；
+                                                落盘 skills/<slug>/SKILL.md（source=local-upload）
+                                                + 落库；非 md/超 64KB/缺键 422，重名 409
 - GET    /skills/mine?app_id=chat               本人已安装列表（prompt 不回显）
 - PUT    /skills/{id}/enabled                   {enabled} 开关；关闭即停止注入
-- DELETE /skills/{id}                           卸载（删除记录）
+- DELETE /skills/{id}                           卸载（删除记录 + 删除目录）
 
 写操作限流（N-增5）+ 日志（service 层已记）；安装位置固定 app_id=chat（用户拍板）。
+SkillHub 平台接入（catalog/install/provider）本期为预留保留，自建 SkillHub 后再启用。
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user
 from app.models.user import User
@@ -44,6 +49,8 @@ async def _check_chat_permission(db: AsyncSession, user: User) -> None:
 
 
 def _check_write_limit(user_id: int) -> None:
+    if not settings.rate_limit_enabled:
+        return  # 测试/内部环境关闭限流（与 auth.py 一致）
     if not rate_limit.hit(f"skills-write:{user_id}", limit=_WRITE_LIMIT):
         raise HTTPException(status_code=429, detail="操作过于频繁，请稍后再试")
 
@@ -88,6 +95,28 @@ async def skill_install(
     entry = skill_library.find_by_skillhub_id(skill.skillhub_id)
     if entry is not None:
         out.path = f"skills/{entry.slug}/"
+    return out
+
+
+@router.post("/upload", response_model=UserSkillOut, status_code=201)
+async def skill_upload(
+    file: UploadFile,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传自制 SKILL.md：校验 → 落盘 skills/<slug>/（source=local-upload）→ 落库。
+
+    非 .md / >64KB / 非 UTF-8 / 缺 frontmatter / 缺 name|description / 无正文 → 422；
+    目录重名 → 409。回显 {path, name, source=local-upload, ...}（prompt 不回显）。
+    """
+    await _check_chat_permission(db, user)
+    _check_write_limit(user.id)
+    # 多读 1 字节以判定「超出上限」（service 层按 >64KB 拒绝，避免大文件占内存）
+    data = await file.read(skill_service.MAX_UPLOAD_BYTES + 1)
+    skill = await skill_service.upload(db, user, file.filename or "", data)
+    out = _user_skill_out(skill)
+    out.source = skill_service.SOURCE_UPLOAD
+    out.path = f"skills/{skill.name}/"
     return out
 
 
