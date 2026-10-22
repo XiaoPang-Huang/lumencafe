@@ -33,6 +33,9 @@
   --ok: #00b42a;
   --shadow: 0 1px 2px rgba(0, 0, 0, .04);
   --shadow-pop: 0 4px 16px rgba(0, 0, 0, .08);
+  /* 卡片化舞台（方案 A）：灰底 + 悬浮白卡，分层只靠对比/阴影/间距，no borders */
+  --stage: #f0f1f3;
+  --shadow-card: 0 1px 2px rgba(15, 20, 30, .05), 0 10px 28px rgba(15, 20, 30, .06);
 
   /* 字体：拉丁 Manrope，中文优先 MiSans / 苹方 / 雅黑 */
   --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -43,6 +46,7 @@
   --sider-w: 252px;
   --tabbar-h: 58px;
   --radius: 10px;
+  --radius-card: 16px;
   --radius-sm: 6px;
 
   /* 动效曲线（Apple 风格缓动） */
@@ -60,10 +64,10 @@ body {
   font-size: 15px;
   line-height: 1.75;
   color: var(--ink);
-  background: var(--bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  background: var(--stage);
 }
 
 a { color: inherit; text-decoration: none; }
@@ -84,12 +88,13 @@ p { margin: 0; }
 .shell { display: flex; flex-direction: column; min-height: 100vh; position: relative; z-index: 1; }
 .shell-body { flex: 1; display: flex; min-height: 0; }
 
-/* 侧栏：火山方舟式悬浮菜单卡（顶栏下方） */
+/* 侧栏：悬浮白卡（与应用卡同语言：圆角 16 + 柔和阴影，顶栏下方对齐） */
 .sider {
   width: var(--sider-w);
   flex: none;
-  background: #f7f8fa;
-  border-radius: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   padding: 12px 10px;
@@ -109,7 +114,7 @@ p { margin: 0; }
   transition: background .16s var(--ease-out), color .16s;
 }
 .nav-item:hover { background: rgba(29, 33, 41, .05); color: var(--ink); }
-.nav-item.active { background: var(--surface); color: var(--brand); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.nav-item.active { background: var(--bg-soft); color: var(--brand); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
 
 .sider-user {
   display: flex; align-items: center; gap: 10px;
@@ -182,12 +187,18 @@ p { margin: 0; }
   background: var(--bg-soft); border-radius: 5px; padding: 1px 6px;
 }
 
+/* 内容列容器卡：工作台/记账/文献/我的/平台管理等通用页的内容均包在此卡内
+   （margin 12 与 sider 左间距衔接成统一节奏；login/chat 路由另行还原） */
 .main {
   flex: 1;
-  width: 100%;
-  margin: 0 auto;
+  width: auto;
+  margin: 12px auto;
   padding: 24px clamp(20px, 3.5vw, 40px) 48px;
   max-width: 1140px;
+  min-height: calc(100vh - 48px - 24px);
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
 }
@@ -483,13 +494,17 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 .badge-soon { font-size: 11px; color: var(--ink-3); border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 6px; font-weight: 400; }
 
 /* ============ 对话 ChatApp ============ */
-.chat-layout { display: flex; height: calc(100vh - 57px); min-height: 0; }
+/* 对话页三卡：容器本身只负责灰底上的间距（padding 12 + gap 12），
+   两张卡（会话面板 / 对话主区）各自承载白底圆角阴影，与 sider 同源 */
+.chat-layout { display: flex; gap: 12px; height: calc(100vh - 57px); min-height: 0; }
 
 .conv-panel {
   width: 264px; flex: none;
   background: var(--surface);
-  border-right: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   display: flex; flex-direction: column;
+  overflow: hidden;
 }
 /* 会话面板与对话头部同高，底边横线严格对齐 */
 .conv-head {
@@ -513,7 +528,13 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 .conv-item:hover .del { opacity: 1; }
 .conv-item .del:hover { color: var(--danger); }
 
-.chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat-main {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
 .chat-head {
   display: flex; align-items: center; gap: 10px;
   height: 54px; flex: none;
@@ -962,7 +983,7 @@ a.me-item:hover { background: var(--bg-soft); }
 .ud-foot { display: flex; gap: 10px; padding: 16px 20px 20px; border-top: 1px solid var(--line); }
 
 /* ============ 登录 ============ */
-.login-wrap { min-height: calc(100vh - 100px); display: flex; align-items: center; justify-content: center; padding: 24px; background: #f7f8fa; }
+.login-wrap { min-height: calc(100vh - 100px); display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--stage); }
 body[data-route="login"] .login-wrap { min-height: 100vh; }
 .login-card {
   width: 100%; max-width: 380px;
@@ -1037,61 +1058,21 @@ body[data-route="login"] .login-wrap { min-height: 100vh; }
 body[data-route="login"] .sider,
 body[data-route="login"] .topbar,
 body[data-route="login"] .tabbar { display: none; }
-body[data-route="login"] .main { max-width: none; padding: 0; }
-
-/* 对话页保留标准顶栏（与工作台/记账一致：火山方舟式全页常驻顶栏），
-   侧栏收成 64px 悬浮图标细轨（Slack workspace rail 模式，仅桌面端生效；
-   移动端 ≤900px sider 本就 display:none，不受此处影响）。
-   对话内容列通栏，chat-layout 高度 = 可视高度 - 48px 顶栏。 */
-body[data-route="chat"] .main { max-width: none; padding: 0; }
-body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
-
-/* ---- 对话路由：全局侧栏收成 64px 图标细轨（方案 A，用户已确认） ----
-   窄条灰卡保持项目「悬浮卡」语言（sticky top:60px、圆角 12、灰底），
-   导航文字/分组/用户名隐藏，只留居中图标 tile；激活 tile 沿用品牌蓝浅底。
-   全部规则仅作用于 body[data-route="chat"]，其他路由完整 sider 零变化。 */
-@media (min-width: 901px) {
-  body[data-route="chat"] .sider {
-    width: 64px;
-    padding: 12px 8px;
-    align-items: center; /* 细轨整体居中 */
-  }
-  body[data-route="chat"] .sider-nav { width: 100%; padding: 4px 0; gap: 14px; }
-  body[data-route="chat"] .sider-group { width: 100%; align-items: center; gap: 5px; }
-
-  /* 隐藏文字：分组标签 / 导航文字 / 用户名角色 / caret（折叠态由原生 title tooltip 补） */
-  body[data-route="chat"] .sider-group-label,
-  body[data-route="chat"] .nav-label,
-  body[data-route="chat"] .sider-user-meta,
-  body[data-route="chat"] .sider-user-caret { display: none; }
-
-  /* 图标 tile：48px 宽、纵向居中、圆角 12（Slack tile 语言） */
-  body[data-route="chat"] .nav-item {
-    width: 48px;
-    justify-content: center;
-    padding: 10px 0;
-    gap: 0;
-    border-radius: 12px;
-  }
-  body[data-route="chat"] .nav-item.active {
-    background: var(--brand-soft);
-    color: var(--brand);
-    box-shadow: none;
-  }
-
-  /* 底部用户块只留居中头像 */
-  body[data-route="chat"] .sider-user {
-    width: 48px;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0;
-    padding: 10px 0 2px;
-  }
-
-  /* 细轨省出的宽度（sider 264px → 76px，约 188px）归对话左栏；
-     chat-main 为 flex:1 自然收窄，900px 内容列居中不受影响。 */
-  body[data-route="chat"] .conv-panel { width: 400px; }
+/* 登录：全幅无卡，壳还原为透明 */
+body[data-route="login"] .main {
+  max-width: none; margin: 0; padding: 0; min-height: 0;
+  background: transparent; box-shadow: none; border-radius: 0;
 }
+
+/* 对话页保留标准顶栏（与工作台/记账一致：全页常驻顶栏），
+   侧栏为默认悬浮卡（sticky top:60px，位于 48px 顶栏之下，不重叠）。
+   对话内容列不做容器卡——内部已由 conv-panel/chat-main 两张卡承载，
+   .main 仅提供 12 的间距；chat-layout 高度 = 视口 - 48px 顶栏 - 24px 上下间距。 */
+body[data-route="chat"] .main {
+  max-width: none; margin: 0; padding: 12px; min-height: 0;
+  background: transparent; box-shadow: none; border-radius: 0;
+}
+body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 
 /* 桌面端默认隐藏 tabbar */
 .tabbar { display: none; }
@@ -1101,7 +1082,7 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
   .sider { display: none; }
   .shell { display: block; }
   .shell-body { display: block; }
-  .main { padding: 16px 16px calc(var(--tabbar-h) + 28px); max-width: none; }
+  .main { margin: 8px; padding: 16px 16px calc(var(--tabbar-h) + 28px); max-width: none; min-height: calc(100dvh - 48px - 16px); }
 
   .topbar { height: 48px; padding: 0 14px; }
   #menu-btn { display: inline-flex; }
@@ -1145,14 +1126,19 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
   .stat-grid { grid-template-columns: minmax(0, 1fr); }
 
   body[data-route="chat"] .tabbar { display: none; }
-  body[data-route="chat"] .chat-layout { height: calc(100dvh - 48px); }
+  body[data-route="chat"] .main { margin: 8px; padding: 8px; }
+  /* 盒模型核算：topbar 48 + .main margin 8×2 + padding 8×2 + layout = 100dvh，故减 32 */
+  body[data-route="chat"] .chat-layout { height: calc(100dvh - 48px - 32px); }
   .conv-panel {
     display: none;
     /* 注意：.view > * 的 fade-up 动画(fill:both)让 .chat-layout 长期持有 transform(矩阵单位),
-       成为 fixed 后代的 containing block——其矩形起点已是顶栏下沿(视口 48px),故 top 用 0 即贴顶栏 */
-    position: fixed; left: 0; top: 0; bottom: 0;
+       成为 fixed 后代的 containing block。移动端该容器原点是视口(16,64)（.main margin 8 + padding 8，
+       顶栏 48 + margin-top 8 + padding-top 8），故用 -16px 负偏移贴回 左缘 0 / 顶栏下沿 48 / 视口底。
+       若 .main 的 margin/padding 调整，此偏移需同步改。fixed 元素不产生文档横向溢出。 */
+    position: fixed; left: -16px; top: -16px; bottom: -16px;
     z-index: 70; box-shadow: var(--shadow-pop);
     width: 280px;
+    border-radius: 0 var(--radius-card) var(--radius-card) 0; /* 贴边抽屉：仅右侧圆角 */
   }
   .conv-panel.open { display: flex; animation: slide-in .26s var(--ease-out); }
   .chat-scroll { padding: 18px 14px; }
@@ -1231,7 +1217,7 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
 .fn-item .ic { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
 
 /* Skill 侧层面板（P1-4） */
-.skill-panel { position: fixed; right: 0; top: 57px; bottom: 0; width: 330px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); z-index: 70; display: none; }
+.skill-panel { position: fixed; right: 0; top: 48px; bottom: 0; width: 330px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--line); z-index: 70; display: none; }
 .skill-panel.open { display: flex; flex-direction: column; animation: slide-in-r .26s var(--ease-out); }
 @keyframes slide-in-r { from { transform: translateX(36px); opacity: .4; } to { transform: none; opacity: 1; } }
 .skill-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
