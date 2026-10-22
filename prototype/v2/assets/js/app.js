@@ -198,7 +198,7 @@
     var html = NAV.map(function (g) {
       return '<div class="sider-group"><div class="sider-group-label">' + g.group + "</div>" +
         g.items.map(function (it) {
-          return '<a class="nav-item" href="#/' + it.route + '" data-route-link="' + it.route + '"><i data-ic="' + it.icon + '"></i>' + it.label + "</a>";
+          return '<a class="nav-item" href="#/' + it.route + '" data-route-link="' + it.route + '" title="' + it.label + '"><i data-ic="' + it.icon + '"></i><span class="nav-label">' + it.label + "</span></a>";
         }).join("") + "</div>";
     }).join("");
     qs("#sider-nav").innerHTML = html;

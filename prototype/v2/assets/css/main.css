@@ -1040,10 +1040,58 @@ body[data-route="login"] .tabbar { display: none; }
 body[data-route="login"] .main { max-width: none; padding: 0; }
 
 /* 对话页保留标准顶栏（与工作台/记账一致：火山方舟式全页常驻顶栏），
-   侧栏恢复默认悬浮卡样式（sticky top:60px，位于 48px 顶栏之下，不重叠）。
+   侧栏收成 64px 悬浮图标细轨（Slack workspace rail 模式，仅桌面端生效；
+   移动端 ≤900px sider 本就 display:none，不受此处影响）。
    对话内容列通栏，chat-layout 高度 = 可视高度 - 48px 顶栏。 */
 body[data-route="chat"] .main { max-width: none; padding: 0; }
 body[data-route="chat"] .chat-layout { height: calc(100vh - 48px); }
+
+/* ---- 对话路由：全局侧栏收成 64px 图标细轨（方案 A，用户已确认） ----
+   窄条灰卡保持项目「悬浮卡」语言（sticky top:60px、圆角 12、灰底），
+   导航文字/分组/用户名隐藏，只留居中图标 tile；激活 tile 沿用品牌蓝浅底。
+   全部规则仅作用于 body[data-route="chat"]，其他路由完整 sider 零变化。 */
+@media (min-width: 901px) {
+  body[data-route="chat"] .sider {
+    width: 64px;
+    padding: 12px 8px;
+    align-items: center; /* 细轨整体居中 */
+  }
+  body[data-route="chat"] .sider-nav { width: 100%; padding: 4px 0; gap: 14px; }
+  body[data-route="chat"] .sider-group { width: 100%; align-items: center; gap: 5px; }
+
+  /* 隐藏文字：分组标签 / 导航文字 / 用户名角色 / caret（折叠态由原生 title tooltip 补） */
+  body[data-route="chat"] .sider-group-label,
+  body[data-route="chat"] .nav-label,
+  body[data-route="chat"] .sider-user-meta,
+  body[data-route="chat"] .sider-user-caret { display: none; }
+
+  /* 图标 tile：48px 宽、纵向居中、圆角 12（Slack tile 语言） */
+  body[data-route="chat"] .nav-item {
+    width: 48px;
+    justify-content: center;
+    padding: 10px 0;
+    gap: 0;
+    border-radius: 12px;
+  }
+  body[data-route="chat"] .nav-item.active {
+    background: var(--brand-soft);
+    color: var(--brand);
+    box-shadow: none;
+  }
+
+  /* 底部用户块只留居中头像 */
+  body[data-route="chat"] .sider-user {
+    width: 48px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0;
+    padding: 10px 0 2px;
+  }
+
+  /* 细轨省出的宽度（sider 264px → 76px，约 188px）归对话左栏；
+     chat-main 为 flex:1 自然收窄，900px 内容列居中不受影响。 */
+  body[data-route="chat"] .conv-panel { width: 400px; }
+}
 
 /* 桌面端默认隐藏 tabbar */
 .tabbar { display: none; }
