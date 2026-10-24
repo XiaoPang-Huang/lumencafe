@@ -34,3 +34,12 @@ skills/*
 
 # n8n 中文界面包（体积大，不入库；服务器上跑 deploy/n8n-zh-setup.sh 自动下载解压）
 n8n-zh/
+
+# QA 测试产物（本地生成，不进库）
+.playwright-cli/
+qa_*.png
+qa_*.py
+qa_*.mjs
+qa_tmp/
+ws-*.png
+fill-*.png
