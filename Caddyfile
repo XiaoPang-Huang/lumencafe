@@ -15,9 +15,6 @@
 # 证书由 Caddy 内部 CA 自签：加密有效、无 CA 背书。
 # on_demand 必须保留——实测去掉后 IP 直连（无 SNI）无法完成握手。
 #
-# n8n 不经过 Caddy：直接访问 http://134.175.114.81:5678（compose 已发布该端口，
-# 带 Basic Auth，账号密码见 .env 的 N8N_BASIC_AUTH_*）。这样 n8n 也全程走 IP。
-#
 # 恢复域名模式（DNS-01，无需备案、浏览器绿标、自动续期）：
 #   ① cp deploy/Caddyfile.domain Caddyfile
 #   ② docker-compose.yml 的 caddy 恢复 build: ./deploy/caddy（见该处注释）

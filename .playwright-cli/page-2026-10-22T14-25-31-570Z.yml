@@ -1,0 +1,69 @@
+- generic [ref=e2]:
+  - banner [ref=e24]:
+    - button "打开导航" [ref=e210] [cursor=pointer]
+    - link "流光咖啡馆" [ref=e25] [cursor=pointer]:
+      - /url: "#/workspace"
+    - button [ref=e213] [cursor=pointer]
+    - link "我的" [ref=e38] [cursor=pointer]:
+      - /url: "#/me"
+      - generic [ref=e39]: "?"
+  - main [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e87]:
+        - heading "工作台" [level=1] [ref=e89]
+        - generic [ref=e90]: 10月22日 星期四
+      - generic [ref=e91]:
+        - generic [ref=e92]:
+          - generic [ref=e93]: 本月账目
+          - generic [ref=e214]: 0笔
+        - generic [ref=e94]:
+          - generic [ref=e95]: 本月支出
+          - text: ¥NaN.NaN
+        - generic [ref=e96]:
+          - generic [ref=e97]: 本月收入
+          - text: ¥NaN.NaN
+        - generic [ref=e98]:
+          - generic [ref=e99]: 结余
+          - text: ¥NaN.NaN
+      - generic [ref=e100]:
+        - generic [ref=e101]: 应用
+        - generic [ref=e102]: 拖拽调整顺序
+      - generic [ref=e103]:
+        - link "AI 对话 未配置 新建对话 还没有对话，点击卡片开始聊聊 undefined 个会话 继续聊" [ref=e215] [cursor=pointer]:
+          - /url: "#/chat"
+          - generic "拖拽排序" [ref=e105]
+          - generic [ref=e113]:
+            - generic [ref=e118]: AI 对话
+            - generic [ref=e121]:
+              - generic [ref=e122]: 未配置
+              - button "新建对话" [ref=e123]
+          - generic [ref=e128]: 还没有对话，点击卡片开始聊聊
+          - generic [ref=e131]:
+            - generic [ref=e132]: undefined 个会话
+            - generic [ref=e133]: 继续聊
+        - link "记账本 加载中… 本月暂无支出 记一笔" [ref=e217] [cursor=pointer]:
+          - /url: "#/money"
+          - generic "拖拽排序" [ref=e138]
+          - generic [ref=e146]: 记账本
+          - generic [ref=e155]: 加载中…
+          - generic [ref=e158]:
+            - generic [ref=e159]: 本月暂无支出
+            - generic [ref=e160]: 记一笔
+        - link "文献 PubMed 每日新文献跟踪 浏览文献" [ref=e164] [cursor=pointer]:
+          - /url: "#/papers"
+          - generic "拖拽排序" [ref=e165]
+          - generic [ref=e173]: 文献
+          - generic [ref=e181]: PubMed 每日新文献跟踪
+          - generic [ref=e183]: 浏览文献
+        - link [ref=e188] [cursor=pointer]:
+          - /url: "#/apps"
+          - generic "拖拽排序" [ref=e189]
+          - generic [ref=e197]: 应用中心
+          - generic [ref=e205]: 浏览全部
+  - navigation [ref=e218]:
+    - link [ref=e219] [cursor=pointer]:
+      - /url: "#/workspace"
+    - link [ref=e224] [cursor=pointer]:
+      - /url: "#/apps"
+    - link [ref=e228] [cursor=pointer]:
+      - /url: "#/me"

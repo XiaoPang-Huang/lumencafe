@@ -50,7 +50,7 @@ cafe.lumenhub.online:8443 {
 }
 
 # API 子域：供外部客户端（OpenAI 兼容 /gw/v1、移动端）直连
-# /internal/* 只允许 compose 内网调用（n8n → http://api:8000），公网一律 404
+# /internal/* 只允许 compose 内网调用（定时任务/内部作业 → http://api:8000），公网一律 404
 api.lumenhub.online:8443 {
 	import common_headers
 	import dns_tls
@@ -61,14 +61,6 @@ api.lumenhub.online:8443 {
 			flush_interval -1
 		}
 	}
-}
-
-# n8n 编排控制台（可选）：n8n 2.x 首次打开要自建 owner 账号；
-# 域名需与 compose 里 N8N_HOST 一致，否则 webhook URL 会错
-n8n.lumenhub.online:8443 {
-	import common_headers
-	import dns_tls
-	reverse_proxy n8n:5678
 }
 
 # 备用域名统一跳主站（DNS 里已有的 apex / www 记录，避免无证书报错）

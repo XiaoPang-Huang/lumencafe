@@ -32,22 +32,8 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --b
 部署形态（**IP 直连**，2026-10-18 起；域名未备案被腾讯云拦截 80/443，故全程不用域名）：
 
 - 主站 `https://<服务器IP>:8443`——前端 + /api 同源反代，Caddy 自签证书，首次打开点「高级 → 继续访问」
-- n8n `http://<服务器IP>:5678`——Basic Auth，不经 Caddy
 
-防火墙放行 80/443/8443/5678。以后想要域名绿标（DNS-01，无需备案）或标准网址（ICP 备案），见部署指南 §1.1。
-
-## n8n 中文界面（可选）
-
-n8n 镜像版本已锁定，中文界面包版本必须与之一致（当前 n8n `2.43.5`）：
-
-```bash
-mkdir -p n8n-zh && curl -sL -o n8n-zh/pkg.tar.gz \
-  "https://github.com/bsi-bcp/n8n-i18n-chinese/releases/download/release/2.43.5/n8n-editor-ui%402.43.5.tar.gz" \
-  && tar -xzf n8n-zh/pkg.tar.gz -C n8n-zh
-docker compose up -d n8n
-```
-
-来源：github.com/bsi-bcp/n8n-i18n-chinese（MIT）。升级 n8n 前先确认该仓库是否已跟进对应版本的汉化包，跨版本错配会回退英文甚至白屏。
+防火墙放行 80/443/8443。以后想要域名绿标（DNS-01，无需备案）或标准网址（ICP 备案），见部署指南 §1.1。
 
 ## 目录结构
 

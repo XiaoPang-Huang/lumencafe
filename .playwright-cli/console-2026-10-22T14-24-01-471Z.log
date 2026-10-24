@@ -1,0 +1,5 @@
+[      41ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/chat/models:0
+[      42ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/chat/conversations?app_id=chat:0
+[      42ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/money/stats/monthly?month=2026-10:0
+[      42ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/money/stats/trend?months=6:0
+[      42ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8000/money/transactions?page=1&page_size=1:0

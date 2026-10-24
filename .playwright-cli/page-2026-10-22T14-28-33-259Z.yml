@@ -1,0 +1,89 @@
+- generic [ref=e2]:
+  - banner [ref=e24]:
+    - link "流光咖啡馆" [ref=e28] [cursor=pointer]:
+      - /url: "#/workspace"
+    - button "搜索或跳转 ⌘K" [ref=e179] [cursor=pointer]:
+      - generic [ref=e180]: 搜索或跳转
+      - generic [ref=e181]: ⌘K
+    - link "我的" [ref=e39] [cursor=pointer]:
+      - /url: "#/me"
+      - generic [ref=e40]: "?"
+  - generic [ref=e3]:
+    - complementary [ref=e182]:
+      - navigation [ref=e183]:
+        - generic [ref=e184]:
+          - generic [ref=e185]: 主面板
+          - link [ref=e186] [cursor=pointer]:
+            - /url: "#/workspace"
+          - link [ref=e191] [cursor=pointer]:
+            - /url: "#/chat"
+          - link [ref=e195] [cursor=pointer]:
+            - /url: "#/money"
+          - link [ref=e200] [cursor=pointer]:
+            - /url: "#/papers"
+        - generic [ref=e204]:
+          - generic [ref=e205]: 系统
+          - link [ref=e206] [cursor=pointer]:
+            - /url: "#/apps"
+          - link [ref=e210] [cursor=pointer]:
+            - /url: "#/admin"
+          - link [ref=e215] [cursor=pointer]:
+            - /url: "#/me"
+      - button "? admin 管理员" [ref=e220] [cursor=pointer]:
+        - generic [ref=e221]: "?"
+        - generic [ref=e223]:
+          - generic [ref=e224]: admin
+          - generic [ref=e225]: 管理员
+    - main [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e41]:
+          - heading "工作台" [level=1] [ref=e43]
+          - generic [ref=e44]: 10月22日 星期四
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e47]: 本月账目
+            - generic [ref=e229]: 0笔
+          - generic [ref=e48]:
+            - generic [ref=e49]: 本月支出
+            - text: ¥NaN.NaN
+          - generic [ref=e50]:
+            - generic [ref=e51]: 本月收入
+            - text: ¥NaN.NaN
+          - generic [ref=e52]:
+            - generic [ref=e53]: 结余
+            - text: ¥NaN.NaN
+        - generic [ref=e54]:
+          - generic [ref=e55]: 应用
+          - generic [ref=e56]: 拖拽调整顺序
+        - generic [ref=e57]:
+          - link "AI 对话 未配置 新建对话 还没有对话，点击卡片开始聊聊 undefined 个会话 继续聊" [ref=e230] [cursor=pointer]:
+            - /url: "#/chat"
+            - generic "拖拽排序" [ref=e59]
+            - generic [ref=e67]:
+              - generic [ref=e72]: AI 对话
+              - generic [ref=e75]:
+                - generic [ref=e76]: 未配置
+                - button "新建对话" [ref=e77]
+            - generic [ref=e82]: 还没有对话，点击卡片开始聊聊
+            - generic [ref=e85]:
+              - generic [ref=e86]: undefined 个会话
+              - generic [ref=e87]: 继续聊
+          - link "记账本 加载中… 本月暂无支出 记一笔" [ref=e232] [cursor=pointer]:
+            - /url: "#/money"
+            - generic "拖拽排序" [ref=e92]
+            - generic [ref=e100]: 记账本
+            - generic [ref=e109]: 加载中…
+            - generic [ref=e112]:
+              - generic [ref=e113]: 本月暂无支出
+              - generic [ref=e114]: 记一笔
+          - link "文献 PubMed 每日新文献跟踪 浏览文献" [ref=e118] [cursor=pointer]:
+            - /url: "#/papers"
+            - generic "拖拽排序" [ref=e119]
+            - generic [ref=e127]: 文献
+            - generic [ref=e135]: PubMed 每日新文献跟踪
+            - generic [ref=e137]: 浏览文献
+          - link [ref=e142] [cursor=pointer]:
+            - /url: "#/apps"
+            - generic "拖拽排序" [ref=e143]
+            - generic [ref=e151]: 应用中心
+            - generic [ref=e159]: 浏览全部

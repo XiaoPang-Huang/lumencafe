@@ -1,0 +1,26 @@
+// QA 复验：移动端截图（完整重载 + 内容 settle 后）
+import { createRequire } from 'module';
+import fs from 'fs';
+const require = createRequire(import.meta.url);
+const { chromium } = require('C:/Users/ROG/.workbuddy/binaries/node/versions/22.22.2-6/node_modules/@playwright/cli/node_modules/playwright-core');
+const BASE = 'http://localhost:4311/v2/?v=20261024a';
+const TOKEN = fs.readFileSync('E:/Projects/lumencafe/qa_tmp/token_edward.txt', 'utf8').trim();
+const browser = await chromium.launch({ executablePath: 'C:/Users/ROG/AppData/Local/ms-playwright/chromium-1247/chrome-win64/chrome.exe', headless: true });
+const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const page = await ctx.newPage();
+const errs = [];
+page.on('pageerror', e => errs.push(String(e)));
+await page.goto(BASE + '#/login');
+await page.evaluate(t => localStorage.setItem('lc_token', t), TOKEN);
+await page.goto(BASE + '&m=1#/workspace');
+await page.waitForSelector('.bento-grid .bcard', { timeout: 10000 });
+await page.waitForFunction(() => document.querySelector('[data-ws-yexp]')?.textContent !== '—' && document.querySelector('[data-ws-ycount]')?.textContent !== '—', null, { timeout: 10000 });
+await page.waitForTimeout(800);
+console.log('greet:', await page.textContent('[data-ws-greet]'));
+const boxes = await page.$$eval('.bento-grid .bcard', els => els.map(e => { const r = e.getBoundingClientRect(); return e.dataset.bcard + ' h=' + Math.round(r.height) + ' y=' + Math.round(r.top); }));
+console.log('card boxes:', boxes);
+console.log('feed rows:', await page.$$eval('.ws-feed-row', els => els.length));
+console.log('scrollW-clientW:', await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth));
+await page.screenshot({ path: 'E:/Projects/lumencafe/qa_tmp/qa_ed_mobile_ws2.png', fullPage: true });
+await browser.close();
+console.log('pageerrors:', errs.length);

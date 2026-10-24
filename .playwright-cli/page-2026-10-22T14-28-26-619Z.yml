@@ -1,0 +1,69 @@
+- generic [ref=e2]:
+  - banner [ref=e24]:
+    - button "打开导航" [ref=e25] [cursor=pointer]
+    - link "流光咖啡馆" [ref=e28] [cursor=pointer]:
+      - /url: "#/workspace"
+    - button [ref=e34] [cursor=pointer]
+    - link "我的" [ref=e39] [cursor=pointer]:
+      - /url: "#/me"
+      - generic [ref=e40]: "?"
+  - main [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e41]:
+        - heading "工作台" [level=1] [ref=e43]
+        - generic [ref=e44]: 10月22日 星期四
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e47]: 本月账目
+          - text: —
+        - generic [ref=e48]:
+          - generic [ref=e49]: 本月支出
+          - text: —
+        - generic [ref=e50]:
+          - generic [ref=e51]: 本月收入
+          - text: —
+        - generic [ref=e52]:
+          - generic [ref=e53]: 结余
+          - text: —
+      - generic [ref=e54]:
+        - generic [ref=e55]: 应用
+        - generic [ref=e56]: 拖拽调整顺序
+      - generic [ref=e57]:
+        - link "AI 对话 … 新建对话 加载中… … 继续聊" [ref=e58] [cursor=pointer]:
+          - /url: "#/chat"
+          - generic "拖拽排序" [ref=e59]
+          - generic [ref=e67]:
+            - generic [ref=e72]: AI 对话
+            - generic [ref=e75]:
+              - generic [ref=e76]: …
+              - button "新建对话" [ref=e77]
+          - generic [ref=e82]: 加载中…
+          - generic [ref=e85]:
+            - generic [ref=e86]: …
+            - generic [ref=e87]: 继续聊
+        - link "记账本 加载中… … 记一笔" [ref=e91] [cursor=pointer]:
+          - /url: "#/money"
+          - generic "拖拽排序" [ref=e92]
+          - generic [ref=e100]: 记账本
+          - generic [ref=e109]: 加载中…
+          - generic [ref=e112]:
+            - generic [ref=e113]: …
+            - generic [ref=e114]: 记一笔
+        - link "文献 PubMed 每日新文献跟踪 浏览文献" [ref=e118] [cursor=pointer]:
+          - /url: "#/papers"
+          - generic "拖拽排序" [ref=e119]
+          - generic [ref=e127]: 文献
+          - generic [ref=e135]: PubMed 每日新文献跟踪
+          - generic [ref=e137]: 浏览文献
+        - link [ref=e142] [cursor=pointer]:
+          - /url: "#/apps"
+          - generic "拖拽排序" [ref=e143]
+          - generic [ref=e151]: 应用中心
+          - generic [ref=e159]: 浏览全部
+  - navigation [ref=e164]:
+    - link [ref=e165] [cursor=pointer]:
+      - /url: "#/workspace"
+    - link [ref=e170] [cursor=pointer]:
+      - /url: "#/apps"
+    - link [ref=e174] [cursor=pointer]:
+      - /url: "#/me"

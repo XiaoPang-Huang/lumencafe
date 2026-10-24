@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - main [ref=e5]:
+    - generic [ref=e257]:
+      - generic [ref=e258]:
+        - heading "流光咖啡馆" [level=1] [ref=e263]
+        - paragraph [ref=e264]: 属于我们两个人的 AI 应用面板
+      - generic [ref=e265]:
+        - generic [ref=e266]:
+          - generic [ref=e267]: 用户名
+          - textbox "用户名" [ref=e268]: admin
+        - generic [ref=e269]:
+          - generic [ref=e270]: 密码
+          - textbox "密码" [ref=e271]:
+            - /placeholder: 请输入密码
+        - button "进入咖啡馆" [ref=e272] [cursor=pointer]
+  - generic: 登录已过期，请重新登录

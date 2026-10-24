@@ -16,8 +16,9 @@
 | v1.1-rev4 | 2026-10-15 | 删除「应用级绑定」设计：模型管理回归纯网关——Provider CRUD + 调官方 `GET /models` 拉取模型（按 Agent/Token 套餐分组展示）；对话与记账解析统一走网关默认路由；系统提示词改为内置常量；§2.1 G2、§3.2、§3.3、§4.3、§4.6、US-7、P0-3、附录同步 |
 | v1.1-rev5 | 2026-10-18 | 模型选择与网关令牌：① Provider 条目 = 厂商 × 套餐平级（`llm_models.plan` 列移除），fetch-models 返回平铺模型列表，支持自定义模型（custom 标记，409 重名）；② `llm_models.meta` 固定 capabilities（vision/files/context_tokens），驱动对话文件上传显隐；③ `/chat` 增加可选 `model_id`（选择值用表 id；绑定会话级 `chat_conversations.model_id`，缺省走默认路由），新增 `GET /chat/models` 用户侧模型池；④ 新增 `gateway_tokens` 表与 `/admin/gateway-tokens*`（对外 `/gw/v1` 鉴权改查表，首个令牌由 `LUMEN_INTERNAL_TOKEN` 种子）；§4.3、§4.6、US-7、P0-3 同步 |
 | v1.1-rev6 | 2026-10-21 | 对话思考双流与润色（按《PRD-增量-对话思考与润色-v1.md》v1.1 与《架构设计-增量 v1》实施）：① §4.6 `POST /chat` 请求体增可选 `thinking_level`（R1 白名单内唯一可开放调用参数；会话级快照 `chat_conversations.thinking_level`，不传 = 厂商默认）；② SSE 事件流增 `data: {reasoning_delta}`（思维双流，R3），既有 `{delta}`/`{error}`/`[DONE]` 不变，`chat_messages` 增列 `reasoning`（可空 TEXT）；③ 新增 `POST /chat/polish`（AI 润色，内置 prompt 常量，≤8s，502/429）；④ `GET /chat/models` 每模型增 `reasoning`（`{enabled, levels:[{value,label}], default_level}`，R5）；⑤ 系统提示词注入决策：内置常量在前、用户已安装 skill 片段在后（增量 §7，不占调用参数白名单） |
-| v1.1-rev7 | 2026-10-24 | 工作台定位从「应用陈列卡片」改为「**每日看板**」（信息优先，卡片即跳板）：① 首页按应用划分**信息板块**（板块注册表机制：应用有「每天值得一眼的信息」才上板块，配置型应用——平台管理/我的/专家/MCP——不上板；应用增加 = 板块注册表加卡片）；② 整卡即跳板（点击进对应应用），卡头右侧「应用名 →」；③ 两条纪律——**信息纪律**（每板块只放必要信息）与**排序纪律**（保留拖拽排序 lc_home_order，常用在前；板块过多时的折叠/自选本期不做）；④ 页面结构 = 轻问候行（日期 + 时段问候 + 昵称，取消全局指标带）+ bento 板块卡片区（记账小卡 / 论文大卡·新闻流式·mock 先行 / 对话小卡）；⑤ 新增轻量聚合接口 `GET /money/stats/summary` 与 `GET /chat/conversations/summary`（§4.6/§4.7）；⑥ 论文板块本期 mock 数据演示，`api.js` 留 `API.papers.feed()` 占位封装，真接口第二批 n8n 接入 |
+| v1.1-rev7 | 2026-10-24 | 工作台定位从「应用陈列卡片」改为「**每日看板**」（信息优先，卡片即跳板）：① 首页按应用划分**信息板块**（板块注册表机制：应用有「每天值得一眼的信息」才上板块，配置型应用——平台管理/我的/专家/MCP——不上板；应用增加 = 板块注册表加卡片）；② 整卡即跳板（点击进对应应用），卡头右侧「应用名 →」；③ 两条纪律——**信息纪律**（每板块只放必要信息）与**排序纪律**（保留拖拽排序 lc_home_order，常用在前；板块过多时的折叠/自选本期不做）；④ 页面结构 = 轻问候行（日期 + 时段问候 + 昵称，取消全局指标带）+ bento 板块卡片区（记账小卡 / 论文大卡·新闻流式·mock 先行 / 对话小卡）；⑤ 新增轻量聚合接口 `GET /money/stats/summary` 与 `GET /chat/conversations/summary`（§4.6/§4.7）；⑥ 论文板块本期 mock 数据演示，`api.js` 留 `API.papers.feed()` 占位封装，真接口第二批进程内定时接入 |
 
+| v1.1-rev8 | 2026-10-24 | **移除 n8n**：① 定时任务收回进程内（APScheduler 自研），文献抓取由后端调度器每日触发，`POST /internal/jobs/papers-crawl` 保留为手动/运维触发口（内部令牌鉴权不变）；② 部署形态回到三件套（PostgreSQL / FastAPI / Caddy），compose/覆盖层/.env/部署指南同步清除 n8n；③ 触发点：定时任务增至 5-10 个或需非工程人员改流程时再评估编排平台（见 docs/生态集成候选-v1.md）；④ 文档同步：架构定稿 修订6 / 架构设计 v1.6 / 部署指南 §7 移除 |
 ---
 
 ## 1. 项目信息
@@ -31,7 +32,7 @@
 | 后端技术栈 | FastAPI + PostgreSQL（沿用架构文档） |
 | 部署形态 | Docker Compose：Caddy + FastAPI + PostgreSQL |
 | GitHub 仓库 | `XiaoPang-Huang/lumencafe` |
-| 访问方式 | **IP 直连**（2026-10-18 起）：主站 `https://IP:8443` 自签证书、n8n `http://IP:5678`。原计划的 `cafe.lumenhub.online` / `api.lumenhub.online` 域名因未备案被腾讯云拦截 80/443 而弃用；域名回归路径（DNS-01 / ICP 备案）见部署指南-v1 §1.1 |
+| 访问方式 | **IP 直连**（2026-10-18 起）：主站 `https://IP:8443` 自签证书。原计划的 `cafe.lumenhub.online` / `api.lumenhub.online` 域名因未备案被腾讯云拦截 80/443 而弃用；域名回归路径（DNS-01 / ICP 备案）见部署指南-v1 §1.1 |
 
 **原始需求复述**：将归档的旧版 FastAPI 后端重写为全新的账号化 AI 应用面板。基础设施（账号/RBAC、模型管理、ChatApp 通用对话件、应用注册表）为所有批次共用；第一批业务应用为对话（单一通用对话应用）与记账（新增），第二批为文献阅读。最终 MIT 开源。
 
@@ -65,7 +66,7 @@
 | US-4 | 作为使用者，我想查看本月按分类汇总的支出、收支合计和近 6 个月趋势，以便掌握财务状况 | 记账 | 第一批 |
 | US-5 | 作为使用者，我想用自然语言说一句话就自动生成一条账目草稿，确认后入账，以便极简记账 | 记账（AI 记一笔） | 第一批（已决实施） |
 | US-6 | 作为使用者，我想每天看到按我订阅关键词抓到的 PubMed 新文献，能收藏、写笔记、一键 AI 解读（含中文摘要），以便跟踪研究领域 | 文献 | 第二批 |
-| US-7 | 作为管理员，我想在管理页配置提供商条目（官方 API / 各套餐）、拉取模型、设定默认路由并管理网关令牌，以便对话界面与外部工具（n8n 等）共享池化模型 | 平台管理 | 基础设施 |
+| US-7 | 作为管理员，我想在管理页配置提供商条目（官方 API / 各套餐）、拉取模型、设定默认路由并管理网关令牌，以便对话界面与外部工具（外部工具）共享池化模型 | 平台管理 | 基础设施 |
 | US-8 | 作为自部署者，我想通过 `REGISTRATION_OPEN` 控制注册、通过 RBAC 管理成员，以便两人以上共用实例 | 平台管理 | 基础设施 |
 
 ---
@@ -86,7 +87,7 @@ FastAPI ──┬─ 平台层：账号/RBAC、应用注册表、模型管理、
 PostgreSQL（user_id 行级隔离）
 ```
 
-> 定时任务说明：本期后端**不做进程内定时任务模块**。文献抓取**由 n8n 定时触发**（每天早上固定时间，cron 配置在 n8n 工作流内）；后端仅提供带内部令牌的触发接口（见 4.8）。每日备份不做，数据兜底策略见 Q7。
+> 定时任务说明：本期后端**进程内定时任务自研**（APScheduler，2026-10-24 起；原 n8n 方案移除）。文献抓取每天早上固定时间由后端调度器直接触发（cron 配置在后端）；同时保留带内部令牌的手动触发接口（见 4.8）。每日备份不做，数据兜底策略见 Q7。
 
 ### 3.2 模块职责边界
 
@@ -97,7 +98,7 @@ PostgreSQL（user_id 行级隔离）
 | 平台层-模型管理 | Provider CRUD、调官方 `GET /models` 拉取模型清单（按套餐分组）、连通性测试、网关默认路由配置 | 不做应用绑定；不做用量计费 |
 | AI 网关 | 按默认路由（默认 Provider/模型）调对应 OpenAI 兼容端点；统一 SSE 流式输出；文献解读/摘要翻译/记账解析复用同一网关 | 不做 per-app 绑定；不实现非 OpenAI 兼容协议 |
 | 应用 API-记账 | 账目 CRUD、自定义分类、月度统计、request_id 幂等 | 不做预算/报销/多人账本 |
-| 应用 API-文献 | 文献流（归属隔离）、收藏、笔记、AI 解读缓存、中文摘要回填；由 n8n 定时触发的抓取任务 | 不做全文 PDF 管理；不做后端进程内调度 |
+| 应用 API-文献 | 文献流（归属隔离）、收藏、笔记、AI 解读缓存、中文摘要回填；由进程内定时任务触发的抓取 | 不做全文 PDF 管理；不做后端进程内调度 |
 | 前端 ChatApp 组件 | 唯一通用对话 React 组件（对标 DeepSeek 对话界面）：左侧会话列表、消息流、SSE 流式渲染、Markdown 渲染 + 代码块高亮、新建/删除会话 | 各对话应用不得自研聊天 UI |
 
 ### 3.3 数据流要点
@@ -107,7 +108,7 @@ PostgreSQL（user_id 行级隔离）
 | 登录流 | 用户名+密码 → bcrypt 校验 → JWT（30 天）→ 前端存储 → 后续请求 Bearer 携带 |
 | 对话流 | 前端 ChatApp → `POST /chat {app_id, conversation_id, message}` → 校验权限/限流 → 存用户消息 → 组装内置 system prompt + 历史 → AI 网关按默认路由 SSE 逐 token 返回 → 完整回复落库 → `[DONE]` |
 | AI 记一笔流 | 前端输入自然语言 → `POST /money/parse`（Q4 已决，本期实施）→ AI 网关一次性返回结构化草稿 → 用户确认 → 正常走 `POST /money/transactions` 入账（解析与入账分离，解析不落库） |
-| 文献流 | n8n 定时触发内部接口 → 按每用户订阅关键词 esearch/efetch → 去重入库 + 规则打标 + 归属记录 → best-effort LLM 中文摘要 → 用户看到按人隔离的文献流 |
+| 文献流 | 进程内定时任务每日触发 → 按每用户订阅关键词 esearch/efetch → 去重入库 + 规则打标 + 归属记录 → best-effort LLM 中文摘要 → 用户看到按人隔离的文献流 |
 | 隔离原则 | 所有业务查询必须带 `user_id` 过滤；文献主表全局共享，归属表（paper_users）决定可见性；文献 AI 解读缓存全局共享（架构已定） |
 
 ---
@@ -273,7 +274,7 @@ PostgreSQL（user_id 行级隔离）
 
 字段要点（沿用旧版）：`pmid, title, abstract, abstract_zh（LLM 中译）, journal, authors[], pub_date, tags[], keywords[]`。
 
-抓取触发（批次 2）：由 **n8n 定时工作流**每日固定时间触发（cron 在 n8n 工作流内配置，建议早间）；后端暴露内部触发接口 `POST /internal/jobs/papers-crawl`，仅校验**内部令牌**（环境变量 `LUMEN_INTERNAL_TOKEN`，占位名以架构设计为准，不经过用户 JWT 体系），校验通过后执行一轮抓取并返回 `{added: n}`；不对普通用户开放、不在前端出现。触发后的抓取逻辑与限速不变：遵守 NCBI 限速（≤3 req/s，efetch 分批 ≤100/批、批间 sleep）；中文摘要翻译每篇间隔 ≥1s、单轮 ≤20 篇；订阅关键词取用户设置 `subscribe_keywords`（未配置回落环境变量默认）。
+抓取触发（批次 2）：由 **后端进程内 APScheduler** 每日固定时间触发（cron 配置在后端，建议早间）；后端暴露内部触发接口 `POST /internal/jobs/papers-crawl`，仅校验**内部令牌**（环境变量 `LUMEN_INTERNAL_TOKEN`，占位名以架构设计为准，不经过用户 JWT 体系），校验通过后执行一轮抓取并返回 `{added: n}`；不对普通用户开放、不在前端出现。触发后的抓取逻辑与限速不变：遵守 NCBI 限速（≤3 req/s，efetch 分批 ≤100/批、批间 sleep）；中文摘要翻译每篇间隔 ≥1s、单轮 ≤20 篇；订阅关键词取用户设置 `subscribe_keywords`（未配置回落环境变量默认）。
 
 ---
 
@@ -300,7 +301,7 @@ PostgreSQL（user_id 行级隔离）
 | # | 需求 |
 | --- | --- |
 | P1-1 | 文献：每日推送（归属隔离 + 标签筛选）/ 收藏 / 笔记 / AI 解读全局缓存 / 中文摘要翻译回填 |
-| P1-2 | 文献：n8n 定时触发抓取（内部令牌接口 POST /internal/jobs/papers-crawl）+ 订阅关键词用户设置 |
+| P1-2 | 文献：进程内 APScheduler 定时抓取 + 内部令牌手动触发接口（POST /internal/jobs/papers-crawl）+ 订阅关键词用户设置 |
 
 ---
 
@@ -387,6 +388,6 @@ PostgreSQL（user_id 行级隔离）
 | 微信登录 + whitelist_users | 废弃 → 账号密码登录 + users/RBAC |
 | LLM provider 抽象 + 用途路由 | 演进为 Provider + 模型清单（网关默认路由，无应用绑定） |
 | 旧版 chat 模块（SSE/会话/限流/标题生成） | 泛化为 ChatApp `/chat`（app_id=chat 通用对话应用），第一批 |
-| 文献 crawler（esearch/efetch/打标/翻译回填） | 保留逻辑，由 n8n 定时触发内部接口，第二批 |
+| 文献 crawler（esearch/efetch/打标/翻译回填） | 保留逻辑，由进程内定时任务触发，第二批 |
 | space 设置 / 邀请码 / 危险操作双人确认 | space 设置 → 用户设置；邀请码废弃（注册开关替代）；双人确认不做 |
 | `miniprogram/`、`app_原型/` | 归档/参考，不迁移 |

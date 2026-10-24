@@ -214,7 +214,7 @@ async def test_gateway_token_create_list_revoke(client):
 
     resp = await client.post(
         "/admin/models/gateway-tokens",
-        json={"name": "n8n 主令牌", "model_scope": ["mock"]},
+        json={"name": "内部服务令牌", "model_scope": ["mock"]},
         headers=admin,
     )
     assert resp.status_code == 201

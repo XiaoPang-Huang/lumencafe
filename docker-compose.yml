@@ -84,34 +84,7 @@ services:
       api:
         condition: service_healthy
 
-  # 自动化编排（可选组件）：胶水型任务编排，不直连数据库，仅通过 HTTP 调 API
-  # 本地入口 http://localhost:5678 （Basic Auth）；流程里访问后端用 http://api:8000
-  # 汉化：版本必须严格匹配（n8n 版本 = 汉化包版本），升级前先确认 bsi-bcp/n8n-i18n-chinese 是否跟进发版
-  n8n:
-    image: n8nio/n8n:2.43.5
-    restart: unless-stopped
-    ports:
-      - "5678:5678"
-    environment:
-      N8N_BASIC_AUTH_ACTIVE: "true"
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-changeme}
-      N8N_HOST: ${N8N_HOST:-localhost}
-      N8N_PORT: "5678"
-      N8N_PROTOCOL: http
-      N8N_DEFAULT_LOCALE: zh-CN
-      GENERIC_TIMEZONE: Asia/Shanghai
-      TZ: Asia/Shanghai
-      # 文献抓取工作流（n8n-workflows/papers-crawl.json）经 $env.LUMEN_INTERNAL_TOKEN
-      # 调 /internal/jobs/*；不配则工作流里的环境变量取到空值
-      LUMEN_INTERNAL_TOKEN: ${LUMEN_INTERNAL_TOKEN:-}
-    volumes:
-      - n8n_data:/home/node/.n8n
-      # 中文界面：不在此处挂载——dist 缺失时 Docker 会建空目录覆盖镜像内文件导致白屏。
-      # 需要中文时用 deploy/docker-compose.n8n-zh.yml 覆盖层启用（自动下载见 deploy/n8n-zh-setup.sh）
-
 volumes:
   pgdata:
   caddy_data:
   caddy_config:
-  n8n_data:
