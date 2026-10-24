@@ -40,6 +40,18 @@
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function qs(sel, root) { return (root || document).querySelector(sel); }
   function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  /* 本地时区「今天」（YYYY-MM-DD）。勿用 toISOString——那是 UTC，北京时间 0~8 点会落到前一天 */
+  function localToday() {
+    var d = new Date();
+    var mo = d.getMonth() + 1, da = d.getDate();
+    return d.getFullYear() + "-" + (mo < 10 ? "0" + mo : mo) + "-" + (da < 10 ? "0" + da : da);
+  }
+  /* 滑动开关统一态：class + aria-checked 同步（role="switch" 可访问性） */
+  function setSwitch(el, on) { el.classList.toggle("on", !!on); el.setAttribute("aria-checked", on ? "true" : "false"); }
+  /* IME 组合输入中（拼音选词等）。keydown 的 isComposing 在部分 Safari 不可靠，用 composition 事件兜底 */
+  var imeComposing = false;
+  document.addEventListener("compositionstart", function () { imeComposing = true; });
+  document.addEventListener("compositionend", function () { imeComposing = false; });
 
   /* ================= 图标（内联 SVG 注入） ================= */
   var P = {
@@ -333,7 +345,7 @@
     var swEl = qs("[data-mm-reasoning-enabled]");
     var box = qs("[data-mm-reasoning-box]");
     var enabled = !!(r && r.enabled);
-    if (swEl) swEl.classList.toggle("on", enabled);
+    if (swEl) setSwitch(swEl, enabled);
     if (box) box.classList.toggle("hide", !enabled);
     var rowsBox = qs("[data-mm-lv-rows]");
     var levels = (r && r.levels) || [];
@@ -385,7 +397,7 @@
   function modelRowHtml(m) {
     var meta = m.meta || {};
     return '<div class="mm-model" data-mid="' + m.id + '">' +
-      '<button class="switch' + (m.enabled ? " on" : "") + '" type="button" data-model-enable="' + m.id + '" aria-label="启用该模型"></button>' +
+      '<button class="switch' + (m.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (m.enabled ? "true" : "false") + '" data-model-enable="' + m.id + '" aria-label="启用该模型"></button>' +
       '<span class="mname">' + esc(m.name) + (m.custom ? '<span class="badge-soon">自定义</span>' : "") + "</span>" +
       '<span class="mm-meta">' + esc(meta.context || "") + "</span>" +
       '<span class="mm-caps">' +
@@ -407,7 +419,7 @@
       '<div class="mm-detail-head"><div><div class="mm-name">' + esc(p.name) +
         ' <span class="pill ' + (p.enabled ? "pill-ok" : "pill-mute") + '">' + (p.enabled ? "已启用" : "已停用") + "</span></div>" +
         '<div class="mm-url">' + esc(p.base_url || "（未配置 Base URL，mock 占位）") + "</div></div>" +
-        '<button class="switch' + (p.enabled ? " on" : "") + '" type="button" data-provider-toggle="' + p.id + '" aria-label="启用该提供商"></button></div>' +
+        '<button class="switch' + (p.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (p.enabled ? "true" : "false") + '" data-provider-toggle="' + p.id + '" aria-label="启用该提供商"></button></div>' +
       '<div class="mm-grid">' +
         '<div class="field" style="margin-bottom:0;"><label>Base URL</label><input type="text" data-pv-base value="' + esc(p.base_url) + '"></div>' +
         '<div class="field" style="margin-bottom:0;"><label>API Key</label><input type="text" data-pv-key value="" autocomplete="off" placeholder="' + (p.has_key ? "已配置 " + esc(p.api_key_masked) + "（留空不修改）" : "sk-…") + '"></div>' +
@@ -461,7 +473,7 @@
     }).catch(function (e) { toast(e.detail || "加载失败"); });
   }
   function permSw(on, code, label) {
-    return '<button class="switch' + (on ? " on" : "") + '" type="button" data-perm-switch="' + code + '" aria-label="' + esc(label) + '"></button>';
+    return '<button class="switch' + (on ? " on" : "") + '" type="button" role="switch" aria-checked="' + (on ? "true" : "false") + '" data-perm-switch="' + code + '" aria-label="' + esc(label) + '"></button>';
   }
   function tokenRowHtml(t) {
     return "<tr><td>" + esc(t.name) + "</td>" +
@@ -993,7 +1005,7 @@
         '<div class="myskill-meta">' + metaLine + "</div></span>" +
         (isLocal
           ? '<span class="muted" style="font-size:12px;flex:none;">只读</span>'
-          : '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
+          : '<button class="switch' + (s.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (s.enabled ? "true" : "false") + '" data-myskill-toggle="' + s.id + '" data-enabled="' + (s.enabled ? "1" : "0") + '" aria-label="启用该技能"></button>' +
             '<button class="btn btn-danger-ghost btn-sm" type="button" data-myskill-del="' + s.id + '">卸载</button>') +
         "</div>";
     }).join("") : (q
@@ -1474,8 +1486,18 @@
   var paletteFiltered = paletteItems;
   var paletteIndex = 0;
 
-  function openModal(sel) { var m = qs(sel); if (m) m.classList.add("open"); }
-  function closeModal(el) { var m = el.closest(".modal-mask"); if (m) m.classList.remove("open"); }
+  function openModal(sel) {
+    var m = qs(sel);
+    if (!m) return;
+    if (m.showModal) { if (!m.open) m.showModal(); }
+    else m.classList.add("open");
+  }
+  function closeModal(el) {
+    var m = el.closest("dialog.modal-mask") || el.closest(".modal-mask");
+    if (!m) return;
+    if (m.close) { if (m.open) m.close(); }
+    else m.classList.remove("open");
+  }
 
   function openPalette() {
     paletteOpen = true;
@@ -1589,7 +1611,7 @@
     var switcher = el.closest("[data-modal-switch]");
     if (switcher) {
       var cur = switcher.closest(".modal-mask");
-      if (cur) cur.classList.remove("open");
+      if (cur && cur.close) { if (cur.open) cur.close(); } else if (cur) cur.classList.remove("open");
       var switchTarget = switcher.getAttribute("data-modal-switch");
       openModal(switchTarget);
       if (switchTarget === "#modal-skillhub") loadMySkills();
@@ -1597,7 +1619,10 @@
     }
     var closer = el.closest("[data-modal-close]");
     if (closer) { closeModal(closer); return; }
-    if (el.classList && el.classList.contains("modal-mask")) { el.classList.remove("open"); return; }
+    if (el.classList && el.classList.contains("modal-mask")) {
+      if (el.close) { if (el.open) el.close(); } else el.classList.remove("open");
+      return;
+    }
 
     if (el.closest("[data-open-sider]")) {
       qs("#sider").classList.add("open");
@@ -1708,13 +1733,13 @@
           type: type,
           category_id: parseInt(chipActive.getAttribute("data-cid"), 10),
           note: (noteInput && noteInput.value.trim()) || "",
-          date: (dateInput && dateInput.value) || new Date().toISOString().slice(0, 10)
+          date: (dateInput && dateInput.value) || localToday()
         };
       }
       var btn = el.closest("[data-submit-tx]");
       btn.disabled = true;
       API.post("/money/transactions", payload).then(function () {
-        if (mm) mm.classList.remove("open");
+        if (mm && mm.close) mm.close(); else if (mm) mm.classList.remove("open");
         aiDraft = null;
         toast("已入账");
         loadMoneyPage();
@@ -1796,7 +1821,7 @@
     /* 抽屉权限开关：应用到该用户的全部角色（整体重设） */
     var permSwEl = el.closest("[data-perm-switch]");
     if (permSwEl && el.closest("[data-udrawer]")) {
-      permSwEl.classList.toggle("on");
+      setSwitch(permSwEl, !permSwEl.classList.contains("on"));
       var drawer = el.closest("[data-udrawer]");
       var codes = qsa("[data-perm-switch].on", drawer).map(function (s) { return s.getAttribute("data-perm-switch"); });
       var head = drawer.querySelector(".ud-sub");
@@ -1833,7 +1858,7 @@
       var rowEl = mEnable.closest(".mm-model");
       var nowOn = mEnable.classList.contains("on");
       API.put("/admin/models/providers/" + adminState.pvDetail.id + "/models/" + mid3, { enabled: !nowOn }).then(function () {
-        mEnable.classList.toggle("on", !nowOn);
+        setSwitch(mEnable, !nowOn);
         toast(!nowOn ? "模型已启用" : "模型已停用");
       }).catch(function (e) { toast(e.detail || "更新失败"); });
       return;
@@ -1885,7 +1910,7 @@
     /* 思考模式开关（弹窗子表单显隐；须先于通用 switch 兜底） */
     var mmReasonSw = el.closest("[data-mm-reasoning-enabled]");
     if (mmReasonSw) {
-      mmReasonSw.classList.toggle("on");
+      setSwitch(mmReasonSw, !mmReasonSw.classList.contains("on"));
       var mmBox = qs("[data-mm-reasoning-box]");
       if (mmBox) mmBox.classList.toggle("hide", !mmReasonSw.classList.contains("on"));
       return;
@@ -1910,7 +1935,7 @@
     if (el.closest("[data-mm-save]")) { saveModelMeta(); return; }
     /* 其他场景的通用滑动开关（演示页兜底） */
     var sw = el.closest(".switch");
-    if (sw && !el.closest("[data-udrawer]")) { sw.classList.toggle("on"); toast("已更新（演示）"); return; }
+    if (sw && !el.closest("[data-udrawer]")) { setSwitch(sw, !sw.classList.contains("on")); toast("已更新（演示）"); return; }
 
     /* 模型管理：切换提供商条目 */
     var mmItem = el.closest("[data-pv]");
@@ -1934,7 +1959,7 @@
       }).then(function () {
         toast("提供商已创建");
         var pvMask = qs("#modal-add-pv");
-        if (pvMask) pvMask.classList.remove("open");
+        if (pvMask && pvMask.close) pvMask.close(); else if (pvMask) pvMask.classList.remove("open");
         if (pvName) pvName.value = "";
         if (pvVendor) pvVendor.value = "custom";
         if (pvUrl) pvUrl.value = "";
@@ -2208,7 +2233,7 @@
       passBtn.disabled = true;
       API.post("/auth/change-password", { old_password: oldPass, new_password: newPass }).then(function () {
         var mm = qs("#modal-pass");
-        if (mm) mm.classList.remove("open");
+        if (mm && mm.close) mm.close(); else if (mm) mm.classList.remove("open");
         if (oldEl) oldEl.value = "";
         if (newEl) newEl.value = "";
         toast("密码已修改，下次登录请用新密码");
@@ -2445,15 +2470,29 @@
       paletteOpen ? closePalette() : openPalette();
       return;
     }
+    /* role="button" 的 div 块：Enter/空格触发点击（原生 button 之外的键盘可达性补齐） */
+    if ((e.key === "Enter" || e.key === " ") && !e.isComposing && !imeComposing &&
+        e.target.matches && e.target.matches('[role="button"]')) {
+      e.preventDefault();
+      e.target.click();
+      return;
+    }
     if (paletteOpen) {
       if (e.key === "Escape") { closePalette(); return; }
       if (e.key === "ArrowDown") { e.preventDefault(); paletteIndex = Math.min(paletteIndex + 1, paletteFiltered.length - 1); renderPaletteList(); return; }
       if (e.key === "ArrowUp") { e.preventDefault(); paletteIndex = Math.max(paletteIndex - 1, 0); renderPaletteList(); return; }
-      if (e.key === "Enter") { e.preventDefault(); paletteExec(paletteIndex); return; }
+      if (e.key === "Enter") {
+        /* IME 选词回车不算确认（isComposing + composition 事件双保险） */
+        if (e.isComposing || imeComposing) return;
+        e.preventDefault();
+        paletteExec(paletteIndex);
+        return;
+      }
       return;
     }
     if (e.key === "Escape") {
-      qsa(".modal-mask.open").forEach(function (m) { m.classList.remove("open"); });
+      /* 原生 <dialog> 的 Esc 由浏览器自行处理（cancel → close），这里兜底非 dialog 弹层 */
+      qsa("dialog.modal-mask[open]").forEach(function (m) { m.close(); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       qsa(".role-pop:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       closeDrawers();
@@ -2472,6 +2511,8 @@
       return;
     }
     if (e.key === "Enter" && e.target.matches && e.target.matches(".composer textarea") && !e.shiftKey) {
+      /* IME 选词回车不发送（isComposing + composition 事件双保险，拼音用户必踩） */
+      if (e.isComposing || imeComposing) return;
       e.preventDefault();
       sendMessage();
     }
