@@ -583,12 +583,12 @@
      * 定位：按应用划分信息板块（板块注册表）；每板块只放「每天值得一眼的信息」（信息纪律）；
      * 整卡 <a> 即跳板，卡头右侧「应用名 →」；保留 grip 拖拽排序 lc_home_order（排序纪律）。
      * 结构：轻问候行（日期 + 时段问候 + 昵称，无全局指标带）+ bento 板块卡片区。
-     * 桌面：论文 span-8 + 对话 span-4 第一行，记账 span-12 横条第二行；≤900px 单列堆叠（main.css）。 */
+     * 桌面：三板块统一 span-12 全宽横条（宽度一致），卡片内部滚动（main.css 路由规则）；≤900px 单列堆叠。 */
     workspace: function () {
       var skelLines = '<div class="ws-skel"><i></i><i></i><i></i></div>';
       var cards = [
         /* 论文板块（大卡 · 新闻流式「今日推送」）：本期 mock，点标题/整卡 → #/papers */
-        '<a class="bcard span-8" href="#/papers" draggable="true" data-bcard="papers">' +
+        '<a class="bcard span-12" href="#/papers" draggable="true" data-bcard="papers">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="book"></i></span>' +
           '<div class="bcard-title"><span class="bcard-name">今日推送</span></div>' +
@@ -596,7 +596,7 @@
           '<div class="bcard-body" data-ws-papers>' + skelLines + "</div>" +
         "</a>",
         /* 对话板块（小卡）：昨日对话数（大数字）+ 最近一条会话摘要 */
-        '<a class="bcard span-4" href="#/chat" draggable="true" data-bcard="chat">' +
+        '<a class="bcard span-12" href="#/chat" draggable="true" data-bcard="chat">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="chat"></i></span>' +
           '<div class="bcard-title"><span class="bcard-name">昨日对话</span></div>' +

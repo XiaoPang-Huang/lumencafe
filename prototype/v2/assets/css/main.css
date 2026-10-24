@@ -1128,6 +1128,13 @@ body[data-route="chat"] .main {
 }
 body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 
+/* 工作台：卡片内部滚动——滚动条落在工作台卡片里（右侧贴卡内沿），侧栏/顶栏固定不动。
+   仅桌面端；移动端维持整页滚动。经典 flex 内滚模式：父定高 + 子 min-height:0 + overflow:auto。 */
+@media (min-width: 901px) {
+  body[data-route="workspace"] .content { height: calc(100vh - 48px); min-height: 0; }
+  body[data-route="workspace"] .main { height: auto; min-height: 0; flex: 1; overflow-y: auto; }
+}
+
 /* 桌面端默认隐藏 tabbar */
 .tabbar { display: none; }
 
