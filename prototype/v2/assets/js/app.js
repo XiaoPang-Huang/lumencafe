@@ -233,10 +233,6 @@
   }
 
   /* ================= 页面模板 ================= */
-  function statusDot(ok) {
-    return '<span class="status-dot' + (ok ? " on" : "") + '"></span>';
-  }
-
   function sparkline(values, cls) {
     var max = Math.max.apply(null, values);
     return '<span class="sparkline">' + values.map(function (v) {
@@ -583,56 +579,55 @@
   }
 
   var PAGES = {
-    /* ---------- 工作台：gethomepage 式玻璃 Bento（已联调 /chat /money /admin 活数据） ----------
-     * 卡片解剖：头部(图标+名称+状态灯+右侧胶囊/操作) / 内容区(活数据) / 页脚(微型数据 + 一个主操作) */
+    /* ---------- 每日看板 v2（2026-10-24 改版）：信息优先，卡片即跳板 ----------
+     * 定位：按应用划分信息板块（板块注册表）；每板块只放「每天值得一眼的信息」（信息纪律）；
+     * 整卡 <a> 即跳板，卡头右侧「应用名 →」；保留 grip 拖拽排序 lc_home_order（排序纪律）。
+     * 结构：轻问候行（日期 + 时段问候 + 昵称，无全局指标带）+ bento 板块卡片区。
+     * 桌面：论文 span-8 + 对话 span-4 第一行，记账 span-12 横条第二行；≤900px 单列堆叠（main.css）。 */
     workspace: function () {
+      var skelLines = '<div class="ws-skel"><i></i><i></i><i></i></div>';
       var cards = [
-        /* AI 对话：通知式预览最近一次对话 */
-        '<a class="bcard span-6" href="#/chat" draggable="true" data-bcard="chat">' +
-          '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
-          '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="chat"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">AI 对话 ' + statusDot(true) + "</span></div>" +
-          '<div class="bcard-tools"><span class="bcard-pill" data-ws-modelpill>…</span>' +
-          '<button class="icon-btn xs" type="button" data-new-conv-link aria-label="新建对话"><i data-ic="edit"></i></button></div></div>' +
-          '<div class="bcard-body">' +
-            '<div class="bcard-preview" data-ws-lastconv><span class="bp-text muted">加载中…</span></div>' +
-          "</div>" +
-          '<div class="bcard-foot"><span class="bcard-micro" data-ws-convs>…</span><span class="bcard-go">继续聊<i data-ic="arrow"></i></span></div>' +
-        "</a>",
-        /* 记账：迷你趋势（收支数字在顶部指标带） */
-        '<a class="bcard span-6" href="#/money" draggable="true" data-bcard="money">' +
-          '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
-          '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="money"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">记账本 ' + statusDot(true) + "</span></div></div>" +
-          '<div class="bcard-body" style="flex-direction:row;align-items:flex-end;">' +
-            '<div class="spark-wrap" style="margin-left:0;" data-ws-spark><span class="muted" style="font-size:13px;">加载中…</span></div>' +
-          "</div>" +
-          '<div class="bcard-foot"><span class="bcard-micro" data-ws-moneyfoot>…</span><span class="bcard-go">记一笔<i data-ic="arrow"></i></span></div>' +
-        "</a>",
-        /* 文献：PubMed 每日跟踪（批次 2 已上线，链接文献页） */
-        '<a class="bcard span-4" href="#/papers" draggable="true" data-bcard="papers">' +
+        /* 论文板块（大卡 · 新闻流式「今日推送」）：本期 mock，点标题/整卡 → #/papers */
+        '<a class="bcard span-8" href="#/papers" draggable="true" data-bcard="papers">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="book"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">文献 ' + statusDot(true) + "</span></div></div>" +
-          '<div class="bcard-body"><span class="bcard-muted">PubMed 每日新文献跟踪</span></div>' +
-          '<div class="bcard-foot"><span class="bcard-go">浏览文献<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-title"><span class="bcard-name">今日推送</span></div>' +
+          '<span class="bcard-app">文献<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-body" data-ws-papers>' + skelLines + "</div>" +
         "</a>",
-        /* 平台管理：结构化微数据（仅管理员可见，异步填充时移除） */
-        '<a class="bcard span-4" href="#/admin" draggable="true" data-bcard="admin">' +
+        /* 对话板块（小卡）：昨日对话数（大数字）+ 最近一条会话摘要 */
+        '<a class="bcard span-4" href="#/chat" draggable="true" data-bcard="chat">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
-          '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="gear"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">平台管理 ' + statusDot(true) + "</span></div></div>" +
-          '<div class="bcard-foot"><span class="bcard-micro" data-ws-adminmicro>…</span><span class="bcard-go">进入管理<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="chat"></i></span>' +
+          '<div class="bcard-title"><span class="bcard-name">昨日对话</span></div>' +
+          '<div class="bcard-tools">' +
+          '<button class="icon-btn xs" type="button" data-new-conv-link aria-label="新建对话" title="新建对话"><i data-ic="edit"></i></button>' +
+          '<span class="bcard-app">AI 对话<i data-ic="arrow"></i></span></div></div>' +
+          '<div class="bcard-body">' +
+            '<div class="ws-chatnum"><b data-ws-ycount>—</b><span>次对话</span></div>' +
+            '<div class="bcard-preview" data-ws-lastconv><span class="bp-text muted">加载中…</span></div>' +
+          "</div>" +
+          '<div class="bcard-foot"><span class="bcard-go">继续聊<i data-ic="arrow"></i></span></div>' +
         "</a>",
-        /* 应用中心 */
-        '<a class="bcard span-4" href="#/apps" draggable="true" data-bcard="apps">' +
+        /* 记账板块（横条 span-12）：昨日消费 / 本周消费 / 本月收支 + 近 6 月迷你趋势 */
+        '<a class="bcard span-12" href="#/money" draggable="true" data-bcard="money">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
-          '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="grid"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">应用中心 ' + statusDot(true) + "</span></div></div>" +
-          '<div class="bcard-foot"><span class="bcard-go">浏览全部<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-head"><span class="ico-box" style="background:#f0f6ff;color:#1664ff;"><i data-ic="money"></i></span>' +
+          '<div class="bcard-title"><span class="bcard-name">收支一览</span></div>' +
+          '<span class="bcard-app">记账本<i data-ic="arrow"></i></span></div>' +
+          '<div class="bcard-body">' +
+            '<div class="ws-money">' +
+              '<div class="num"><small>昨日消费</small><b class="ex" data-ws-yexp>—</b></div>' +
+              '<div class="num"><small>本周消费</small><b class="ex" data-ws-wexp>—</b></div>' +
+              '<div class="num"><small>本月收入</small><b class="inc" data-ws-minc>—</b></div>' +
+              '<div class="num"><small>本月支出</small><b class="ex" data-ws-mexp>—</b></div>' +
+              '<div class="spark-wrap" data-ws-spark></div>' +
+            "</div>" +
+          "</div>" +
+          '<div class="bcard-foot"><span class="bcard-micro" data-ws-moneyfoot>数据按账目日期归属</span></div>' +
         "</a>"
       ];
-      /* 读取拖拽排序缓存 */
+      /* 读取拖拽排序缓存（排序纪律：常用在前，lc_home_order 持久化） */
       var order = [];
       try { order = JSON.parse(localStorage.getItem("lc_home_order") || "[]"); } catch (e) { order = []; }
       cards.sort(function (a, b) {
@@ -640,17 +635,11 @@
         var ib = order.indexOf(b.match(/data-bcard="(\w+)"/)[1]);
         return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
       });
-      /* 概览指标带（火山方舟 overview 模式：大数字 + 小标题） */
-      var stats =
-        '<div class="stat-cell"><small>本月账目</small><b data-ws-txcount>—</b></div>' +
-        '<div class="stat-cell"><small>本月支出</small><b class="ex" data-ws-expense>—</b></div>' +
-        '<div class="stat-cell"><small>本月收入</small><b class="inc" data-ws-income>—</b></div>' +
-        '<div class="stat-cell"><small>结余</small><b data-ws-balance>—</b></div>';
+      /* 轻问候行：时段问候 + 昵称（data-ws-greet 异步填充）；不放全局指标带 */
       return '' +
-        '<div class="page-head" style="margin-bottom:16px;"><div><h1 class="page-title">工作台</h1></div>' +
+        '<div class="greet"><h1 data-ws-greet>你好</h1>' +
         '<span class="date" data-ws-date></span></div>' +
-        '<div class="stat-strip">' + stats + "</div>" +
-        '<div class="sec-head" style="margin-top:22px;"><span class="sec-title">应用</span>' +
+        '<div class="sec-head"><span class="sec-title">每日看板</span>' +
         '<span class="muted" style="font-size:12.5px;">拖拽调整顺序</span></div>' +
         '<div class="bento-grid">' + cards.join("") + "</div>";
     },
@@ -1181,67 +1170,81 @@
   /* ================= 工作台活数据（/chat /money /admin 联调） ================= */
   function fillWorkspace(view) {
     view = view || qs("#view");
-    /* 页头日期 */
+    /* 轻问候行：日期 + 时段问候 + 昵称 */
+    var d = new Date();
+    var wk = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
     var dEl = qs("[data-ws-date]", view);
-    if (dEl) {
-      var d = new Date();
-      var wk = ["日", "一", "二", "三", "四", "五", "六"][d.getDay()];
-      dEl.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日 星期" + wk;
-    }
-    /* 对话卡片：默认模型 + 最近会话 + 会话数 */
-    API.get("/chat/models").then(function (models) {
-      liveModels = models || [];
-      var def = liveModels.filter(function (m) { return m.is_default; })[0] || liveModels[0];
-      var pill = qs("[data-ws-modelpill]", view);
-      if (pill) pill.textContent = def ? def.name : "未配置";
-    }).catch(function () {});
-    API.get("/chat/conversations?app_id=chat").then(function (list) {
-      var last = list && list[0];
-      var box = qs("[data-ws-lastconv]", view);
-      if (box) {
-        box.innerHTML = last
-          ? '<span class="bp-text">' + esc(last.title) + '</span><span class="bp-time">' + esc((last.updated_at || "").slice(5, 16).replace("T", " ")) + "</span>"
-          : '<span class="bp-text muted">还没有对话，点击卡片开始聊聊</span>';
-      }
-      var convs = qs("[data-ws-convs]", view);
-      if (convs) convs.textContent = (list ? list.length : 0) + " 个会话";
-    }).catch(function () {});
-    /* 记账卡片 + 指标带 */
-    var mm = monthNow();
-    API.get("/money/stats/monthly?month=" + mm).then(function (s) {
+    if (dEl) dEl.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日 星期" + wk;
+    var h = d.getHours();
+    var greetWord = h < 6 ? "凌晨好" : h < 12 ? "上午好" : h < 18 ? "下午好" : "晚上好";
+    var nick = (LC_USER && (LC_USER.nickname || LC_USER.username)) || "朋友";
+    var gEl = qs("[data-ws-greet]", view);
+    if (gEl) gEl.textContent = greetWord + "，" + nick;
+
+    /* 记账板块：昨日/本周支出 + 本月收支（真数据 · GET /money/stats/summary） */
+    API.get("/money/stats/summary").then(function (s) {
       function set(sel, v) { var el = qs(sel, view); if (el) el.textContent = v; }
-      set("[data-ws-expense]", fenShort(s.expense_total));
-      set("[data-ws-income]", fenShort(s.income_total));
-      set("[data-ws-balance]", fenShort(s.balance));
-      var top = s.by_category && s.by_category[0];
+      set("[data-ws-yexp]", fenShort(s.yesterday_expense || 0));
+      set("[data-ws-wexp]", fenShort(s.week_expense || 0));
+      set("[data-ws-minc]", fenShort(s.month_income || 0));
+      set("[data-ws-mexp]", fenShort(s.month_expense || 0));
       var foot = qs("[data-ws-moneyfoot]", view);
-      if (foot) foot.textContent = top ? "餐饮等支出居多 · " + esc(top.name) + " " + fenShort(top.total) : "本月暂无支出";
-    }).catch(function () {});
+      if (foot) {
+        var hasAny = (s.yesterday_expense || s.week_expense || s.month_income || s.month_expense);
+        foot.textContent = hasAny ? "数据按账目日期归属" : "还没有账目，点卡片记一笔";
+      }
+    }).catch(function () {
+      var foot = qs("[data-ws-moneyfoot]", view);
+      if (foot) foot.textContent = "记账数据加载失败，点卡片重试";
+    });
+    /* 记账板块：近 6 月支出迷你趋势 */
     API.get("/money/stats/trend?months=6").then(function (s) {
       var box = qs("[data-ws-spark]", view);
       if (!box || !s || !s.months || !s.months.length) return;
       var exp = s.months.map(function (m2) { return m2.expense_total; });
       if (exp.every(function (v) { return v === 0; })) {
-        box.innerHTML = '<span class="muted" style="font-size:13px;">近 6 月暂无支出</span>';
+        box.innerHTML = '<span class="muted" style="font-size:12px;">近 6 月暂无支出</span>';
         return;
       }
       box.innerHTML = sparkline(exp, "ex") + "<small>近 6 月支出</small>";
     }).catch(function () {});
-    API.get("/money/transactions?page=1&page_size=1").then(function (p) {
-      var el = qs("[data-ws-txcount]", view);
-      if (el) el.innerHTML = (p && p.total || 0) + '<span class="stat-unit">笔</span>';
-    }).catch(function () {});
-    /* 平台管理卡片：仅管理员可见并填充微数据 */
-    var adminCard = qs('[data-bcard="admin"]', view);
-    var isAdmin = LC_USER && (LC_USER.roles || []).indexOf("admin") !== -1;
-    if (!isAdmin) {
-      if (adminCard) adminCard.remove();
-      return;
-    }
-    Promise.all([API.get("/admin/users?page_size=1"), API.get("/admin/models/providers")]).then(function (r) {
-      var micro = qs("[data-ws-adminmicro]", view);
-      if (micro) micro.textContent = ((r[0] && r[0].total) || 0) + " 用户 · " + ((r[1] && r[1].length) || 0) + " Provider";
-    }).catch(function () {});
+
+    /* 对话板块：昨日对话数 + 最近一条会话（GET /chat/conversations/summary） */
+    API.get("/chat/conversations/summary?app_id=chat").then(function (s) {
+      var cnt = qs("[data-ws-ycount]", view);
+      if (cnt) cnt.textContent = (s && s.yesterday_count) || 0;
+      var box = qs("[data-ws-lastconv]", view);
+      if (!box) return;
+      var last = s && s.latest;
+      box.innerHTML = last
+        ? '<span class="bp-text">' + esc(last.title) + '</span><span class="bp-time">' + esc((last.updated_at || "").slice(5, 16).replace("T", " ")) + "</span>"
+        : '<span class="bp-text muted">还没有对话，点卡片开始聊聊</span>';
+    }).catch(function () {
+      var box = qs("[data-ws-lastconv]", view);
+      if (box) box.innerHTML = '<span class="bp-text muted">对话数据加载失败，点卡片重试</span>';
+    });
+
+    /* 论文板块：今日推送（本期 mock · API.papers.feed；真接口第二批 n8n 接入） */
+    API.papers.feed(6).then(function (items) {
+      var box = qs("[data-ws-papers]", view);
+      if (!box) return;
+      if (items && items.length) {
+        box.innerHTML = '<div class="ws-feed">' + items.map(function (p) {
+          return '<div class="ws-feed-row">' +
+            '<span class="ft">' + esc(p.title) + "</span>" +
+            '<span class="fm">' + esc(p.journal || "") + (p.time ? " · " + esc(p.time) : "") + "</span>" +
+          "</div>";
+        }).join("") + "</div>";
+      } else {
+        /* 空态：订阅关键词后每天推送 + 跳应用设置入口 */
+        box.innerHTML = '<div class="ws-empty"><span class="t">订阅关键词后每天推送</span>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-ws-paper-settings>去设置<i data-ic="arrow"></i></button></div>';
+        injectIcons(box);
+      }
+    }).catch(function () {
+      var box = qs("[data-ws-papers]", view);
+      if (box) box.innerHTML = '<div class="ws-empty"><span class="t muted">推送加载失败，点卡片重试</span></div>';
+    });
   }
 
   /* ================= 应用中心活数据（GET /apps 注册表） ================= */
@@ -1623,6 +1626,13 @@
       return;
     }
 
+    /* 看板论文卡空态「去设置」：打开应用设置（订阅关键词），阻止整卡 <a> 默认跳转 */
+    if (el.closest("[data-ws-paper-settings]")) {
+      e.preventDefault();
+      openModal("#modal-set-apps");
+      loadMySkills();
+      return;
+    }
     /* 对话卡「新建对话」按钮 */
     if (el.closest("[data-new-conv-link]")) {
       e.preventDefault();

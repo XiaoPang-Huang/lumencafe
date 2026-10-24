@@ -16,6 +16,7 @@
 | v1.1-rev4 | 2026-10-15 | 删除「应用级绑定」设计：模型管理回归纯网关——Provider CRUD + 调官方 `GET /models` 拉取模型（按 Agent/Token 套餐分组展示）；对话与记账解析统一走网关默认路由；系统提示词改为内置常量；§2.1 G2、§3.2、§3.3、§4.3、§4.6、US-7、P0-3、附录同步 |
 | v1.1-rev5 | 2026-10-18 | 模型选择与网关令牌：① Provider 条目 = 厂商 × 套餐平级（`llm_models.plan` 列移除），fetch-models 返回平铺模型列表，支持自定义模型（custom 标记，409 重名）；② `llm_models.meta` 固定 capabilities（vision/files/context_tokens），驱动对话文件上传显隐；③ `/chat` 增加可选 `model_id`（选择值用表 id；绑定会话级 `chat_conversations.model_id`，缺省走默认路由），新增 `GET /chat/models` 用户侧模型池；④ 新增 `gateway_tokens` 表与 `/admin/gateway-tokens*`（对外 `/gw/v1` 鉴权改查表，首个令牌由 `LUMEN_INTERNAL_TOKEN` 种子）；§4.3、§4.6、US-7、P0-3 同步 |
 | v1.1-rev6 | 2026-10-21 | 对话思考双流与润色（按《PRD-增量-对话思考与润色-v1.md》v1.1 与《架构设计-增量 v1》实施）：① §4.6 `POST /chat` 请求体增可选 `thinking_level`（R1 白名单内唯一可开放调用参数；会话级快照 `chat_conversations.thinking_level`，不传 = 厂商默认）；② SSE 事件流增 `data: {reasoning_delta}`（思维双流，R3），既有 `{delta}`/`{error}`/`[DONE]` 不变，`chat_messages` 增列 `reasoning`（可空 TEXT）；③ 新增 `POST /chat/polish`（AI 润色，内置 prompt 常量，≤8s，502/429）；④ `GET /chat/models` 每模型增 `reasoning`（`{enabled, levels:[{value,label}], default_level}`，R5）；⑤ 系统提示词注入决策：内置常量在前、用户已安装 skill 片段在后（增量 §7，不占调用参数白名单） |
+| v1.1-rev7 | 2026-10-24 | 工作台定位从「应用陈列卡片」改为「**每日看板**」（信息优先，卡片即跳板）：① 首页按应用划分**信息板块**（板块注册表机制：应用有「每天值得一眼的信息」才上板块，配置型应用——平台管理/我的/专家/MCP——不上板；应用增加 = 板块注册表加卡片）；② 整卡即跳板（点击进对应应用），卡头右侧「应用名 →」；③ 两条纪律——**信息纪律**（每板块只放必要信息）与**排序纪律**（保留拖拽排序 lc_home_order，常用在前；板块过多时的折叠/自选本期不做）；④ 页面结构 = 轻问候行（日期 + 时段问候 + 昵称，取消全局指标带）+ bento 板块卡片区（记账小卡 / 论文大卡·新闻流式·mock 先行 / 对话小卡）；⑤ 新增轻量聚合接口 `GET /money/stats/summary` 与 `GET /chat/conversations/summary`（§4.6/§4.7）；⑥ 论文板块本期 mock 数据演示，`api.js` 留 `API.papers.feed()` 占位封装，真接口第二批 n8n 接入 |
 
 ---
 
@@ -42,7 +43,7 @@
 
 | # | 目标 | 衡量标准 |
 | --- | --- | --- |
-| G1 | 两位使用者拥有统一的个人 AI 应用入口 | 卡片工作台 + 应用中心数据驱动；第一批应用（对话、记账）上线即可用 |
+| G1 | 两位使用者拥有统一的个人 AI 应用入口 | 每日看板（信息板块跳板）+ 应用中心数据驱动；第一批应用（对话、记账）上线即可用 |
 | G2 | 对话与解析统一走 AI 网关，换模型/换供应商零代码 | 更换对话或记账解析的模型 = 网关层改默认 Provider，对话/解析接口与前端零改动 |
 | G3 | 记账可用自然语言快速入账并按月看清收支 | 「AI 记一笔」一句话成账；月度统计覆盖分类汇总 + 近 6 个月趋势 |
 | G4 | 开源后其他自部署者可一条 Docker 命令部署并自行扩展 | MIT 发布；README 含部署文档与「如何添加新应用」开发者文档 |
@@ -92,7 +93,7 @@ PostgreSQL（user_id 行级隔离）
 | 模块 | 职责 | 明确不做 |
 | --- | --- | --- |
 | 平台层-账号/RBAC | 注册、登录、JWT 签发、users/roles/permissions 三件套校验 | 不做 OAuth/第三方登录；忘记密码走管理员重置 |
-| 平台层-应用注册表 | 应用元数据（名称/描述/图标/颜色/分类/排序）+ 用户级可见性/工作台固定覆盖，驱动「应用中心」与「卡片工作台」 | 不含应用业务逻辑 |
+| 平台层-应用注册表 | 应用元数据（名称/描述/图标/颜色/分类/排序）+ 用户级可见性/工作台固定覆盖，驱动「应用中心」与「每日看板」 | 不含应用业务逻辑 |
 | 平台层-模型管理 | Provider CRUD、调官方 `GET /models` 拉取模型清单（按套餐分组）、连通性测试、网关默认路由配置 | 不做应用绑定；不做用量计费 |
 | AI 网关 | 按默认路由（默认 Provider/模型）调对应 OpenAI 兼容端点；统一 SSE 流式输出；文献解读/摘要翻译/记账解析复用同一网关 | 不做 per-app 绑定；不实现非 OpenAI 兼容协议 |
 | 应用 API-记账 | 账目 CRUD、自定义分类、月度统计、request_id 幂等 | 不做预算/报销/多人账本 |
@@ -184,7 +185,7 @@ PostgreSQL（user_id 行级隔离）
 | DELETE | `/apps/categories/{cid}` | 删除分类（旗下应用回落未分类） | 登录 |
 | PUT | `/apps/{app_id}/config` | 用户级覆盖：`{hidden?, pinned?, sort?, category_id?}`（显式 null 清除覆盖） | 登录 |
 
-说明：应用注册表数据驱动前端两层导航（卡片工作台 pinned 子集 + 应用中心全量，见 §7）。
+说明：应用注册表数据驱动前端两层导航（每日看板信息板块 + 应用中心全量，见 §7）。
 
 ### 4.5 用户设置 `/me`（基础设施）
 
@@ -201,6 +202,7 @@ PostgreSQL（user_id 行级隔离）
 | POST | `/chat/polish` | AI 润色 `{text}`（1–4000 字）→ `{polished}`；复用默认路由非流式调用，system prompt 内置常量，≤8s、失败 502、限流 429（增量 rev6，P1-2） | 该 app 权限点 |
 | GET | `/chat/models` | 对话模型池：启用 Provider 的启用模型 `[{id, name, provider, capabilities, reasoning, is_default}]`，按 Provider 条目分组；供模型选择器使用。`reasoning = {enabled, levels:[{value,label}], default_level}`（无该键 = 不支持思考，R5） | 登录用户 |
 | GET | `/chat/conversations?app_id=` | 会话列表（updated_at 倒序，含标题） | 该 app 权限点 |
+| GET | `/chat/conversations/summary?app_id=` | 看板聚合：`{yesterday_count, latest:{id, title, updated_at}}`（昨日有更新的会话数 + 最近一条；日期边界按服务器本地时区） | 该 app 权限点 |
 | POST | `/chat/conversations` | 新建会话 `{app_id, title?}` | 该 app 权限点 |
 | DELETE | `/chat/conversations/{cid}` | 删除会话（级联删消息） | 该 app 权限点 |
 | GET | `/chat/history?app_id=&conversation_id=` | 历史消息（≤200 条，升序）+ 会话标题 | 该 app 权限点 |
@@ -253,6 +255,7 @@ PostgreSQL（user_id 行级隔离）
 | DELETE | `/money/transactions/{tid}` | 删除；非本人 404 | app:money |
 | GET | `/money/stats/monthly?month=YYYY-MM` | 月度统计：`{month, expense_total, income_total, balance, by_category:[{category_id, name, total, count}]}`（支出按分类汇总降序） | app:money |
 | GET | `/money/stats/trend?months=6` | 趋势：`{months:[{month, expense_total, income_total}]}`，最近 N 个月（默认 6，≤12），无数据月份补零 | app:money |
+| GET | `/money/stats/summary` | 看板聚合：`{yesterday_expense, week_expense, month_income, month_expense}`（金额单位「分」对齐既有接口；昨日/本周/本月日期边界按服务器本地时区，周 = 周一起） | app:money |
 | POST | `/money/parse` | **AI 记一笔（Q4 已决：本期实施）**：请求 `{text}`；AI 网关一次性（非 SSE）返回 `{amount, type, category_suggestion, note, date, confidence?}`；仅生成草稿不落库，确认后走 POST /money/transactions；模型未配置 503 | app:money |
 
 记账规则要点：金额为正整数（分）；type 与 category.kind 必须兼容（expense 账目挂 expense/both 分类）；所有查询/写入按 user_id 隔离；统计口径 = 按 `date` 字段归属月份。
@@ -340,7 +343,7 @@ PostgreSQL（user_id 行级隔离）
 
 | 层 | 说明 |
 | --- | --- |
-| 首页·卡片工作台 | 默认展示常用应用卡片（大卡片、可自定义）：对话入口、记账快捷记一笔、（第二批）文献新到提醒；支持长按/设置调整固定应用与顺序（写入 `/apps/{id}/config` 的 pinned/sort 覆盖） |
+| 首页·每日看板（原卡片工作台） | **信息优先，卡片即跳板**：按应用划分信息板块（记账 / 论文 / 对话），每板块只放「每天值得一眼的信息」，整卡点击进对应应用；上板判断 = 应用有每日值得关注的信息（配置型应用不上板），应用增加 = 板块注册表加卡片；保留拖拽排序（lc_home_order，常用在前；折叠/自选待板块过多时再做） |
 | 应用中心 | 全量应用列表，按分类分组、可搜索；与首页共用应用注册表数据 |
 
 手机端：底部导航（工作台 / 应用中心 / 我的）；电脑端：左侧栏 + 内容区，同一套路由。一套代码自适应。
@@ -350,7 +353,7 @@ PostgreSQL（user_id 行级隔离）
 | 页面 | 要点 |
 | --- | --- |
 | 登录/注册 | 居中卡片；注册入口仅 `REGISTRATION_OPEN=true` 时显示 |
-| 卡片工作台 | 网格大卡（color/icon）；记账卡片内嵌「快速记一笔」弹层；空态引导去应用中心添加 |
+| 每日看板（首页） | 轻问候行（x月x日 星期x + 时段问候 + 昵称，不放全局指标带）+ bento 板块卡片区：记账板块（昨日消费/本周消费/本月收支 + 迷你趋势条 → #/money）、论文板块（大卡新闻流式「今日推送」，标题+期刊+时间，空态引导订阅关键词；本期 mock 演示）、对话板块（昨日对话数 + 最近会话摘要 + 「继续聊」→ #/chat）；整卡即跳板，卡头右侧「应用名 →」；桌面 bento 多列（论文 span-8 + 对话 span-4，记账 span-12 横条），手机 ≤900px 单列堆叠；保留 grip 拖拽排序（lc_home_order）；各板块骨架加载 + 按应用一句空态引导 |
 | 应用中心 | 分组列表 + 搜索框 + 应用详情操作（固定到首页/隐藏/移分类） |
 | ChatApp 组件 | 对标 DeepSeek 对话界面：左侧会话列表（新建/删除/切换）、消息流、底部输入；SSE 打字机渲染；Markdown 渲染 + 代码块高亮 + 复制按钮；error 事件 toast |
 | 记账首页 | 本月收支合计条 + 「记一笔」主按钮 + 最近账目列表 + 分类管理入口 |

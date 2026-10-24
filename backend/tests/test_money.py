@@ -2,6 +2,8 @@
 
 from datetime import date, timedelta
 
+import pytest
+
 from app.services import llm_gateway, route_service
 from tests.conftest import login
 
@@ -274,6 +276,76 @@ async def test_monthly_and_trend_stats(client):
     assert len(resp["months"]) == 6
     zero_months = [m for m in resp["months"] if m["expense_total"] == 0 and m["income_total"] == 0]
     assert len(zero_months) == 4  # 其余 4 个月无数据补零
+
+
+# ── 每日看板聚合（PRD v1.1-rev7：/money/stats/summary）────────
+async def test_summary_stats_normal_and_empty(client):
+    from app.services import money_service
+
+    headers = await _money_user(client)
+
+    # 空数据：四个值全 0
+    resp = await client.get("/money/stats/summary", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "yesterday_expense": 0,
+        "week_expense": 0,
+        "month_income": 0,
+        "month_expense": 0,
+    }
+
+    # 固定「今天」= 2026-03-01（周日）→ 覆盖跨月（昨日 2/28）与跨周（本周一 2/23）边界
+    fixed_today = date(2026, 3, 1)
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(money_service, "_today_local", lambda: fixed_today)
+    try:
+        cats = (await client.get("/money/categories", headers=headers)).json()
+        food_id = next(c["id"] for c in cats if c["name"] == "餐饮")
+        salary_id = next(c["id"] for c in cats if c["kind"] == "income")
+
+        async def add(rid, amount, cid, day, type_="expense"):
+            resp = await client.post(
+                "/money/transactions",
+                json=_txn(rid, amount=amount, type_=type_, category_id=cid, date_str=day),
+                headers=headers,
+            )
+            assert resp.status_code == 201, resp.text
+
+        await add("sum-y", 3200, food_id, "2026-02-28")  # 昨日（跨月）
+        await add("sum-w1", 6800, food_id, "2026-02-23")  # 本周一
+        await add("sum-w0", 1500, food_id, "2026-02-22")  # 上周日（不计入本周）
+        await add("sum-t", 2000, food_id, "2026-03-01")  # 今天（计入本周/本月）
+        await add("sum-i", 800000, salary_id, "2026-02-28", type_="income")  # 上月收入（不计入本月）
+
+        resp = await client.get("/money/stats/summary", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "yesterday_expense": 3200,  # 仅 2/28 支出
+            "week_expense": 6800 + 3200 + 2000,  # 2/23 周一至今，含跨月的昨日
+            "month_income": 0,  # 2/28 收入归 2 月
+            "month_expense": 2000,  # 仅 3/1 支出
+        }
+
+        # 本月收入：3 月入账即计入
+        await add("sum-i2", 500000, salary_id, "2026-03-01", type_="income")
+        resp = await client.get("/money/stats/summary", headers=headers)
+        assert resp.json()["month_income"] == 500000
+    finally:
+        monkey.undo()
+
+
+async def test_summary_stats_isolated_per_user(client):
+    headers = await _money_user(client)
+    other = await _money_user(client, "nora2")
+    cats = (await client.get("/money/categories", headers=headers)).json()
+    food_id = next(c["id"] for c in cats if c["name"] == "餐饮")
+    await client.post(
+        "/money/transactions",
+        json=_txn("sum-iso", amount=9900, category_id=food_id),
+        headers=headers,
+    )
+    resp = await client.get("/money/stats/summary", headers=other)
+    assert resp.json()["week_expense"] == 0
 
 
 # ── AI 记一笔 ───────────────────────────────────────────

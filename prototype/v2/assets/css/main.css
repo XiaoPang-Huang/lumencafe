@@ -390,6 +390,8 @@ p { margin: 0; }
 .bcard:active { transform: translateY(0) scale(.99); }
 .bcard.span-4 { grid-column: span 4; }
 .bcard.span-6 { grid-column: span 6; }
+.bcard.span-8 { grid-column: span 8; }
+.bcard.span-12 { grid-column: span 12; }
 .bcard.is-disabled { opacity: .62; }
 .bcard.is-disabled:hover { transform: none; box-shadow: var(--shadow); }
 
@@ -492,6 +494,58 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 .tag-go { color: var(--brand-strong); background: var(--brand-soft); font-weight: 600; }
 
 .badge-soon { font-size: 11px; color: var(--ink-3); border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 6px; font-weight: 400; }
+
+/* ============ 每日看板 v2（2026-10-24 改版：信息板块 + 整卡跳板） ============ */
+/* 卡头右侧「应用名 →」：整卡即跳板的次级提示，hover 随卡片变品牌色 */
+.bcard-app {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-3);
+  transition: color .18s;
+}
+.bcard-app .ic { width: 13px; height: 13px; }
+.bcard:hover .bcard-app { color: var(--brand-strong); }
+
+/* 骨架占位（板块加载语言：灰条 shimmer，替换旧「加载中…」文案） */
+.ws-skel { display: flex; flex-direction: column; gap: 11px; padding: 3px 0; }
+.ws-skel i {
+  display: block; height: 12px; border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-soft) 25%, #e7eae4 50%, var(--bg-soft) 75%);
+  background-size: 200% 100%;
+  animation: skel-slide 1.3s linear infinite;
+}
+.ws-skel i:nth-child(2) { width: 84%; }
+.ws-skel i:nth-child(3) { width: 62%; }
+@keyframes skel-slide { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* 论文板块：新闻流式「今日推送」列表（行内单项点击由整卡 <a> 冒泡跳转 #/papers） */
+.ws-feed { display: flex; flex-direction: column; }
+.ws-feed-row {
+  display: flex; align-items: baseline; gap: 14px;
+  padding: 9px 2px; font-size: 13.5px;
+  border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+.ws-feed-row:last-child { border-bottom: 0; padding-bottom: 1px; }
+.ws-feed-row .ft {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ws-feed-row:hover .ft { color: var(--brand-strong); }
+.ws-feed-row .fm { flex: none; max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
+
+/* 板块空态：一句引导 + 一个动作（如论文卡「订阅关键词后每天推送 → 去设置」） */
+.ws-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 8px 2px; }
+.ws-empty .t { font-size: 13.5px; color: var(--ink-2); }
+
+/* 对话板块：昨日对话大数字 + 最近会话摘要 */
+.ws-chatnum { display: flex; align-items: baseline; gap: 10px; }
+.ws-chatnum b { font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -.5px; }
+.ws-chatnum span { font-size: 13px; color: var(--ink-3); }
+
+/* 记账板块（span-12 横条）：昨日/本周/本月数字排 + 右侧迷你趋势 */
+.ws-money { display: flex; align-items: flex-end; gap: 34px; flex-wrap: wrap; }
+.ws-money .num b { font-size: 22px; }
+.ws-money .spark-wrap { margin-left: auto; }
 
 /* ============ 对话 ChatApp ============ */
 /* 对话页三卡：容器本身只负责灰底上的间距（padding 12 + gap 12），
@@ -1122,6 +1176,14 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 
   .bcard.span-6 { grid-column: 1 / -1; }
   .bcard.span-4 { grid-column: 1 / -1; }
+  .bcard.span-8 { grid-column: 1 / -1; }
+  .bcard.span-12 { grid-column: 1 / -1; }
+
+  /* 每日看板 v2：手机单列堆叠时收窄数字排与推送行 */
+  .ws-money { gap: 22px; }
+  .ws-money .num b { font-size: 19px; }
+  .ws-chatnum b { font-size: 32px; }
+  .ws-feed-row .fm { max-width: 38%; }
 
   .stat-grid { grid-template-columns: minmax(0, 1fr); }
 

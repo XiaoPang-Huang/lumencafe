@@ -8,11 +8,11 @@
 """
 import json
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from app.schemas.money import (
     MonthlyStats,
     MonthPoint,
     ParseResponse,
+    SummaryStats,
     TransactionCreate,
     TransactionOut,
     TransactionUpdate,
@@ -54,6 +55,11 @@ def transaction_out(txn: MoneyTransaction, *, idempotent: bool = False) -> Trans
 
 def _today() -> date:
     return datetime.now(UTC).date()
+
+
+def _today_local() -> date:
+    """服务器本地时区的今天（每日看板日期边界口径，PRD v1.1-rev7）。"""
+    return datetime.now().date()
 
 
 async def _get_category(
@@ -385,6 +391,78 @@ async def trend_stats(db: AsyncSession, user_id: int, months: int) -> TrendStats
             MonthPoint(month=label, expense_total=data[label]["expense"], income_total=data[label]["income"])
             for label in labels
         ]
+    )
+
+
+async def summary_stats(db: AsyncSession, user_id: int) -> SummaryStats:
+    """每日看板聚合（PRD v1.1-rev7）：昨日支出 / 本周支出 / 本月收支。
+
+    日期边界按服务器本地时区（_today_local）；周 = 周一为界（含今天）；
+    归属口径与 monthly_stats 一致 = date 字段。单次聚合查询出四个值。
+    """
+    today = _today_local()
+    yesterday = today - timedelta(days=1)
+    week_start = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    month_end = (
+        date(today.year + 1, 1, 1)
+        if today.month == 12
+        else date(today.year, today.month + 1, 1)
+    )
+
+    t = MoneyTransaction
+    is_expense = t.type == "expense"
+    is_income = t.type == "income"
+    row = (
+        await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        case((and_(is_expense, t.date == yesterday), t.amount), else_=0)
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (and_(is_expense, t.date >= week_start, t.date <= today), t.amount),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                and_(is_income, t.date >= month_start, t.date < month_end),
+                                t.amount,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                and_(is_expense, t.date >= month_start, t.date < month_end),
+                                t.amount,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ),
+            ).where(t.user_id == user_id)
+        )
+    ).one()
+    return SummaryStats(
+        yesterday_expense=int(row[0]),
+        week_expense=int(row[1]),
+        month_income=int(row[2]),
+        month_expense=int(row[3]),
     )
 
 

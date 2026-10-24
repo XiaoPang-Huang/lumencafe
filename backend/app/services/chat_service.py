@@ -9,6 +9,7 @@
 - 增量 v1：思维链随 assistant 消息落库（64KB 截断）；已启用 skill 的 prompt
   片段按 installed_at 升序注入 system（内置常量在前，用户不可改写）。
 """
+import datetime as dt
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,7 +21,12 @@ from app.config import settings
 from app.models.apps import AppRegistry
 from app.models.chat import ChatConversation, ChatMessage
 from app.models.llm import LLMModel, Provider
-from app.schemas.chat import ChatModelOut, ConversationCreate
+from app.schemas.chat import (
+    ChatModelOut,
+    ConversationCreate,
+    ConversationSummary,
+    LatestConversationOut,
+)
 from app.schemas.llm import MetaReasoning
 from app.services import llm_gateway, route_service, skill_service
 from app.services.llm_gateway import ClientCfg
@@ -325,6 +331,54 @@ async def list_conversations(db: AsyncSession, user_id: int, app_id: str) -> lis
         .order_by(ChatConversation.updated_at.desc())
     )
     return list(result.scalars().all())
+
+
+def _now_local() -> dt.datetime:
+    """服务器本地时区的当前时刻（每日看板日期边界口径，PRD v1.1-rev7）。"""
+    return dt.datetime.now().astimezone()
+
+
+async def conversation_summary(
+    db: AsyncSession, user_id: int, app_id: str
+) -> ConversationSummary:
+    """每日看板聚合（PRD v1.1-rev7）：昨日有更新的会话数 + 最近一条会话。
+
+    「昨日」按服务器本地时区的日历日切分（timestamptz 列上用本地时区边界比较）。
+    """
+    now = _now_local()
+    yesterday_start = dt.datetime.combine(
+        now.date() - dt.timedelta(days=1), dt.time.min, tzinfo=now.tzinfo
+    )
+    yesterday_end = yesterday_start + dt.timedelta(days=1)
+
+    yesterday_count = int(
+        (
+            await db.execute(
+                select(func.count(ChatConversation.id)).where(
+                    ChatConversation.user_id == user_id,
+                    ChatConversation.app_id == app_id,
+                    ChatConversation.updated_at >= yesterday_start,
+                    ChatConversation.updated_at < yesterday_end,
+                )
+            )
+        ).scalar_one()
+    )
+    latest = (
+        await db.execute(
+            select(ChatConversation)
+            .where(ChatConversation.user_id == user_id, ChatConversation.app_id == app_id)
+            .order_by(ChatConversation.updated_at.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    return ConversationSummary(
+        yesterday_count=yesterday_count,
+        latest=(
+            LatestConversationOut(id=latest.id, title=latest.title, updated_at=latest.updated_at)
+            if latest is not None
+            else None
+        ),
+    )
 
 
 async def create_conversation(

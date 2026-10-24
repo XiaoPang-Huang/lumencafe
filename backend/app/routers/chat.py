@@ -23,6 +23,7 @@ from app.schemas.chat import (
     ChatRequest,
     ConversationCreate,
     ConversationOut,
+    ConversationSummary,
     HistoryResponse,
     PolishIn,
     PolishOut,
@@ -141,6 +142,15 @@ async def list_conversations(
     await _check_app_permission(db, user, app_id)
     rows = await chat_service.list_conversations(db, user.id, app_id)
     return [_conversation_out(c) for c in rows]
+
+
+@router.get("/conversations/summary", response_model=ConversationSummary)
+async def conversation_summary(
+    app_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    """每日看板聚合（PRD v1.1-rev7）：昨日有更新的会话数 + 最近一条会话。"""
+    await _check_app_permission(db, user, app_id)
+    return await chat_service.conversation_summary(db, user.id, app_id)
 
 
 @router.post("/conversations", response_model=ConversationOut, status_code=201)

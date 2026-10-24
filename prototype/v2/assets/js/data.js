@@ -185,6 +185,61 @@ window.LC_DATA = {
     { id: 1, name: "n8n", mask: "sk-••••8f2a", scope: "全部模型", created: "2026-10-15", active: true }
   ],
 
+  /* 论文板块「今日推送」mock（每日看板 v2 · 2026-10-24）
+   * 本版演示用；真接口第二批 n8n 接入后由 GET /papers/daily 取代（见 api.js API.papers.feed）。
+   * 条目契约：{id, title, journal, time(相对时间文案), tags} */
+  PAPERS_FEED: [
+    {
+      id: "mock-p1",
+      title: "血浆 p-tau217 联合 Aβ42/40 比值在早期阿尔茨海默病筛查中的诊断效能：一项多中心前瞻队列研究",
+      journal: "Alzheimer's & Dementia",
+      time: "今天 08:30",
+      tags: ["AD"]
+    },
+    {
+      id: "mock-p2",
+      title: "LRRK2 抑制剂在帕金森病动物模型中的多巴胺能神经保护机制研究进展",
+      journal: "Movement Disorders",
+      time: "今天 08:30",
+      tags: ["PD"]
+    },
+    {
+      id: "mock-p3",
+      title: "TDP-43 病理在肌萎缩侧索硬化中的跨突触传播路径及其朊病毒样特性",
+      journal: "Lancet Neurology",
+      time: "今天 08:31",
+      tags: ["ALS"]
+    },
+    {
+      id: "mock-p4",
+      title: "MoCA 量表在不同教育程度老年人群中的截断值校准：系统综述与个体 participant 数据 Meta 分析",
+      journal: "Journal of Alzheimer's Disease",
+      time: "昨天 21:05",
+      tags: ["scale", "AD"]
+    },
+    {
+      id: "mock-p5",
+      title: "肠道菌群—肠脑轴与神经退行性疾病：从相关性证据到因果干预的转化路径",
+      journal: "Nature Neuroscience",
+      time: "昨天 21:06",
+      tags: []
+    },
+    {
+      id: "mock-p6",
+      title: "α-突触核蛋白种子扩增检测对帕金森病前驱期转化的预测价值：一项 5 年随访研究",
+      journal: "npj Parkinson's Disease",
+      time: "周三 07:40",
+      tags: ["PD"]
+    },
+    {
+      id: "mock-p7",
+      title: "额颞叶痴呆与 ALS 的临床谱系重叠：C9orf72 重复扩增携带者的表型异质性",
+      journal: "Brain",
+      time: "周三 07:41",
+      tags: ["ALS"]
+    }
+  ],
+
   /* 角色与权限点（GET /admin/roles、/admin/permissions） */
   roles: [
     { id: 1, name: "admin", label: "管理员", permissions: ["app:chat", "app:money", "app:papers", "admin:users", "admin:models"], builtin: true },

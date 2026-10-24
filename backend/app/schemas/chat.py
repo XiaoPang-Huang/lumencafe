@@ -36,6 +36,21 @@ class ConversationOut(BaseModel):
     updated_at: dt.datetime
 
 
+class LatestConversationOut(BaseModel):
+    """每日看板「最近一条会话」摘要（PRD v1.1-rev7，仅必要字段）。"""
+
+    id: int
+    title: str
+    updated_at: dt.datetime
+
+
+class ConversationSummary(BaseModel):
+    """每日看板聚合（PRD v1.1-rev7）：昨日有更新的会话数 + 最近一条会话。"""
+
+    yesterday_count: int
+    latest: LatestConversationOut | None = None
+
+
 class ChatModelOut(BaseModel):
     """对话模型池条目：按 Provider 条目分组由前端按 provider 字段归类。"""
 

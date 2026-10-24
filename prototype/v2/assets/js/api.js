@@ -103,6 +103,17 @@
   /* 增量 v1：AI 润色（P1-2，POST /chat/polish {text} → {polished}） */
   function polish(text) { return post("/chat/polish", { text: text }); }
 
+  /* 每日看板 v2（2026-10-24）：论文板块信息流。
+   * 本期为 mock 演示——直接 resolve data.js 的 LC_DATA.PAPERS_FEED；
+   * 【真接口·第二批】n8n 抓取接入后改为 GET /papers/daily?limit=N（返回结构对齐 PAPERS_FEED）。 */
+  var papers = {
+    feed: function (limit) {
+      var items = ((window.LC_DATA || {}).PAPERS_FEED) || [];
+      if (limit) items = items.slice(0, limit);
+      return Promise.resolve(items);
+    }
+  };
+
   /* 增量 v1：SkillHub 代理 + 已安装技能 + 用户上传（安装位置固定 app_id=chat） */
   var skills = {
     catalog: function (q) { return get("/skills/catalog?q=" + encodeURIComponent(q || "")); },
@@ -138,5 +149,5 @@
   }
   skills.upload = uploadSkill;
 
-  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, polish: polish, skills: skills };
+  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, polish: polish, papers: papers, skills: skills };
 })();

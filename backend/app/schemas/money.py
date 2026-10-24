@@ -111,3 +111,15 @@ class MonthPoint(BaseModel):
 
 class TrendStats(BaseModel):
     months: list[MonthPoint]
+
+
+class SummaryStats(BaseModel):
+    """每日看板聚合（PRD v1.1-rev7）：昨日支出 / 本周支出 / 本月收支。
+
+    金额单位「分」对齐既有统计接口；日期边界按服务器本地时区，周 = 周一起。
+    """
+
+    yesterday_expense: int
+    week_expense: int
+    month_income: int
+    month_expense: int

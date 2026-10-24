@@ -45,6 +45,8 @@ services:
       retries: 5
       start_period: 30s
     environment:
+      # 业务日期边界（昨日/本周/本月）按北京时间切换；不设则容器默认 UTC 零点偏移 8 小时
+      TZ: Asia/Shanghai
       # Skill 文件夹库根目录（Agent Skills 开放标准：skills/<slug>/SKILL.md）。
       # 未设置时后端回落默认路径；容器内固定 /app/skills 并挂载宿主机卷持久化
       SKILL_LIBRARY_DIR: /app/skills

@@ -60,6 +60,51 @@ async def test_chat_sse_full_flow(client):
     assert history["messages"][1]["content"] == "".join(deltas)
 
 
+# ── 每日看板聚合（PRD v1.1-rev7：/chat/conversations/summary）────
+async def test_conversation_summary(client):
+    headers = await _chat_user(client)
+
+    # 空数据：yesterday_count = 0，latest = None
+    resp = await client.get("/chat/conversations/summary?app_id=chat", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"yesterday_count": 0, "latest": None}
+
+    # 今天发起一轮对话：不算「昨日」，但成为 latest
+    await client.post("/chat", json={"app_id": "chat", "message": "今天天气如何"}, headers=headers)
+    summary = (
+        await client.get("/chat/conversations/summary?app_id=chat", headers=headers)
+    ).json()
+    assert summary["yesterday_count"] == 0
+    assert summary["latest"]["title"] == "今天天气如何"[:16]
+    assert summary["latest"]["id"] > 0
+
+    # 回拨 updated_at 到本地时区「昨天」→ yesterday_count = 1（同日两条只算各自归属日）
+    from sqlalchemy import text
+
+    from app.db import SessionLocal
+
+    async with SessionLocal() as db:
+        await db.execute(
+            text(
+                "UPDATE chat_conversations SET updated_at = "
+                "date_trunc('day', now()) - interval '1 day' + interval '12 hours'"
+            )
+        )
+        await db.commit()
+    summary = (
+        await client.get("/chat/conversations/summary?app_id=chat", headers=headers)
+    ).json()
+    assert summary["yesterday_count"] == 1
+    assert summary["latest"]["title"] == "今天天气如何"[:16]
+
+    # 本人隔离：另一个用户看不到
+    other = await _chat_user(client, "chatter2")
+    summary = (
+        await client.get("/chat/conversations/summary?app_id=chat", headers=other)
+    ).json()
+    assert summary == {"yesterday_count": 0, "latest": None}
+
+
 async def test_chat_reuses_latest_conversation(client):
     headers = await _chat_user(client)
     await client.post("/chat", json={"app_id": "chat", "message": "第一轮"}, headers=headers)

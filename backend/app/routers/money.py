@@ -20,6 +20,7 @@ from app.schemas.money import (
     MonthlyStats,
     ParseRequest,
     ParseResponse,
+    SummaryStats,
     TransactionCreate,
     TransactionOut,
     TransactionPage,
@@ -172,6 +173,15 @@ async def trend_stats(
     db: AsyncSession = Depends(get_db),
 ):
     return await money_service.trend_stats(db, user.id, months)
+
+
+@router.get("/stats/summary", response_model=SummaryStats)
+async def summary_stats(
+    user: User = Depends(_bookkeeper),
+    db: AsyncSession = Depends(get_db),
+):
+    """每日看板聚合（PRD v1.1-rev7）：昨日支出 / 本周支出 / 本月收支（分）。"""
+    return await money_service.summary_stats(db, user.id)
 
 
 # ── AI 记一笔 ───────────────────────────────────────────
