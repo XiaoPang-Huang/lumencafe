@@ -1136,6 +1136,24 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
   body:not([data-route="chat"]):not([data-route="login"]) .main { height: auto; min-height: 0; flex: 1; overflow-y: auto; }
 }
 
+/* 容器卡滚动条：细圆头 + 透明轨道——避免默认滚动条轨道在卡片圆角处形成方形缺口。
+   卡片背景与边框曲线自然露出，滚动条像浮在卡内沿。 */
+@media (min-width: 901px) {
+  body:not([data-route="chat"]):not([data-route="login"]) .main {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 20, 30, .18) transparent;
+  }
+  body:not([data-route="chat"]):not([data-route="login"]) .main::-webkit-scrollbar { width: 8px; }
+  body:not([data-route="chat"]):not([data-route="login"]) .main::-webkit-scrollbar-track { background: transparent; }
+  body:not([data-route="chat"]):not([data-route="login"]) .main::-webkit-scrollbar-thumb {
+    background: rgba(15, 20, 30, .18);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  body:not([data-route="chat"]):not([data-route="login"]) .main::-webkit-scrollbar-thumb:hover { background-color: rgba(15, 20, 30, .32); }
+}
+
 /* 桌面端默认隐藏 tabbar */
 .tabbar { display: none; }
 
