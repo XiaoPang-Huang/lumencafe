@@ -18,7 +18,7 @@
 | v1.1-rev6 | 2026-10-21 | 对话思考双流与润色（按《PRD-增量-对话思考与润色-v1.md》v1.1 与《架构设计-增量 v1》实施）：① §4.6 `POST /chat` 请求体增可选 `thinking_level`（R1 白名单内唯一可开放调用参数；会话级快照 `chat_conversations.thinking_level`，不传 = 厂商默认）；② SSE 事件流增 `data: {reasoning_delta}`（思维双流，R3），既有 `{delta}`/`{error}`/`[DONE]` 不变，`chat_messages` 增列 `reasoning`（可空 TEXT）；③ 新增 `POST /chat/polish`（AI 润色，内置 prompt 常量，≤8s，502/429）；④ `GET /chat/models` 每模型增 `reasoning`（`{enabled, levels:[{value,label}], default_level}`，R5）；⑤ 系统提示词注入决策：内置常量在前、用户已安装 skill 片段在后（增量 §7，不占调用参数白名单） |
 | v1.1-rev7 | 2026-10-24 | 工作台定位从「应用陈列卡片」改为「**每日看板**」（信息优先，卡片即跳板）：① 首页按应用划分**信息板块**（板块注册表机制：应用有「每天值得一眼的信息」才上板块，配置型应用——平台管理/我的/专家/MCP——不上板；应用增加 = 板块注册表加卡片）；② 整卡即跳板（点击进对应应用），卡头右侧「应用名 →」；③ 两条纪律——**信息纪律**（每板块只放必要信息）与**排序纪律**（保留拖拽排序 lc_home_order，常用在前；板块过多时的折叠/自选本期不做）；④ 页面结构 = 轻问候行（日期 + 时段问候 + 昵称，取消全局指标带）+ bento 板块卡片区（记账小卡 / 论文大卡·新闻流式·mock 先行 / 对话小卡）；⑤ 新增轻量聚合接口 `GET /money/stats/summary` 与 `GET /chat/conversations/summary`（§4.6/§4.7）；⑥ 论文板块本期 mock 数据演示，`api.js` 留 `API.papers.feed()` 占位封装，真接口第二批进程内定时接入 |
 
-| v1.1-rev8 | 2026-10-24 | **移除 n8n**：① 定时任务收回进程内（APScheduler 自研），文献抓取由后端调度器每日触发，`POST /internal/jobs/papers-crawl` 保留为手动/运维触发口（内部令牌鉴权不变）；② 部署形态回到三件套（PostgreSQL / FastAPI / Caddy），compose/覆盖层/.env/部署指南同步清除 n8n；③ 触发点：定时任务增至 5-10 个或需非工程人员改流程时再评估编排平台（见 docs/生态集成候选-v1.md）；④ 文档同步：架构定稿 修订6 / 架构设计 v1.6 / 部署指南 §7 移除 |
+| v1.1-rev8 | 2026-10-24 | **移除 n8n**：① 定时任务收回进程内（APScheduler 自研），文献抓取由后端调度器每日触发，`POST /internal/jobs/papers-crawl` 保留为手动/运维触发口（内部令牌鉴权不变）；② 部署形态回到三件套（PostgreSQL / FastAPI / Caddy），compose/覆盖层/.env/部署指南同步清除 n8n；③ 触发点：定时任务增至 5-10 个或需非工程人员改流程时再评估编排平台（见 docs/组件选型-v1.md）；④ 文档同步：架构定稿 修订6 / 架构设计 v1.6 / 部署指南 §7 移除 |
 ---
 
 ## 1. 项目信息
