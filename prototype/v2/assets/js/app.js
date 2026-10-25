@@ -814,14 +814,12 @@
           "</div>" +
           '<div class="bcard-foot"><span class="bcard-micro" data-ws-moneyfoot>数据按账目日期归属</span></div>' +
         "</a>",
-        /* 系统状态板块（步 5 · 底座：状态灯真实化 · GET /status；backup=null → 未配置灰灯；
-           Kuma 监控页入口 = 同主机 :8444（Caddy 反代，Kuma 自带登录，仅管理面），
-           href 由 fillWorkspace 按当前站点动态生成（dev http / prod https 自适应） */
+        /* 系统状态板块（步 5 · 底座：状态灯真实化 · GET /status；backup=null → 未配置灰灯。
+           Kuma 监控台已按 2026-10-25 拍板拆除（两人自用、价值有限），灯即全部可视信息 */
         '<div class="bcard span-12" draggable="true" data-bcard="status">' +
           '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
           '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="gear"></i></span>' +
-          '<div class="bcard-title"><span class="bcard-name">系统状态</span></div>' +
-          '<a class="bcard-app" data-ws-kuma title="Uptime Kuma 监控台，需登录（仅管理面）">Kuma 监控页<i data-ic="arrow"></i></a></div>' +
+          '<div class="bcard-title"><span class="bcard-name">系统状态</span></div></div>' +
           '<div class="bcard-body" data-ws-status>' + skelLines + "</div>" +
         "</div>"
       ];
@@ -1509,13 +1507,6 @@
     });
 
     /* 系统状态灯（步 5：真数据 · GET /status；失败留白底提示不影响其他卡片） */
-    var kumaLink = qs("[data-ws-kuma]", view);
-    if (kumaLink) {
-      /* 同主机 :8444（Caddy 唯一入口）；生产 https / 本地 http 随当前页面协议自适应 */
-      kumaLink.href = location.protocol + "//" + location.hostname + ":8444/";
-      kumaLink.target = "_blank";
-      kumaLink.rel = "noopener";
-    }
     API.status().then(function (s) {
       var box = qs("[data-ws-status]", view);
       if (!box || !s) return;

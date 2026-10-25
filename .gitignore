@@ -43,3 +43,4 @@ qa_*.mjs
 qa_tmp/
 ws-*.png
 fill-*.png
+trivy scan/

@@ -14,9 +14,3 @@
 		flush_interval -1
 	}
 }
-
-# Uptime Kuma 监控台（底座步 5）：本地直 HTTP（局域网可访，免自签告警）；
-# 生产为根目录 Caddyfile :8444（自签 HTTPS，同主站模式）。Kuma 自带登录，仅管理面。
-:8444 {
-	reverse_proxy kuma:3001
-}
