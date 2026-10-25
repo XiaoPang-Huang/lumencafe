@@ -10,6 +10,12 @@
   enable_thinking+thinking_budget / GLM·Kimi turn-level 两态，详见增量架构 §3.4）。
 
 调用参数策略（Q9）：除 thinking_level 外一律用厂商默认；拉取模型入库的 meta 仅作展示。
+
+网络层（步 2 工程三小件，D10）：真实调用一律走共享 httpx 总机
+（app/services/http_client.py，lifespan 建/销毁）；chat_once 与
+fetch_model_names 的瞬时错误（网络类/5xx/429）由 tenacity 重试收口
+（app/services/retry.py，4xx 与鉴权错误不重试）。chat_stream 不做内联
+重试：流式首帧之后不可重发（步 3 备用链兜底只管首 token 前）。
 """
 import asyncio
 import json
@@ -19,6 +25,9 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+
+from app.services.http_client import get_http_client
+from app.services.retry import external_retry
 
 MOCK_STREAM_REPLY = (
     "你好呀，我是 mock 模型。现在是本地占位模式，"
@@ -95,6 +104,21 @@ def build_thinking_params(vendor: str, level: str | None) -> dict[str, Any]:
     return {"reasoning_effort": level}
 
 
+@external_retry()
+async def _post_chat_completions(
+    client: httpx.AsyncClient, cfg: ClientCfg, payload: dict[str, Any], timeout: httpx.Timeout
+) -> httpx.Response:
+    """非流式 /chat/completions 请求体；瞬时错误由 tenacity 重试（见模块 docstring）。"""
+    resp = await client.post(
+        f"{cfg.api_base}/chat/completions",
+        json=payload,
+        headers={"Authorization": f"Bearer {cfg.api_key}"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp
+
+
 async def chat_once(
     cfg: ClientCfg, messages: list[dict[str, Any]], timeout: float = 30.0
 ) -> str:
@@ -105,16 +129,10 @@ async def chat_once(
 
     payload: dict[str, Any] = {"model": cfg.model, "messages": messages}
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=10.0)
-        ) as client:
-            resp = await client.post(
-                f"{cfg.api_base}/chat/completions",
-                json=payload,
-                headers={"Authorization": f"Bearer {cfg.api_key}"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await _post_chat_completions(
+            get_http_client(), cfg, payload, httpx.Timeout(timeout, connect=10.0)
+        )
+        data = resp.json()
         return str(data["choices"][0]["message"]["content"]).strip()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         raise UpstreamError(str(exc)[:300]) from exc
@@ -146,13 +164,13 @@ async def chat_stream(
     }
     payload.update(build_thinking_params(cfg.vendor, thinking))
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=10.0)
-        ) as client, client.stream(
+        client = get_http_client()
+        async with client.stream(
             "POST",
             f"{cfg.api_base}/chat/completions",
             json=payload,
             headers={"Authorization": f"Bearer {cfg.api_key}"},
+            timeout=httpx.Timeout(timeout, connect=10.0),
         ) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():
@@ -177,18 +195,25 @@ async def chat_stream(
         raise UpstreamError(str(exc)[:300]) from exc
 
 
+@external_retry()
+async def _get_models(client: httpx.AsyncClient, cfg: ClientCfg, timeout: httpx.Timeout) -> httpx.Response:
+    """GET {base_url}/models；瞬时错误由 tenacity 重试（见模块 docstring）。"""
+    resp = await client.get(
+        f"{cfg.api_base}/models",
+        headers={"Authorization": f"Bearer {cfg.api_key}"},
+        timeout=timeout,
+    )
+    resp.raise_for_status()
+    return resp
+
+
 async def fetch_model_names(cfg: ClientCfg, timeout: float = 15.0) -> list[str]:
     """调官方 GET {base_url}/models 拉取可用模型名（平铺）。"""
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=10.0)
-        ) as client:
-            resp = await client.get(
-                f"{cfg.api_base}/models",
-                headers={"Authorization": f"Bearer {cfg.api_key}"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        resp = await _get_models(
+            get_http_client(), cfg, httpx.Timeout(timeout, connect=10.0)
+        )
+        data = resp.json()
         return [str(item["id"]) for item in data.get("data", [])]
     except (httpx.HTTPError, KeyError, ValueError) as exc:
         raise UpstreamError(str(exc)[:300]) from exc

@@ -5,6 +5,10 @@ NCBI esearch（≤3 req/s）→ efetch 分批（≤100/批、批间 sleep）→ 
 papers ON CONFLICT(pmid) DO NOTHING 入库 + paper_users 归属（ON CONFLICT 幂等）→
 LLM 中译回填（单轮 ≤20 篇、篇间 ≥1s，走网关默认路由，失败跳过不阻塞抓取）。
 
+网络层（步 2 工程三小件，D10）：外部调用走共享 httpx 总机（http_client.py）；
+esearch/efetch 瞬时错误（网络类/5xx/429）由 tenacity 重试收口（retry.py），
+4xx 不重试；批间 sleep 为 NCBI polite 限速（≤3 req/s），不是重试。
+
 同日去重双保险（Q11）：进程内日期标记 + papers 表当日已有记录。
 """
 import asyncio
@@ -23,6 +27,8 @@ from app.config import settings
 from app.models.papers import Paper, PaperUser
 from app.models.user_settings import UserSetting
 from app.services import llm_gateway, route_service
+from app.services.http_client import get_http_client
+from app.services.retry import external_retry
 
 logger = logging.getLogger("lumencafe.papers")
 
@@ -74,10 +80,15 @@ def build_headers() -> dict[str, str]:
     return headers
 
 
+@external_retry()
 async def esearch(
     client: httpx.AsyncClient, keyword: str, retmax: int, days_back: int
 ) -> list[str]:
-    """按关键词检索最近 days_back 天内发表的文献，返回 pmid 列表。"""
+    """按关键词检索最近 days_back 天内发表的文献，返回 pmid 列表。
+
+    瞬时错误（网络类/5xx/429）由 tenacity 重试（指数退避，最小间隔 ≥0.5s
+    对齐 NCBI ≤3 req/s 纪律）；4xx 不重试。
+    """
     today = date.today()
     mindate = (today - timedelta(days=days_back)).strftime("%Y/%m/%d")
     params: dict[str, Any] = {
@@ -91,15 +102,21 @@ async def esearch(
         "maxdate": today.strftime("%Y/%m/%d"),
         "sort": "pub date",
     }
-    resp = await client.get(f"{EUTILS_BASE}/esearch.fcgi", params=params)
+    resp = await client.get(
+        f"{EUTILS_BASE}/esearch.fcgi", params=params, headers=build_headers()
+    )
     resp.raise_for_status()
     data = resp.json()
     idlist = data.get("esearchresult", {}).get("idlist", [])
     return [str(pmid) for pmid in idlist]
 
 
+@external_retry()
 async def efetch(client: httpx.AsyncClient, pmids: list[str]) -> str:
-    """按 pmid 分批拉取题录 XML，批次间 sleep 限速，拼接后返回。"""
+    """按 pmid 分批拉取题录 XML，批次间 sleep 限速（polite，非重试），拼接后返回。
+
+    瞬时错误由 tenacity 重试；整批重发幂等（NCBI 只读接口）。
+    """
     if not pmids:
         return ""
     chunks = [pmids[i : i + EFETCH_BATCH_SIZE] for i in range(0, len(pmids), EFETCH_BATCH_SIZE)]
@@ -108,7 +125,9 @@ async def efetch(client: httpx.AsyncClient, pmids: list[str]) -> str:
         if idx > 0:
             await asyncio.sleep(RATE_LIMIT_SLEEP)
         params = {**_common_params(), "db": "pubmed", "id": ",".join(chunk), "retmode": "xml"}
-        resp = await client.post(f"{EUTILS_BASE}/efetch.fcgi", data=params)
+        resp = await client.post(
+            f"{EUTILS_BASE}/efetch.fcgi", data=params, headers=build_headers()
+        )
         resp.raise_for_status()
         parts.append(resp.text)
         logger.info("efetch 第 %d/%d 批完成（%d 篇）", idx + 1, len(chunks), len(chunk))
@@ -334,32 +353,31 @@ async def run_daily_crawl(db: AsyncSession) -> int:
         return 0
 
     added = 0
-    timeout = httpx.Timeout(30.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout, headers=build_headers()) as client:
-        for keyword, user_ids in keyword_map.items():
-            try:
-                pmids = await esearch(
-                    client, keyword, settings.papers_retmax, settings.papers_days_back
-                )
-            except httpx.HTTPError as exc:
-                logger.warning("esearch 失败（%s）：%s", keyword, exc)
-                continue
-            await asyncio.sleep(RATE_LIMIT_SLEEP)
-            if not pmids:
-                continue
-            try:
-                xml = await efetch(client, pmids)
-            except httpx.HTTPError as exc:
-                logger.warning("efetch 失败（%s）：%s", keyword, exc)
-                continue
-            for record in parse_efetch(xml):
-                tags, hits = tag_paper(record["title"], record["abstract"])
-                paper_id, is_new = await _upsert_paper(db, record, tags, hits)
-                await _attribute_paper(db, paper_id, user_ids)
-                if is_new:
-                    added += 1
-            await db.commit()
-            logger.info("关键词「%s」入库完成（累计新增 %d）", keyword, added)
+    client = get_http_client()  # 共享总机：复用 TCP/TLS 连接（步 2 工程三小件）
+    for keyword, user_ids in keyword_map.items():
+        try:
+            pmids = await esearch(
+                client, keyword, settings.papers_retmax, settings.papers_days_back
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("esearch 失败（%s）：%s", keyword, exc)
+            continue
+        await asyncio.sleep(RATE_LIMIT_SLEEP)
+        if not pmids:
+            continue
+        try:
+            xml = await efetch(client, pmids)
+        except httpx.HTTPError as exc:
+            logger.warning("efetch 失败（%s）：%s", keyword, exc)
+            continue
+        for record in parse_efetch(xml):
+            tags, hits = tag_paper(record["title"], record["abstract"])
+            paper_id, is_new = await _upsert_paper(db, record, tags, hits)
+            await _attribute_paper(db, paper_id, user_ids)
+            if is_new:
+                added += 1
+        await db.commit()
+        logger.info("关键词「%s」入库完成（累计新增 %d）", keyword, added)
 
     mark_ran_today()
     translated = await _backfill_translations(db)

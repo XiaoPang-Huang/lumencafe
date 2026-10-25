@@ -29,6 +29,17 @@ bcrypt==5.0.0                   # 口令哈希
 # ---- HTTP 客户端 ----
 httpx==0.28.1                   # 同步/异步 HTTP 客户端（LLM 调用、healthcheck）
 
+# ---- 外部调用容错（步 2 工程三小件，架构设计-增量 v2 D10） ----
+tenacity==9.1.4                 # 声明式重试收口（NCBI/LLM 瞬时错误，替手写 sleep 重试）
+# 选型（D14）：9.1.4 发布于 2026-02、9.x 线久经考验、无 CVE 记录；
+# 不追 9.2.x（2026-10 新发）。影响面评估见 docs/依赖锁定清单-v1.md。
+
+# ---- 统一渲染出口（步 2 工程三小件，随真前端启用） ----
+markdown-it-py==4.2.0           # Markdown 渲染（CommonMark+GFM 扩展，MIT，无 CVE 记录）
+nh3==0.3.7                      # HTML 消毒/XSS 边界（Rust ammonia，MIT）
+# 选型（D14）：安全组件取含最新 ammonia 修复的稳定版 0.3.7（2026-08）。
+mdurl==0.1.2                    # markdown-it-py 传递依赖（显式钉住防漂移）
+
 # ---- 表单 ----
 python-multipart==0.0.32        # POST /skills/upload multipart 解析（FastAPI UploadFile 依赖）
 

@@ -19,6 +19,16 @@ WORKDIR /srv
 # 从 builder 拷贝已安装的依赖（含 uvicorn standard 的编译产物）
 COPY --from=builder /install /usr/local
 
+# 步 2 镜像清包（拍板回执 v2.3，评估见 docs/依赖锁定清单-v1.md §5.2）：
+# trivy 实测基础镜像自带 4 条可修 HIGH 全部位于 pip 26.2.2 的 vendored 私有副本
+#（pip/_vendor/msgpack 1.1.2、urllib3 2.7.0、pkg_resources（setuptools 70.3.0）），
+# pip uninstall 不可达；三者均非项目依赖（lockfile 不引用，运行时零 import）。
+# runtime 阶段无需 pip → 整体移除，4 条可修 HIGH 随 pip 一并清除；builder 阶段保留。
+# 回退：删除本 RUN 块重建镜像。
+RUN rm -rf /usr/local/lib/python3.14/site-packages/pip \
+           /usr/local/lib/python3.14/site-packages/pip-26.2.2.dist-info \
+           /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+
 # 非 root 运行，降低容器内提权风险（沿用旧版形态）
 RUN useradd --system --uid 10001 --home-dir /srv appuser
 

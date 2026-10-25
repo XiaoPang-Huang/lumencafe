@@ -24,6 +24,7 @@ from app.routers import (
     papers,
     skills,
 )
+from app.services.http_client import close_http_client, init_http_client
 from app.services.seed import run_seed
 
 setup_logging(settings.log_level)
@@ -32,12 +33,14 @@ logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动/关闭钩子：种子数据 → 敏感配置告警；退出时释放数据库连接池。"""
+    """启动/关闭钩子：共享 HTTP 总机 → 种子数据 → 敏感配置告警；退出时释放总机与数据库连接池。"""
+    init_http_client()
     async with SessionLocal() as db:
         await run_seed(db)
     if settings.jwt_secret == "change-me-in-production":
         logger.warning("LUMEN_JWT_SECRET 仍为默认值，生产环境请更换为长随机串！")
     yield
+    await close_http_client()
     await engine.dispose()
 
 
