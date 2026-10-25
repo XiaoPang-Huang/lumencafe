@@ -469,6 +469,14 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
   display: inline-block;
 }
 .status-dot.on { background: var(--ok); animation: pulse 2.2s infinite; }
+.status-dot.err { background: var(--danger); }
+/* 系统状态灯（步 5 · gethomepage 风格三点灯；工作台「系统状态」卡） */
+.ws-lamps { display: flex; flex-wrap: wrap; gap: 12px 28px; padding: 4px 2px; }
+.ws-lamp { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.ws-lamp-name { font-size: 13px; font-weight: 500; color: var(--ink-2); flex: none; }
+.ws-lamp-sub { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.bcard-app { text-decoration: none; color: var(--ink-3); }
+a.bcard-app:hover { color: var(--brand); }
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(63, 122, 82, .35); }
   50% { box-shadow: 0 0 0 4px rgba(63, 122, 82, 0); }

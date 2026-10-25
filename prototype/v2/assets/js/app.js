@@ -813,7 +813,17 @@
             "</div>" +
           "</div>" +
           '<div class="bcard-foot"><span class="bcard-micro" data-ws-moneyfoot>数据按账目日期归属</span></div>' +
-        "</a>"
+        "</a>",
+        /* 系统状态板块（步 5 · 底座：状态灯真实化 · GET /status；backup=null → 未配置灰灯；
+           Kuma 监控页入口 = 同主机 :8444（Caddy 反代，Kuma 自带登录，仅管理面），
+           href 由 fillWorkspace 按当前站点动态生成（dev http / prod https 自适应） */
+        '<div class="bcard span-12" draggable="true" data-bcard="status">' +
+          '<span class="grip" data-ic="grip" title="拖拽排序"></span>' +
+          '<div class="bcard-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;"><i data-ic="gear"></i></span>' +
+          '<div class="bcard-title"><span class="bcard-name">系统状态</span></div>' +
+          '<a class="bcard-app" data-ws-kuma title="Uptime Kuma 监控台，需登录（仅管理面）">Kuma 监控页<i data-ic="arrow"></i></a></div>' +
+          '<div class="bcard-body" data-ws-status>' + skelLines + "</div>" +
+        "</div>"
       ];
       /* 读取拖拽排序缓存（排序纪律：常用在前，lc_home_order 持久化） */
       var order = [];
@@ -1396,6 +1406,30 @@
   }
 
   /* ================= 工作台活数据（/chat /money /admin 联调） ================= */
+  /* 步 5 · 系统状态灯（gethomepage 风格三点灯：api / db / backup） */
+  function statusLampsHtml(s) {
+    function row(ok, name, sub, mut) {
+      var dot = mut
+        ? '<span class="status-dot"></span>'
+        : '<span class="status-dot' + (ok ? " on" : " err") + '"></span>';
+      return '<div class="ws-lamp">' + dot +
+        '<span class="ws-lamp-name">' + esc(name) + "</span>" +
+        '<span class="ws-lamp-sub">' + esc(sub || "") + "</span></div>";
+    }
+    var rows = row(s.api !== false, "API 服务", "v" + (s.version || "—"));
+    rows += row(s.db === true, "数据库", s.db ? "连接正常" : "探活失败");
+    if (!s.backup) {
+      /* backup=null：backup_state 卷未挂载/无 last_run.json → 未配置灰灯 */
+      rows += row(false, "备份", "未配置", true);
+    } else {
+      var b = s.backup;
+      var when = (b.at || "").replace("T", " ").slice(5, 16);
+      rows += row(b.succeeded === true, "备份",
+        b.succeeded ? "上次成功 " + when : when + " · " + (b.error || "失败"));
+    }
+    return '<div class="ws-lamps">' + rows + "</div>";
+  }
+
   function fillWorkspace(view) {
     view = view || qs("#view");
     /* 轻问候行：日期 + 时段问候 + 昵称 */
@@ -1472,6 +1506,23 @@
     }).catch(function () {
       var box = qs("[data-ws-papers]", view);
       if (box) box.innerHTML = '<div class="ws-empty"><span class="t muted">推送加载失败，点卡片重试</span></div>';
+    });
+
+    /* 系统状态灯（步 5：真数据 · GET /status；失败留白底提示不影响其他卡片） */
+    var kumaLink = qs("[data-ws-kuma]", view);
+    if (kumaLink) {
+      /* 同主机 :8444（Caddy 唯一入口）；生产 https / 本地 http 随当前页面协议自适应 */
+      kumaLink.href = location.protocol + "//" + location.hostname + ":8444/";
+      kumaLink.target = "_blank";
+      kumaLink.rel = "noopener";
+    }
+    API.status().then(function (s) {
+      var box = qs("[data-ws-status]", view);
+      if (!box || !s) return;
+      box.innerHTML = statusLampsHtml(s);
+    }).catch(function () {
+      var box = qs("[data-ws-status]", view);
+      if (box) box.innerHTML = '<span class="muted" style="font-size:13px;">状态加载失败，刷新重试</span>';
     });
   }
 

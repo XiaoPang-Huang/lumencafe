@@ -23,6 +23,7 @@ from app.routers import (
     money,
     papers,
     skills,
+    status,
 )
 from app.services.http_client import close_http_client, init_http_client
 from app.services.seed import run_seed
@@ -57,6 +58,7 @@ app.include_router(gateway.router)
 app.include_router(chat.router)
 app.include_router(skills.router)
 app.include_router(papers.router)
+app.include_router(status.router)
 
 # 本地开发跨域；生产由 Caddy 同域反代，可将 LUMEN_CORS_ORIGINS 留空
 if settings.cors_origins:

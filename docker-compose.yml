@@ -52,10 +52,14 @@ services:
       # Skill 文件夹库根目录（Agent Skills 开放标准：skills/<slug>/SKILL.md）。
       # 未设置时后端回落默认路径；容器内固定 /app/skills 并挂载宿主机卷持久化
       SKILL_LIBRARY_DIR: /app/skills
+      # 备份状态卷（底座步 5）：读 backup 容器写入的 last_run.json，/api/status 状态灯数据源
+      LUMEN_BACKUP_STATE_DIR: /var/lib/backup-state
     volumes:
       # 技能库持久化：安装的 skill 包存宿主机 ./skills，重建容器不丢失；
       # 手工放入的本地包（含 SKILL.md）放这里即被识别（管理弹窗显示为「本地」）
       - ./skills:/app/skills
+      # 备份状态共享卷（backup 容器写、api 只读）：/api/status 的 backup 灯数据源
+      - backup_state:/var/lib/backup-state:ro
     # 启动即迁移（Alembic 替代 create_all）
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
@@ -95,6 +99,16 @@ services:
       db:
         condition: service_healthy
 
+  # Uptime Kuma 监控（底座步 5）：管服务存活探测与告警（通知渠道用户在 Kuma 内自配）。
+  # 不发布宿主机端口，只经 Caddy 反代（Kuma 自带登录）；slim 变体去掉浏览器引擎
+  # chromium，trivy 面大幅下降（1.74GB→545MB；CRITICAL 13→9），选型论证见锁定清单 §5.4。
+  # 访问入口（Caddy 路由形态）按需求会话拍板执行，见 Caddyfile 注释。
+  kuma:
+    image: louislam/uptime-kuma:2.5.7-slim@sha256:4837e2b531b118d2fad24430fabed1488b14542f03b2bebf035497271b3a1ee8
+    restart: unless-stopped
+    volumes:
+      - kuma_data:/app/data
+
   # 本地反代：纯 IP 访问 http://127.0.0.1（或局域网 http://<本机IP>，手机调试用）→ api（SSE 不缓冲）。服务器部署用根目录 Caddyfile（IP 直连模式）
   caddy:
     # IP 直连模式用官方镜像即可（自签证书，无 DNS-01 需求）。
@@ -116,6 +130,8 @@ services:
       # 8443：未备案域名临时方案（80/443 被腾讯云拦截，见 Caddyfile 头部说明）；
       # 备案通过后随 Caddyfile 一起删掉这行
       - "8443:8443"
+      # 8444：Uptime Kuma 监控台（底座步 5）；Kuma 容器不发布端口，唯一入口即 Caddy 此口
+      - "8444:8444"
     volumes:
       - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -129,3 +145,4 @@ volumes:
   caddy_data:
   caddy_config:
   backup_state:
+  kuma_data:

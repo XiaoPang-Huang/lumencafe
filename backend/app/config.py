@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     papers_retmax: int = 20  # 每关键词每轮最多抓取篇数
     papers_days_back: int = 3  # 只抓最近 N 天发表的文献
 
+    # 系统状态（底座步 5）：/api/status 返回值；发版时手动 bump
+    app_version: str = "1.0.0"
+
+    # 备份状态卷挂载点（backup 容器写 last_run.json 的共享卷）。
+    # compose 中 api 挂载 backup_state → /var/lib/backup-state；留空 = 未挂载，
+    # /api/status 的 backup 字段返回 null（未配置灰灯）
+    backup_state_dir: str = ""
+
     # CORS（本地开发；生产由 Caddy 同域反代，可留空）
     # NoDecode：环境变量按原始字符串交给下面的拆分校验器，不做 JSON 解析
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
