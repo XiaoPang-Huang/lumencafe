@@ -644,8 +644,13 @@ async def reset_circuit_state(
 def _usage_window(
     start: datetime | None, end: datetime | None
 ) -> tuple[datetime, datetime]:
-    """时间窗 [start, end)，默认近 7 天（PG 聚合口径，Q6：卡片 + 表格即够）。"""
-    end_at = end or datetime.now(UTC)
+    """时间窗 [start, end)，默认近 7 天（PG 聚合口径，Q6：卡片 + 表格即够）。
+
+    默认 end 留 5 分钟前瞻缓冲：llm_call_logs.created_at 由 PG now() 落库，
+    库钟可能领先应用时钟亚秒级——不留缓冲时「刚写入的日志」会被
+    created_at < end 误排除（验收对账实测踩中，时序竞争、非必现）。
+    """
+    end_at = end or (datetime.now(UTC) + timedelta(minutes=5))
     start_at = start or (end_at - timedelta(days=7))
     if start_at >= end_at:
         raise HTTPException(status_code=400, detail="start 须早于 end")
