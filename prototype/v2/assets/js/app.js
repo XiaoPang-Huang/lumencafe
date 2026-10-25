@@ -453,6 +453,18 @@
     if (hit) { var l = hit.querySelector(".xselect-opt-label"); return l ? l.textContent : ""; }
     return root.classList.contains("is-placeholder") ? "" : ((qs(".xselect-label", root) || {}).textContent || "");
   }
+  /* 弹层定位常量：与 trigger 间距、限高、最小下方余量（不足则向上翻） */
+  var XSEL_GAP = 6, XSEL_MAX_H = 264, XSEL_MAX_W = 360;
+  /* scroll/resize（捕获阶段，容器滚动也会冒到 window）→ 直接收起弹层（主流 popper 行为，
+     跟随重算在表格横向滚动场景反而别扭）；最后一个弹层收起时解绑监听 */
+  function xselectOnViewportChange() {
+    qsa(".xselect-pop:not(.hide)").forEach(function (p) { xselectClosePop(p.closest("[data-xselect]")); });
+  }
+  function xselectBindViewport(on) {
+    var fn = on ? "addEventListener" : "removeEventListener";
+    window[fn]("scroll", xselectOnViewportChange, { capture: true, passive: true });
+    window[fn]("resize", xselectOnViewportChange);
+  }
   function xselectClosePop(root) {
     if (!root) return;
     var pop = qs("[data-xselect-pop]", root);
@@ -460,6 +472,24 @@
     root.classList.remove("open");
     var trg = qs("[data-xselect-trigger]", root);
     if (trg) trg.setAttribute("aria-expanded", "false");
+    if (!qs(".xselect-pop:not(.hide)")) xselectBindViewport(false);
+  }
+  /* fixed 定位：读 trigger 视口坐标，计算弹层 left/top（下方空间不足 264px 则翻到上方） */
+  function xselectPlacePop(root, pop) {
+    var trg = qs("[data-xselect-trigger]", root);
+    if (!trg) return;
+    var r = trg.getBoundingClientRect();
+    var popH = Math.min(pop.offsetHeight, XSEL_MAX_H);
+    var below = window.innerHeight - r.bottom;
+    var top = r.bottom + XSEL_GAP;
+    pop.classList.toggle("up", below < popH + XSEL_GAP && r.top >= popH + XSEL_GAP);
+    if (pop.classList.contains("up")) top = r.top - popH - XSEL_GAP;
+    var maxW = Math.min(XSEL_MAX_W, Math.round(window.innerWidth * 0.8));
+    var left = r.left;
+    if (left + maxW > window.innerWidth - 8) left = Math.max(8, window.innerWidth - maxW - 8);
+    pop.style.left = Math.round(left) + "px";
+    pop.style.top = Math.round(top) + "px";
+    pop.style.minWidth = Math.round(r.width) + "px";
   }
   function xselectOpenPop(root) {
     if (!root) return;
@@ -471,6 +501,10 @@
     root.classList.add("open");
     var trg = qs("[data-xselect-trigger]", root);
     if (trg) trg.setAttribute("aria-expanded", "true");
+    /* 定位 + 视口监听；rAF 再校一次——click 触发的 :active transform 回弹动画会短暂改变坐标系 */
+    xselectPlacePop(root, pop);
+    if (window.requestAnimationFrame) window.requestAnimationFrame(function () { if (!pop.classList.contains("hide")) xselectPlacePop(root, pop); });
+    xselectBindViewport(true);
     /* 高亮当前选中项（无则首项），并对齐到可视区 */
     qsa(".xselect-opt", pop).forEach(function (o) { o.classList.remove("active"); });
     var cur = qs(".xselect-opt.selected", pop) || qs(".xselect-opt", pop);
