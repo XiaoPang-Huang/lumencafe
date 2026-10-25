@@ -1,0 +1,14 @@
+# 流光咖啡馆后端开发/测试依赖（人维护此文件，机器生成 requirements-dev.txt）
+#
+# 机制同 requirements.in。requirements-dev.txt 为全量锁（含主依赖 + 开发依赖，
+# 全部带哈希），一条命令装全：
+#   pip install --require-hashes -r requirements-dev.txt
+
+-r requirements.in              # 主依赖全部并入开发锁
+
+pytest==9.1.1                   # 测试框架
+pytest-asyncio==1.4.0           # asyncio 测试支持（项目异步代码用）
+ruff==0.17.0                    # lint（backend/.venv/Scripts/ruff.exe）
+
+# 传递依赖显式钉版（同 requirements.in 纪律，钉 .venv 现状不追新）
+pluggy==1.6.0                   # 传递依赖（经 pytest）；钉 .venv 现状

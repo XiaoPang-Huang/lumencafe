@@ -1,0 +1,47 @@
+# 流光咖啡馆后端直接依赖清单（人维护此文件，机器生成 requirements.txt）
+#
+# 机制（D6 供应链纪律，见 docs/依赖锁定清单-v1.md）：
+#   本文件写直接依赖的精确版本 → `uv pip compile --generate-hashes` 生成
+#   requirements.txt（全量精确版本 + 哈希）→ 安装一律
+#   `pip install --require-hashes -r requirements.txt`。
+# 版本纪律（D14）：只采用最安全版本（稳定、久经考验、无未修高危 CVE），不追新。
+# 升级流程（D13）：先出影响面评估（依赖树波及面 / changelog 破坏性变更 /
+# 锁版本 diff / 回退方案），写进 docs/依赖锁定清单-v1.md，再动手。
+
+# ---- Web 框架与服务器 ----
+fastapi==0.143.0                # API 框架（决策：自研引擎 + 纯网关，见架构设计-v2）
+uvicorn[standard]==0.54.0       # ASGI 服务器；[standard] 含 httptools/uvloop(类)/watchfiles
+
+# ---- 数据库 ----
+sqlalchemy[asyncio]==2.1.4      # ORM；[asyncio] 异步方言支持
+asyncpg==0.32.0                 # PG 异步驱动（生产用；本地测试按项目现状用 sqlite）
+alembic==1.20.0                 # 迁移（启动即 alembic upgrade head）
+greenlet==3.5.6                 # SQLAlchemy asyncio 依赖（显式钉住，防传递漂移）
+
+# ---- 数据校验与配置 ----
+pydantic==2.14.1                # 模型校验
+pydantic-settings==2.15.0       # .env / 环境变量配置
+
+# ---- 认证与安全 ----
+PyJWT==2.15.1                   # JWT 签发/校验（gateway_tokens 等）
+bcrypt==5.0.0                   # 口令哈希
+
+# ---- HTTP 客户端 ----
+httpx==0.28.1                   # 同步/异步 HTTP 客户端（LLM 调用、healthcheck）
+
+# ---- 表单 ----
+python-multipart==0.0.32        # POST /skills/upload multipart 解析（FastAPI UploadFile 依赖）
+
+# ---- 传递依赖显式钉版（D14：无未修高危 CVE 才可入锁） ----
+# starlette：fastapi 的传递依赖（约束 >=0.46.0，无上限，元数据兼容）。
+# 0.46.2 存在 3 条未修 HIGH CVE（CVE-2025-62727 / CVE-2026-48818 / CVE-2026-54283，
+# 均为 7.5 High），官方修复版收敛于 1.3.1（唯一全部修复的版本）。
+# 影响面评估见 docs/依赖锁定清单-v1.md §影响面评估。
+starlette==1.3.1                # 传递依赖（经 fastapi）；钉 1.3.1 修 HIGH CVE 组
+# certifi：httpx 的传递依赖（CA 证书包，无代码 API，纯数据）。
+# 2026.7.22 存在未修 Critical（GHSA-6q48-6c7w-9gw2，CVSS 4.0 = 9.1，
+# emSign 根 CA 私钥泄露事件），官方修复版 2026.10.19。
+certifi==2026.10.19             # 传递依赖（经 httpx）；钉 2026.10.19 修 Critical CVE
+# websockets：uvicorn[standard] 的传递依赖。钉住 .venv 现状 17.2.0，
+# 防止编译器顺手拿最新 in-range 版（不追新原则）。
+websockets==17.2.0              # 传递依赖（经 uvicorn[standard]）；钉 .venv 现状
