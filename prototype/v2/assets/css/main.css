@@ -789,16 +789,48 @@ a.bcard-app:hover { color: var(--brand); }
 .admin-pane { display: none; }
 .admin-pane.active { display: block; animation: fade-up .35s var(--ease-out); }
 
-/* 步 3 · 模型指派：备用链 chips（有序编辑：↑↓ 调序 / × 移除） */
-.chain-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 260px; }
-.chain-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--brand-soft); color: var(--brand-strong); border: 1px solid transparent; border-radius: 7px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
-.chain-name { margin-right: 4px; }
-.chain-op { border: 0; background: transparent; color: var(--brand-strong); cursor: pointer; font-size: 12px; padding: 0 3px; border-radius: 4px; line-height: 1.4; }
-.chain-op:hover { background: rgba(22, 100, 255, 0.12); }
-.chain-op.danger { color: var(--danger, #d83931); }
-.chain-op.danger:hover { background: rgba(216, 57, 49, 0.1); }
-.chain-add { display: inline-flex; align-items: center; gap: 6px; }
-.chain-add .xselect { max-width: 200px; }
+/* 步 3 · 模型指派：有序模型链 chips（Arco Tag 风格——主模型品牌蓝高亮 + 「主」标签，备用灰边框 + 序号；
+   ⋮⋮ 拖拽手柄与 × 仅悬停时出现；HTML5 拖拽换位，复用 bcard lc_home_order 同一套写法） */
+.chain-box { position: relative; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 320px; }
+.chain-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 8px;
+  padding: 4px 8px; font-size: 12.5px; cursor: grab; user-select: none;
+  transition: border-color .15s var(--ease-out), background .15s var(--ease-out), box-shadow .2s var(--ease-out);
+}
+.chain-chip:hover { border-color: var(--brand); box-shadow: 0 2px 8px rgba(0, 100, 224, .12); }
+/* 主模型：品牌蓝边框 + 淡蓝底 */
+.chain-chip.is-primary { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); }
+.chain-chip.dragging { opacity: .45; cursor: grabbing; }
+/* ⋮⋮ 拖拽手柄：仅悬停 chip 时出现 */
+.chain-grip { width: 12px; height: 12px; color: var(--ink-3); cursor: grab; opacity: 0; flex: none; transition: opacity .15s; }
+.chain-chip:hover .chain-grip { opacity: 1; }
+.chain-idx { font-size: 11px; font-weight: 600; color: var(--ink-3); min-width: 12px; text-align: center; flex: none; }
+.chain-chip.is-primary .chain-idx { background: var(--brand); color: #fff; border-radius: 4px; padding: 0 4px; font-size: 10.5px; line-height: 16px; }
+.chain-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* × 移除：仅悬停 chip 时出现；只剩 1 个模型时隐藏（至少保留主模型） */
+.chain-del {
+  border: 0; background: transparent; color: var(--ink-3); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 1px 3px; border-radius: 4px;
+  opacity: 0; flex: none; transition: opacity .15s, background .15s, color .15s;
+}
+.chain-chip:hover .chain-del { opacity: 1; }
+.chain-del:hover { background: rgba(216, 57, 49, .1); color: var(--danger, #d83931); }
+/* 末尾虚线「＋ 添加模型」 */
+.chain-add {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px dashed var(--line-strong); border-radius: 8px; background: transparent;
+  color: var(--ink-2); font-size: 12.5px; padding: 4px 10px; cursor: pointer; font-family: var(--sans);
+  transition: border-color .15s, color .15s, background .15s;
+}
+.chain-add:hover { border-color: var(--brand); color: var(--brand-strong); background: var(--brand-soft); }
+.chain-add .ic { width: 12px; height: 12px; }
+/* 「＋ 添加模型」点出的临时 xselect 锚点：0 尺寸占位，弹层按其视口坐标定位（复用 xselectPlacePop） */
+.chain-addpop { width: 0; height: 0; overflow: hidden; flex: none; }
+/* 全局「保存全部」：无改动置灰，亮起时显示改动行数 */
+.asg-save-all:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.asg-save-all:disabled:hover { background: var(--brand); box-shadow: none; }
 
 /* ============ 通用自定义下拉 xselect ============
    参考：Arco Design Select（arco.design/react/components/select，火山方舟控制台同源体系）

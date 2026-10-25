@@ -410,7 +410,7 @@
     usage: { summary: null, logs: null, start: "", end: "", page: 1, pageSize: 20 }
   };
 
-  /* ---------- 步 3 · 模型指派（one-api 渠道管理式表格行内编辑） ---------- */
+  /* ---------- 步 3 · 模型指派（每个应用一条有序模型链：chips + 拖拽排序 + 全局保存） ---------- */
 
   /* ================= 通用自定义下拉 xselect =================
    * 视觉/交互参考：Arco Design Select（触发器与弹层同宽、当前项右侧对勾、hover 高亮、
@@ -558,14 +558,28 @@
       attrs: attrs
     });
   }
-  /* 备用链 chips：有序，支持 ↑↓ 调序与移除（数据存 DOM，保存时收集） */
-  function chainChipHtml(appKey, ref, idx) {
-    return '<span class="chain-chip" data-chain-item data-mid="' + ref.id + '">' +
-      '<span class="chain-name">' + esc(ref.name) + "</span>" +
-      '<button class="chain-op" type="button" data-chain-up="' + appKey + '" aria-label="上移">↑</button>' +
-      '<button class="chain-op" type="button" data-chain-down="' + appKey + '" aria-label="下移">↓</button>' +
-      '<button class="chain-op danger" type="button" data-chain-del="' + appKey + '" aria-label="移除">×</button>' +
-      "</span>";
+  /* 模型链 chip：第 ① 个 = 主模型（品牌蓝边框 + 淡蓝底 + 「主」标签），其余 = 备用（灰边框 + 序号）；
+   * 数据存 DOM（data-mid），保存时按 DOM 顺序收集；hover 出 ⋮⋮ 拖拽手柄与 ×。 */
+  var CHAIN_NUMS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+  function chainChipHtml(ref, idx, alone) {
+    var primary = idx === 0;
+    return '<span class="chain-chip' + (primary ? " is-primary" : "") + '" data-chain-item draggable="true" data-mid="' + ref.id + '">' +
+      '<i class="chain-grip" data-ic="grip" title="拖拽排序"></i>' +
+      '<span class="chain-idx">' + (primary ? "主" : (CHAIN_NUMS[idx] || String(idx + 1))) + "</span>" +
+      '<span class="chain-name" title="' + esc(ref.name) + '">' + esc(ref.name) + "</span>" +
+      '<button class="chain-del' + (alone ? " hide" : "") + '" type="button" data-chain-del aria-label="移除">×</button></span>';
+  }
+  /* 增删/拖拽后重排：主标签、序号即时刷新；链中只剩 1 个模型时隐藏 ×（至少保留一个主模型） */
+  function chainReindex(box) {
+    if (!box) return;
+    var chips = qsa("[data-chain-item]", box);
+    chips.forEach(function (c, i) {
+      c.classList.toggle("is-primary", i === 0);
+      var idxEl = qs(".chain-idx", c);
+      if (idxEl) idxEl.textContent = i === 0 ? "主" : (CHAIN_NUMS[i] || String(i + 1));
+      var del = qs(".chain-del", c);
+      if (del) del.classList.toggle("hide", chips.length <= 1);
+    });
   }
   function chainIds(appKey) {
     var box = qs('[data-asg-chain="' + appKey + '"]');
@@ -573,24 +587,150 @@
     return qsa("[data-chain-item]", box).map(function (c) { return parseInt(c.getAttribute("data-mid"), 10); });
   }
   function assignmentRowHtml(a) {
-    var chain = (a.fallback_chain || []).map(function (ref, i) { return chainChipHtml(a.app_key, ref, i); }).join("");
+    /* 链 = 主模型（服务端 primary_model_id，名称从模型池回查）+ 有序备用链 */
+    var pool = adminState.modelPool;
+    var chain = [];
+    if (a.primary_model_id) {
+      var pm = pool.filter(function (m) { return m.id === a.primary_model_id; })[0];
+      chain.push({ id: a.primary_model_id, name: pm ? pm.name : ("模型 #" + a.primary_model_id) });
+    }
+    (a.fallback_chain || []).forEach(function (r) { chain.push({ id: r.id, name: r.name }); });
+    var chips = chain.map(function (r, i) { return chainChipHtml(r, i, chain.length <= 1); }).join("");
     return '<tr data-asg-row="' + esc(a.app_key) + '">' +
       "<td><b>" + esc(a.app_key) + "</b></td>" +
-      '<td>' + modelPoolXselect('data-asg-primary', a.primary_model_id, "选择主模型") + "</td>" +
-      '<td><div class="chain-box" data-asg-chain="' + esc(a.app_key) + '">' + chain +
-      '<span class="chain-add">' + modelPoolXselect('data-asg-add-sel', "", "选择要加入的模型") +
-      '<button class="btn btn-ghost btn-sm" type="button" data-asg-add="' + esc(a.app_key) + '"><i data-ic="plus"></i>加入</button></span></div></td>' +
-      '<td><button class="switch' + (a.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (a.enabled ? "true" : "false") + '" data-asg-toggle aria-label="启用该指派"></button></td>' +
-      '<td class="t-right"><button class="btn btn-sm" type="button" data-asg-save="' + esc(a.app_key) + '">保存</button></td></tr>';
+      '<td><div class="chain-box" data-asg-chain="' + esc(a.app_key) + '">' + chips +
+      '<button class="chain-add" type="button" data-asg-add="' + esc(a.app_key) + '" aria-label="添加模型"><i data-ic="plus"></i>添加模型</button>' +
+      "</div></td>" +
+      '<td><button class="switch' + (a.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (a.enabled ? "true" : "false") + '" data-asg-toggle aria-label="启用该指派"></button></td></tr>';
   }
   function renderAssignments() {
     var tb = qs("[data-asg-rows]");
     if (!tb) return;
     tb.innerHTML = adminState.assignments.length
       ? adminState.assignments.map(assignmentRowHtml).join("")
-      : '<tr><td colspan="5" class="muted" style="padding:14px;">暂无指派</td></tr>';
+      : '<tr><td colspan="3" class="muted" style="padding:14px;">暂无指派</td></tr>';
     /* xselect 的 caret/check 图标为 data-ic 注入（异步重渲染后必须补注入） */
     injectIcons(tb);
+    bindChainDrag(tb);
+    refreshAsgSaveBtn();
+  }
+  /* 行脏判定：链成员/顺序或启用开关与基线（adminState.assignments，服务端回读值）不一致 */
+  function asgRowDirty(a) {
+    var row = qs('[data-asg-row="' + a.app_key + '"]');
+    if (!row) return false;
+    var base = [a.primary_model_id].concat((a.fallback_chain || []).map(function (r) { return r.id; })).join(",");
+    var sw = qs("[data-asg-toggle]", row);
+    var on = sw ? sw.classList.contains("on") : !!a.enabled;
+    return chainIds(a.app_key).join(",") !== base || on !== !!a.enabled;
+  }
+  function asgDirtyRows() {
+    return adminState.assignments.filter(asgRowDirty);
+  }
+  /* 全局「保存全部」：有任一改动（加/删/排序/开关）即亮起并显示改动行数，全部保存后恢复置灰 */
+  function refreshAsgSaveBtn() {
+    var btn = qs("[data-asg-save-all]");
+    if (!btn) return;
+    var saving = btn.classList.contains("saving");
+    var n = asgDirtyRows().length;
+    btn.disabled = saving || n === 0;
+    var lbl = qs("[data-asg-save-label]", btn);
+    if (lbl) lbl.textContent = saving ? "保存中…" : (n ? "保存全部（" + n + "）" : "保存全部");
+  }
+  /* HTML5 拖拽换位：复用工作台 bcard 的 grip + dragstart/dragover/drop 语义（lc_home_order 同一套模式），
+   * 拖完即时重排序号并计入脏状态。事件委托绑在 tbody 上（只绑一次），动态追加的 chip 也能拖 */
+  function bindChainDrag(tb) {
+    if (tb.getAttribute("data-chain-drag-bound")) return;
+    tb.setAttribute("data-chain-drag-bound", "1");
+    tb.addEventListener("dragstart", function (e) {
+      var chip = e.target.closest ? e.target.closest("[data-chain-item]") : null;
+      if (!chip) return;
+      chip.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+    });
+    tb.addEventListener("dragend", function (e) {
+      var chip = e.target.closest ? e.target.closest("[data-chain-item]") : null;
+      if (!chip) return;
+      chip.classList.remove("dragging");
+      chainReindex(chip.closest("[data-asg-chain]"));
+      refreshAsgSaveBtn();
+    });
+    tb.addEventListener("dragover", function (e) {
+      var chip = e.target.closest ? e.target.closest("[data-chain-item]") : null;
+      if (!chip) return;
+      e.preventDefault();
+      var box = chip.closest("[data-asg-chain]");
+      if (!box) return;
+      var dragged = qs(".chain-chip.dragging", box);
+      if (!dragged || dragged === chip) return;
+      var rect = chip.getBoundingClientRect();
+      var before = (e.clientX - rect.left) < rect.width / 2;
+      box.insertBefore(dragged, before ? chip : chip.nextSibling);
+    });
+  }
+  /* 点「＋ 添加模型」：在该位置临时插入一个 xselect 锚点（复用现有组件与 xselectPlacePop 定位），
+   * 选项实时剔除链中已选模型（防重复）；选中即追加到链尾，弹层收起后清理临时节点 */
+  function asgOpenAddPop(btn, appKey) {
+    var box = qs('[data-asg-chain="' + appKey + '"]');
+    if (!box) return;
+    var old = qs(".chain-addpop", box);
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var taken = chainIds(appKey);
+    var options = adminState.modelPool.filter(function (m) { return taken.indexOf(m.id) === -1; })
+      .map(function (m) { return { value: String(m.id), label: m.name + "（" + m.provider_name + "）" }; });
+    var wrap = document.createElement("span");
+    wrap.className = "chain-addpop";
+    wrap.innerHTML = xselectHtml({ value: "", placeholder: "选择模型", options: options, attrs: "data-asg-add-sel" });
+    box.insertBefore(wrap, btn.nextSibling);
+    injectIcons(wrap);
+    xselectOpenPop(qs("[data-xselect]", wrap));
+  }
+  /* xselect 选中 → 追加到链尾、清理临时锚点、重排序号并计入脏状态 */
+  function asgPickAdd(root) {
+    var wrap = root.closest(".chain-addpop");
+    var box = root.closest("[data-asg-chain]");
+    var mid = parseInt(xselectValue(root), 10);
+    var name = xselectLabel(root).split("（")[0];
+    if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    var addBtn = box ? qs("[data-asg-add]", box) : null;
+    if (box && addBtn && mid) {
+      var n = qsa("[data-chain-item]", box).length;
+      addBtn.insertAdjacentHTML("beforebegin", chainChipHtml({ id: mid, name: name }, n, false));
+      chainReindex(box);
+      refreshAsgSaveBtn();
+    }
+  }
+  /* 全局保存：按行顺序串行发既有 PUT（请求体格式不变——链第 1 个 = 主模型，其余 = 有序备用链）；
+   * 全部成功 → toast + 回读刷新、按钮恢复置灰；任一失败 → toast 报错且保持亮起可重试 */
+  function saveAllAssignments() {
+    var btn = qs("[data-asg-save-all]");
+    if (!btn || btn.classList.contains("saving")) return;
+    var dirty = asgDirtyRows();
+    if (!dirty.length) return;
+    btn.classList.add("saving");
+    refreshAsgSaveBtn();
+    var seq = Promise.resolve();
+    dirty.forEach(function (a) {
+      seq = seq.then(function () {
+        var ids = chainIds(a.app_key);
+        if (!ids.length) return Promise.reject({ detail: "「" + a.app_key + "」至少保留一个主模型" });
+        var sw = qs('[data-asg-row="' + a.app_key + '"] [data-asg-toggle]');
+        return API.put("/admin/models/assignments/" + a.app_key, {
+          primary_model_id: ids[0],
+          fallback_chain: ids.slice(1),
+          enabled: sw ? sw.classList.contains("on") : true
+        });
+      });
+    });
+    seq.then(function () {
+      toast("指派已保存");
+      loadAssignments();
+    }).catch(function (e) {
+      toast((e && e.detail) || "保存失败，请重试");
+    }).then(function () {
+      if (btn) btn.classList.remove("saving");
+      refreshAsgSaveBtn();
+    });
   }
   function renderCircuitStates() {
     var tb = qs("[data-cb-rows]");
@@ -1131,12 +1271,14 @@
           '<tbody id="gw-token-rows"><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
           '<button class="btn btn-sm mt8" type="button" data-modal-open="#modal-token"><i data-ic="plus"></i>新建密钥</button>' +
         "</div>" +
-        /* 模型指派（步 3 D2：app_key → 主模型 + 有序备用链） */
+        /* 模型指派（步 3 D2：每个应用一条有序模型链——第 1 个是主模型，其余是备用链） */
         '<div class="admin-pane" id="pane-assign">' +
-          '<div class="page-desc" style="margin-bottom:12px;">按调用方指派主模型与有序备用链；主模型首 token 前失败自动按序兜底，连挂 3 次自动熔断摘出、恢复后自动切回。</div>' +
+          '<div class="page-desc" style="margin-bottom:12px;">每个应用一条模型链：第 1 个是主模型，其余是备用链，主模型挂了按顺序自动顶上；连挂 3 次自动熔断摘出、恢复后自动切回。</div>' +
+          '<div class="sec-head"><span class="sec-title">模型指派</span>' +
+            '<button class="btn btn-sm asg-save-all" type="button" data-asg-save-all disabled><span data-asg-save-label>保存全部</span></button></div>' +
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
-          "<tr><th>应用（app_key）</th><th>主模型</th><th>备用链（有序，先加先兜底）</th><th>启用</th><th></th></tr></thead>" +
-          '<tbody data-asg-rows><tr><td colspan="5" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+          "<tr><th>应用（app_key）</th><th>模型链（第 1 个为主模型，悬停拖拽 ⋮⋮ 排序）</th><th>启用</th></tr></thead>" +
+          '<tbody data-asg-rows><tr><td colspan="3" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
           '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">熔断状态</span>' +
             '<button class="btn btn-ghost btn-sm" type="button" data-asg-reload>刷新</button></div>' +
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
@@ -1970,12 +2112,24 @@
       qsa(".xselect-pop:not(.hide)").forEach(function (p) {
         if (!el.closest("[data-xselect]")) xselectClosePop(p.closest("[data-xselect]"));
       });
+      /* 模型指派「添加模型」的临时 xselect 锚点：弹层已收起且点击落在锚点外 → 清理 */
+      qsa(".chain-addpop").forEach(function (w) {
+        if (el.closest(".chain-addpop")) return;
+        var r = qs("[data-xselect]", w);
+        var p = r ? qs("[data-xselect-pop]", r) : null;
+        if (p && p.classList.contains("hide") && w.parentNode) w.parentNode.removeChild(w);
+      });
     }
-    /* 通用自定义下拉 xselect：触发器开关 / 选项选中 */
+    /* 通用自定义下拉 xselect：触发器开关 / 选项选中（模型指派的「添加模型」选中即追加） */
     var xsT = el.closest("[data-xselect-trigger]");
     if (xsT) { xselectToggle(xsT.closest("[data-xselect]")); return; }
     var xsO = el.closest("[data-xselect-opt]");
-    if (xsO) { xselectPick(xsO.closest("[data-xselect]"), xsO); return; }
+    if (xsO) {
+      var xsRootEl = xsO.closest("[data-xselect]");
+      xselectPick(xsRootEl, xsO);
+      if (xsRootEl.hasAttribute("data-asg-add-sel")) asgPickAdd(xsRootEl);
+      return;
+    }
 
     var opener = el.closest("[data-modal-open]");
     if (opener) {
@@ -2345,9 +2499,9 @@
     }
     /* 模型 meta 保存（思考档位整体提交，服务端 Pydantic 校验） */
     if (el.closest("[data-mm-save]")) { saveModelMeta(); return; }
-    /* 其他场景的通用滑动开关（演示页兜底） */
+    /* 其他场景的通用滑动开关（演示页兜底；管理页模型指派开关走 data-asg-toggle 专属逻辑） */
     var sw = el.closest(".switch");
-    if (sw && !el.closest("[data-udrawer]")) { setSwitch(sw, !sw.classList.contains("on")); toast("已更新（演示）"); return; }
+    if (sw && !el.closest("[data-udrawer]") && !el.closest("[data-asg-toggle]")) { setSwitch(sw, !sw.classList.contains("on")); toast("已更新（演示）"); return; }
 
     /* 模型管理：切换提供商条目 */
     var mmItem = el.closest("[data-pv]");
@@ -2804,64 +2958,31 @@
       if (pane) pane.classList.add("active");
       return;
     }
-    /* 步 3 · 模型指派：行内编辑事件（状态存 DOM，保存时收集） */
+    /* 步 3 · 模型指派：模型链编辑（状态存 DOM，全局「保存全部」时按行收集） */
     var asgRow = el.closest("[data-asg-row]");
     if (asgRow) {
       var appKey = asgRow.getAttribute("data-asg-row");
       var chainBox = qs('[data-asg-chain="' + appKey + '"]', asgRow);
-      var moveChip = el.closest("[data-chain-up],[data-chain-down],[data-chain-del]");
-      if (moveChip && chainBox) {
-        var chip = moveChip.closest("[data-chain-item]");
-        if (chip) {
-          if (moveChip.hasAttribute("data-chain-del")) chainBox.removeChild(chip);
-          else if (moveChip.hasAttribute("data-chain-up") && chip.previousElementSibling && chip.previousElementSibling.hasAttribute("data-chain-item")) {
-            chainBox.insertBefore(chip, chip.previousElementSibling);
-          } else if (moveChip.hasAttribute("data-chain-down") && chip.nextElementSibling && chip.nextElementSibling.hasAttribute("data-chain-item")) {
-            chainBox.insertBefore(chip.nextElementSibling, chip);
-          }
+      var delChip = el.closest("[data-chain-del]");
+      if (delChip && chainBox) {
+        var chipEl = delChip.closest("[data-chain-item]");
+        if (chipEl) {
+          chainBox.removeChild(chipEl);
+          chainReindex(chainBox);
+          refreshAsgSaveBtn();
         }
         return;
       }
-      if (el.closest("[data-asg-add]")) {
-        var sel = qs("[data-asg-add-sel]", asgRow);
-        var selVal = sel ? xselectValue(sel) : "";
-        if (sel && selVal) {
-          var mid2 = parseInt(selVal, 10);
-          var exists2 = chainIds(appKey).indexOf(mid2) !== -1;
-          var primarySel = qs("[data-asg-primary]", asgRow);
-          if (exists2 || (primarySel && parseInt(xselectValue(primarySel), 10) === mid2)) {
-            toast("该模型已在指派中");
-          } else {
-            var name2 = xselectLabel(sel);
-            chainBox.insertAdjacentHTML("afterbegin",
-              chainChipHtml(appKey, { id: mid2, name: name2 }, 0));
-          }
-        } else {
-          toast("先在下拉中选择要加入的模型");
-        }
-        return;
-      }
+      if (el.closest("[data-asg-add]")) { asgOpenAddPop(el.closest("[data-asg-add]"), appKey); return; }
       if (el.closest("[data-asg-toggle]")) {
         var sw2 = el.closest("[data-asg-toggle]");
         sw2.classList.toggle("on");
         sw2.setAttribute("aria-checked", sw2.classList.contains("on") ? "true" : "false");
-        return;
-      }
-      if (el.closest("[data-asg-save]")) {
-        var primary2 = qs("[data-asg-primary]", asgRow);
-        var sw3 = qs("[data-asg-toggle]", asgRow);
-        if (!primary2 || !xselectValue(primary2)) { toast("先选择主模型"); return; }
-        API.put("/admin/models/assignments/" + appKey, {
-          primary_model_id: parseInt(xselectValue(primary2), 10),
-          fallback_chain: chainIds(appKey),
-          enabled: sw3 ? sw3.classList.contains("on") : true
-        }).then(function () {
-          toast("指派已保存");
-          loadAssignments();
-        }).catch(function (e2) { toast(e2.detail || "保存失败"); });
+        refreshAsgSaveBtn();
         return;
       }
     }
+    if (el.closest("[data-asg-save-all]")) { saveAllAssignments(); return; }
     if (el.closest("[data-asg-reload]")) {
       loadAssignments();
       return;
