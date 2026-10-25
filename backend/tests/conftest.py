@@ -52,7 +52,7 @@ async def client(prepare_db):
     """ASGI 客户端 + 种子数据（不进 lifespan，种子在此手动跑）。"""
     import httpx
 
-    import app.models  # noqa: F401  确保 16 张表注册到 metadata
+    import app.models  # noqa: F401  确保 19 张表注册到 metadata
     from app.db import SessionLocal
     from app.main import app as fastapi_app
     from app.services.seed import run_seed
@@ -78,6 +78,7 @@ async def clean(client):
         "user_settings, app_registry, app_visibility, categories, "
         "chat_conversations, chat_messages, "
         "providers, llm_models, gateway_tokens, "
+        "model_assignments, model_circuit_states, llm_call_logs, "
         "money_categories, money_transactions, "
         "papers, paper_users, paper_favorites, paper_notes, paper_explanations, "
         "user_skills"

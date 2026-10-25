@@ -370,7 +370,7 @@ async def _async_none():
 
 async def test_parse_no_route_503(client, monkeypatch):
     headers = await _money_user(client)
-    monkeypatch.setattr(route_service, "resolve_default", lambda db: _async_none())
+    monkeypatch.setattr(route_service, "resolve_for", lambda db, app_key: _async_none())
     resp = await client.post("/money/parse", json={"text": "test"}, headers=headers)
     assert resp.status_code == 503
 
@@ -380,7 +380,7 @@ async def test_parse_no_route_503(client, monkeypatch):
 async def test_parse_upstream_fail_502(client, monkeypatch):
     headers = await _money_user(client)
 
-    async def boom(cfg, messages, timeout=30.0):
+    async def boom(cfg, messages, timeout=30.0, usage_out=None):
         raise llm_gateway.UpstreamError("boom")
 
     monkeypatch.setattr(llm_gateway, "chat_once", boom)
@@ -391,7 +391,7 @@ async def test_parse_upstream_fail_502(client, monkeypatch):
 async def test_parse_bad_json_502(client, monkeypatch):
     headers = await _money_user(client)
 
-    async def gibberish(cfg, messages, timeout=30.0):
+    async def gibberish(cfg, messages, timeout=30.0, usage_out=None):
         return "我没有按要求返回"
 
     monkeypatch.setattr(llm_gateway, "chat_once", gibberish)

@@ -342,6 +342,11 @@
     var filesEl = qs("[data-mm-files]"); if (filesEl) filesEl.checked = !!meta.files;
     var toolsEl = qs("[data-mm-tools]"); if (toolsEl) toolsEl.checked = !!meta.tools;
     var customEl = qs("[data-mm-custom]"); if (customEl) customEl.checked = !!meta.custom_protocol;
+    /* 步 3：调用单价（meta.pricing，留空 = 不计量费用） */
+    var priceInEl = qs("[data-mm-price-in]");
+    if (priceInEl) priceInEl.value = (meta.pricing && meta.pricing.input_per_million != null) ? meta.pricing.input_per_million : "";
+    var priceOutEl = qs("[data-mm-price-out]");
+    if (priceOutEl) priceOutEl.value = (meta.pricing && meta.pricing.output_per_million != null) ? meta.pricing.output_per_million : "";
     var swEl = qs("[data-mm-reasoning-enabled]");
     var box = qs("[data-mm-reasoning-box]");
     var enabled = !!(r && r.enabled);
@@ -369,6 +374,9 @@
     var sel = qs("[data-mm-default]");
     var defaultLevel = null;
     if (enabled && sel && sel.value) defaultLevel = sel.value;
+    /* 步 3：单价留空 = 不计量费用（pricing 键整体省略） */
+    var priceIn = parseFloat((qs("[data-mm-price-in]") || {}).value);
+    var priceOut = parseFloat((qs("[data-mm-price-out]") || {}).value);
     var meta = {
       context: (qs("[data-mm-context]") || {}).value || "",
       vision: !!(qs("[data-mm-vision]") || {}).checked,
@@ -377,6 +385,12 @@
       tools: !!(qs("[data-mm-tools]") || {}).checked,
       custom_protocol: !!(qs("[data-mm-custom]") || {}).checked
     };
+    if (!isNaN(priceIn) || !isNaN(priceOut)) {
+      meta.pricing = {
+        input_per_million: isNaN(priceIn) ? null : priceIn,
+        output_per_million: isNaN(priceOut) ? null : priceOut
+      };
+    }
     API.put("/admin/models/providers/" + mmEditing.pid + "/models/" + mmEditing.mid, { meta: meta })
       .then(function () {
         toast("模型配置已保存");
@@ -390,8 +404,168 @@
   /* 平台管理活数据状态（/admin/* 联调） */
   var adminState = {
     users: [], roles: [], perms: [], providers: [], tokens: [],
-    pvDetail: null, defaultRoute: null, addRowOpen: false
+    pvDetail: null, defaultRoute: null, addRowOpen: false,
+    /* 步 3：模型指派 / 熔断状态 / 用量统计 */
+    assignments: [], modelPool: [], circuitStates: [],
+    usage: { summary: null, logs: null, start: "", end: "", page: 1, pageSize: 20 }
   };
+
+  /* ---------- 步 3 · 模型指派（one-api 渠道管理式表格行内编辑） ---------- */
+  function modelPoolOptions(curId) {
+    return adminState.modelPool.map(function (m) {
+      return '<option value="' + m.id + '"' + (String(m.id) === String(curId) ? " selected" : "") + ">" +
+        esc(m.name) + "（" + esc(m.provider_name) + "）</option>";
+    }).join("");
+  }
+  /* 备用链 chips：有序，支持 ↑↓ 调序与移除（数据存 DOM，保存时收集） */
+  function chainChipHtml(appKey, ref, idx) {
+    return '<span class="chain-chip" data-chain-item data-mid="' + ref.id + '">' +
+      '<span class="chain-name">' + esc(ref.name) + "</span>" +
+      '<button class="chain-op" type="button" data-chain-up="' + appKey + '" aria-label="上移">↑</button>' +
+      '<button class="chain-op" type="button" data-chain-down="' + appKey + '" aria-label="下移">↓</button>' +
+      '<button class="chain-op danger" type="button" data-chain-del="' + appKey + '" aria-label="移除">×</button>' +
+      "</span>";
+  }
+  function chainIds(appKey) {
+    var box = qs('[data-asg-chain="' + appKey + '"]');
+    if (!box) return [];
+    return qsa("[data-chain-item]", box).map(function (c) { return parseInt(c.getAttribute("data-mid"), 10); });
+  }
+  function assignmentRowHtml(a) {
+    var chain = (a.fallback_chain || []).map(function (ref, i) { return chainChipHtml(a.app_key, ref, i); }).join("");
+    return '<tr data-asg-row="' + esc(a.app_key) + '">' +
+      "<td><b>" + esc(a.app_key) + "</b></td>" +
+      '<td><select data-asg-primary>' + modelPoolOptions(a.primary_model_id) + "</select></td>" +
+      '<td><div class="chain-box" data-asg-chain="' + esc(a.app_key) + '">' + chain +
+      '<span class="chain-add"><select data-asg-add-sel>' + modelPoolOptions("") + '</select>' +
+      '<button class="btn btn-ghost btn-sm" type="button" data-asg-add="' + esc(a.app_key) + '"><i data-ic="plus"></i>加入</button></span></div></td>' +
+      '<td><button class="switch' + (a.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (a.enabled ? "true" : "false") + '" data-asg-toggle aria-label="启用该指派"></button></td>' +
+      '<td class="t-right"><button class="btn btn-sm" type="button" data-asg-save="' + esc(a.app_key) + '">保存</button></td></tr>';
+  }
+  function renderAssignments() {
+    var tb = qs("[data-asg-rows]");
+    if (!tb) return;
+    tb.innerHTML = adminState.assignments.length
+      ? adminState.assignments.map(assignmentRowHtml).join("")
+      : '<tr><td colspan="5" class="muted" style="padding:14px;">暂无指派</td></tr>';
+  }
+  function renderCircuitStates() {
+    var tb = qs("[data-cb-rows]");
+    if (!tb) return;
+    tb.innerHTML = adminState.circuitStates.length
+      ? adminState.circuitStates.map(function (s) {
+          var open = s.state === "open";
+          return "<tr><td>" + esc(s.model_name) + "</td>" +
+            '<td><span class="pill ' + (open ? "pill-warn" : "pill-ok") + '">' + (open ? "熔断中" : "正常") + "</span></td>" +
+            "<td>" + s.consecutive_failures + "</td>" +
+            "<td>" + (open && s.next_probe_at ? esc((s.next_probe_at || "").replace("T", " ").slice(5, 19)) : "—") + "</td>" +
+            '<td class="t-right">' + (open
+              ? '<button class="btn btn-ghost btn-sm" type="button" data-cb-reset="' + s.model_id + '">恢复</button>'
+              : '<span class="muted" style="font-size:12.5px;">—</span>') + "</td></tr>";
+        }).join("")
+      : '<tr><td colspan="5" class="muted" style="padding:14px;">暂无熔断记录（所有模型正常）</td></tr>';
+  }
+  function loadAssignments() {
+    API.get("/admin/models/assignments").then(function (d) {
+      adminState.assignments = (d && d.assignments) || [];
+      adminState.modelPool = (d && d.model_pool) || [];
+      renderAssignments();
+    }).catch(function () {});
+    API.get("/admin/models/circuit-states").then(function (s) {
+      adminState.circuitStates = s || [];
+      renderCircuitStates();
+    }).catch(function () {});
+  }
+
+  /* ---------- 步 3 · 用量统计（one-api 式：概览卡片 + 表格 + 时间筛选） ---------- */
+  function fmtNum(n) { return (n || 0).toLocaleString("zh-CN"); }
+  function fmtCost(c) { return c === null || c === undefined ? "—" : "¥" + Number(c).toFixed(4); }
+  function usageWindowParams() {
+    var p = {};
+    if (adminState.usage.start) p.start = adminState.usage.start + ":00+08:00";
+    if (adminState.usage.end) p.end = adminState.usage.end + ":59+08:00";
+    return p;
+  }
+  function renderUsage() {
+    var cards = qs("[data-usage-cards]");
+    var s = adminState.usage.summary;
+    if (cards) {
+      cards.innerHTML = s
+        ? '<div class="stat-cell"><small>总调用</small><b>' + fmtNum(s.total_calls) + '</b><span class="stat-unit">次</span></div>' +
+          '<div class="stat-cell"><small>成功率</small><b>' + Math.round(s.success_rate * 1000) / 10 + '</b><span class="stat-unit">%</span></div>' +
+          '<div class="stat-cell"><small>Token（进 / 出）</small><b>' + fmtNum(s.input_tokens) + ' <span class="stat-unit">/ ' + fmtNum(s.output_tokens) + '</span></b></div>' +
+          '<div class="stat-cell"><small>总费用</small><b>' + fmtCost(s.total_cost) + '</b></div>' +
+          '<div class="stat-cell"><small>平均延迟</small><b>' + s.avg_latency_ms + '</b><span class="stat-unit">ms</span></div>'
+        : '<div class="stat-cell"><small>总调用</small><b>—</b></div><div class="stat-cell"><small>成功率</small><b>—</b></div>' +
+          '<div class="stat-cell"><small>Token（进 / 出）</small><b>—</b></div><div class="stat-cell"><small>总费用</small><b>—</b></div>' +
+          '<div class="stat-cell"><small>平均延迟</small><b>—</b></div>';
+    }
+    var mb = qs("[data-usage-model-rows]");
+    if (mb) {
+      mb.innerHTML = s && s.by_model.length
+        ? s.by_model.map(function (m) {
+            return "<tr><td>" + esc(m.model_name) + "</td><td>" + m.calls + "</td>" +
+              "<td>" + Math.round(m.success_calls / m.calls * 1000) / 10 + "%</td>" +
+              "<td>" + fmtNum(m.input_tokens) + "</td><td>" + fmtNum(m.output_tokens) + "</td>" +
+              "<td>" + fmtCost(m.cost) + "</td></tr>";
+          }).join("")
+        : '<tr><td colspan="6" class="muted" style="padding:14px;">所选时段暂无调用</td></tr>';
+    }
+    var ab = qs("[data-usage-app-rows]");
+    if (ab) {
+      ab.innerHTML = s && s.by_app.length
+        ? s.by_app.map(function (a) {
+            return "<tr><td>" + esc(a.app_key) + "</td><td>" + a.calls + "</td>" +
+              "<td>" + Math.round(a.success_calls / a.calls * 1000) / 10 + "%</td>" +
+              "<td>" + fmtNum(a.input_tokens) + "</td><td>" + fmtNum(a.output_tokens) + "</td>" +
+              "<td>" + fmtCost(a.cost) + "</td></tr>";
+          }).join("")
+        : '<tr><td colspan="6" class="muted" style="padding:14px;">所选时段暂无调用</td></tr>';
+    }
+    renderUsageLogs();
+  }
+  function renderUsageLogs() {
+    var tb = qs("[data-usage-log-rows]");
+    if (!tb) return;
+    var page = adminState.usage.logs;
+    if (!page) {
+      tb.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px;">加载中…</td></tr>';
+      return;
+    }
+    tb.innerHTML = page.items.length
+      ? page.items.map(function (l) {
+          return "<tr><td>" + esc((l.created_at || "").replace("T", " ").slice(5, 19)) + "</td>" +
+            "<td>" + esc(l.app_key) + "</td><td>" + esc(l.model_name) + "</td>" +
+            "<td>" + fmtNum(l.input_tokens) + "</td><td>" + fmtNum(l.output_tokens) + "</td>" +
+            "<td>" + l.latency_ms + "ms</td>" +
+            '<td>' + (l.success ? '<span class="pill pill-ok">成功</span>' : '<span class="pill pill-warn" title="' + esc(l.error || "") + '">失败</span>') + "</td>" +
+            "<td>" + fmtCost(l.cost) + "</td></tr>";
+        }).join("")
+      : '<tr><td colspan="8" class="muted" style="padding:14px;">所选时段暂无日志</td></tr>';
+    var info = qs("[data-usage-pageinfo]");
+    if (info) {
+      var pages = Math.max(1, Math.ceil(page.total / page.page_size));
+      info.textContent = "第 " + page.page + " / " + pages + " 页 · 共 " + page.total + " 条";
+      var prev = qs("[data-usage-page=prev]"), next = qs("[data-usage-page=next]");
+      if (prev) prev.disabled = page.page <= 1;
+      if (next) next.disabled = page.page >= pages;
+    }
+  }
+  function loadUsage(page) {
+    adminState.usage.page = page || adminState.usage.page || 1;
+    var params = usageWindowParams();
+    var q = Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
+    API.get("/admin/models/usage/summary" + (q ? "?" + q : "")).then(function (s) {
+      adminState.usage.summary = s;
+      renderUsage();
+    }).catch(function (e) { toast(e.detail || "统计加载失败"); });
+    var lq = q ? q + "&page=" + adminState.usage.page + "&page_size=" + adminState.usage.pageSize
+               : "page=" + adminState.usage.page + "&page_size=" + adminState.usage.pageSize;
+    API.get("/admin/models/usage/logs?" + lq).then(function (p) {
+      adminState.usage.logs = p;
+      renderUsageLogs();
+    }).catch(function () {});
+  }
 
   /* 提供商详情面板（管理页右侧，选中切换时局部重绘） */
   function modelRowHtml(m) {
@@ -588,6 +762,8 @@
     API.get("/admin/models/default-route").then(function (d) {
       adminState.defaultRoute = d;
     }).catch(function () {});
+    loadAssignments();       // 步 3：模型指派 + 熔断状态
+    loadUsage(1);            // 步 3：用量统计（默认近 7 天）
   }
 
   var PAGES = {
@@ -770,6 +946,8 @@
           '<button class="admin-tab active" type="button" data-admin-tab="#pane-users"><i data-ic="users" style="vertical-align:-3px;"></i> 用户与角色</button>' +
           '<button class="admin-tab" type="button" data-admin-tab="#pane-models"><i data-ic="plug" style="vertical-align:-3px;"></i> 模型管理</button>' +
           '<button class="admin-tab" type="button" data-admin-tab="#pane-tokens"><i data-ic="token" style="vertical-align:-3px;"></i> 网关密钥</button>' +
+          '<button class="admin-tab" type="button" data-admin-tab="#pane-assign"><i data-ic="bot" style="vertical-align:-3px;"></i> 模型指派</button>' +
+          '<button class="admin-tab" type="button" data-admin-tab="#pane-usage"><i data-ic="chart" style="vertical-align:-3px;"></i> 用量统计</button>' +
         "</div>" +
         /* 用户与角色 */
         '<div class="admin-pane active" id="pane-users">' +
@@ -801,6 +979,44 @@
           "<tr><th>名称</th><th>密钥</th><th>模型范围</th><th>创建时间</th><th>状态</th><th>操作</th></tr></thead>" +
           '<tbody id="gw-token-rows"><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
           '<button class="btn btn-sm mt8" type="button" data-modal-open="#modal-token"><i data-ic="plus"></i>新建密钥</button>' +
+        "</div>" +
+        /* 模型指派（步 3 D2：app_key → 主模型 + 有序备用链） */
+        '<div class="admin-pane" id="pane-assign">' +
+          '<div class="page-desc" style="margin-bottom:12px;">按调用方指派主模型与有序备用链；主模型首 token 前失败自动按序兜底，连挂 3 次自动熔断摘出、恢复后自动切回。</div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>应用（app_key）</th><th>主模型</th><th>备用链（有序，先加先兜底）</th><th>启用</th><th></th></tr></thead>" +
+          '<tbody data-asg-rows><tr><td colspan="5" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+          '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">熔断状态</span>' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-asg-reload>刷新</button></div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>模型</th><th>状态</th><th>连续失败</th><th>下次探测</th><th></th></tr></thead>" +
+          '<tbody data-cb-rows><tr><td colspan="5" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+        "</div>" +
+        /* 用量统计（步 3 D3：one-api 式 概览卡片 + 表格 + 时间筛选） */
+        '<div class="admin-pane" id="pane-usage">' +
+          '<div class="usage-filter">' +
+            '<input type="datetime-local" data-usage-start aria-label="开始时间">' +
+            '<span class="muted">至</span>' +
+            '<input type="datetime-local" data-usage-end aria-label="结束时间">' +
+            '<button class="btn btn-sm" type="button" data-usage-query><i data-ic="search"></i>查询</button>' +
+            '<span class="muted" style="font-size:12.5px;">默认近 7 天；日志无限期保留，可按时段筛选（Q3）</span>' +
+          "</div>" +
+          '<div class="stat-strip" data-usage-cards></div>' +
+          '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">按模型</span></div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>模型</th><th>调用</th><th>成功率</th><th>输入 Token</th><th>输出 Token</th><th>费用</th></tr></thead>" +
+          '<tbody data-usage-model-rows><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+          '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">按应用</span></div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>app_key</th><th>调用</th><th>成功率</th><th>输入 Token</th><th>输出 Token</th><th>费用</th></tr></thead>" +
+          '<tbody data-usage-app-rows><tr><td colspan="6" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+          '<div class="sec-head" style="margin-top:24px;"><span class="sec-title">调用日志</span>' +
+            '<span class="flex-spacer"></span><span class="muted" style="font-size:12.5px;" data-usage-pageinfo></span>' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-usage-page="prev">上一页</button>' +
+            '<button class="btn btn-ghost btn-sm" type="button" data-usage-page="next">下一页</button></div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>时间</th><th>app_key</th><th>模型</th><th>输入</th><th>输出</th><th>延迟</th><th>结果</th><th>费用</th></tr></thead>" +
+          '<tbody data-usage-log-rows><tr><td colspan="8" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
         "</div>";
     },
 
@@ -2390,6 +2606,90 @@
       tab.classList.add("active");
       var pane = qs(tab.getAttribute("data-admin-tab"));
       if (pane) pane.classList.add("active");
+      return;
+    }
+    /* 步 3 · 模型指派：行内编辑事件（状态存 DOM，保存时收集） */
+    var asgRow = el.closest("[data-asg-row]");
+    if (asgRow) {
+      var appKey = asgRow.getAttribute("data-asg-row");
+      var chainBox = qs('[data-asg-chain="' + appKey + '"]', asgRow);
+      var moveChip = el.closest("[data-chain-up],[data-chain-down],[data-chain-del]");
+      if (moveChip && chainBox) {
+        var chip = moveChip.closest("[data-chain-item]");
+        if (chip) {
+          if (moveChip.hasAttribute("data-chain-del")) chainBox.removeChild(chip);
+          else if (moveChip.hasAttribute("data-chain-up") && chip.previousElementSibling && chip.previousElementSibling.hasAttribute("data-chain-item")) {
+            chainBox.insertBefore(chip, chip.previousElementSibling);
+          } else if (moveChip.hasAttribute("data-chain-down") && chip.nextElementSibling && chip.nextElementSibling.hasAttribute("data-chain-item")) {
+            chainBox.insertBefore(chip.nextElementSibling, chip);
+          }
+        }
+        return;
+      }
+      if (el.closest("[data-asg-add]")) {
+        var sel = qs("[data-asg-add-sel]", asgRow);
+        var addBtn = el.closest("[data-asg-add]");
+        if (sel && sel.value) {
+          var mid2 = parseInt(sel.value, 10);
+          var exists2 = chainIds(appKey).indexOf(mid2) !== -1;
+          var primarySel = qs("[data-asg-primary]", asgRow);
+          if (exists2 || (primarySel && parseInt(primarySel.value, 10) === mid2)) {
+            toast("该模型已在指派中");
+          } else {
+            var name2 = sel.options[sel.selectedIndex].textContent;
+            chainBox.insertAdjacentHTML("afterbegin",
+              chainChipHtml(appKey, { id: mid2, name: name2 }, 0));
+          }
+        }
+        return;
+      }
+      if (el.closest("[data-asg-toggle]")) {
+        var sw2 = el.closest("[data-asg-toggle]");
+        sw2.classList.toggle("on");
+        sw2.setAttribute("aria-checked", sw2.classList.contains("on") ? "true" : "false");
+        return;
+      }
+      if (el.closest("[data-asg-save]")) {
+        var primary2 = qs("[data-asg-primary]", asgRow);
+        var sw3 = qs("[data-asg-toggle]", asgRow);
+        if (!primary2 || !primary2.value) { toast("先选择主模型"); return; }
+        API.put("/admin/models/assignments/" + appKey, {
+          primary_model_id: parseInt(primary2.value, 10),
+          fallback_chain: chainIds(appKey),
+          enabled: sw3 ? sw3.classList.contains("on") : true
+        }).then(function () {
+          toast("指派已保存");
+          loadAssignments();
+        }).catch(function (e2) { toast(e2.detail || "保存失败"); });
+        return;
+      }
+    }
+    if (el.closest("[data-asg-reload]")) {
+      loadAssignments();
+      return;
+    }
+    if (el.closest("[data-cb-reset]")) {
+      var cbMid = el.closest("[data-cb-reset]").getAttribute("data-cb-reset");
+      API.post("/admin/models/circuit-states/" + cbMid + "/reset").then(function () {
+        toast("已恢复，路由立即重新采纳该模型");
+        loadAssignments();
+      }).catch(function (e2) { toast(e2.detail || "恢复失败"); });
+      return;
+    }
+    /* 步 3 · 用量统计：时间筛选与分页 */
+    if (el.closest("[data-usage-query]")) {
+      adminState.usage.start = (qs("[data-usage-start]") || {}).value || "";
+      adminState.usage.end = (qs("[data-usage-end]") || {}).value || "";
+      loadUsage(1);
+      return;
+    }
+    var upg = el.closest("[data-usage-page]");
+    if (upg) {
+      var delta = upg.getAttribute("data-usage-page") === "next" ? 1 : -1;
+      var pages2 = adminState.usage.logs
+        ? Math.max(1, Math.ceil(adminState.usage.logs.total / adminState.usage.logs.page_size)) : 1;
+      var next2 = Math.min(pages2, Math.max(1, adminState.usage.page + delta));
+      if (next2 !== adminState.usage.page) loadUsage(next2);
       return;
     }
     /* 会话：删除（真删，级联消息） */

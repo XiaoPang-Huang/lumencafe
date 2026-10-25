@@ -781,6 +781,21 @@ a:focus:not(:focus-visible), button:focus:not(:focus-visible) { outline: none; }
 .admin-pane { display: none; }
 .admin-pane.active { display: block; animation: fade-up .35s var(--ease-out); }
 
+/* 步 3 · 模型指派：备用链 chips（有序编辑：↑↓ 调序 / × 移除） */
+.chain-box { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 260px; }
+.chain-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--brand-soft); color: var(--brand-strong); border: 1px solid transparent; border-radius: 7px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
+.chain-name { margin-right: 4px; }
+.chain-op { border: 0; background: transparent; color: var(--brand-strong); cursor: pointer; font-size: 12px; padding: 0 3px; border-radius: 4px; line-height: 1.4; }
+.chain-op:hover { background: rgba(22, 100, 255, 0.12); }
+.chain-op.danger { color: var(--danger, #d83931); }
+.chain-op.danger:hover { background: rgba(216, 57, 49, 0.1); }
+.chain-add { display: inline-flex; align-items: center; gap: 6px; }
+.chain-add select { max-width: 180px; }
+
+/* 步 3 · 用量统计：时间筛选条 */
+.usage-filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.usage-filter input[type="datetime-local"] { padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius, 10px); font-family: var(--sans); font-size: 13.5px; color: var(--ink); background: #fff; }
+
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th { text-align: left; font-size: 12.5px; color: var(--ink-2); font-weight: 500; padding: 10px 14px; border-bottom: 1px solid var(--line-strong); background: var(--bg-soft); }
 .table th:first-child { border-top-left-radius: var(--radius-sm); }

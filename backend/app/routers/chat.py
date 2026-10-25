@@ -28,7 +28,13 @@ from app.schemas.chat import (
     PolishIn,
     PolishOut,
 )
-from app.services import chat_service, llm_gateway, rate_limit, rbac_service
+from app.services import (
+    chat_service,
+    llm_gateway,
+    model_caller,
+    rate_limit,
+    rbac_service,
+)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -51,26 +57,29 @@ def _sse(payload: dict) -> str:
 async def _chat_stream(
     user: User, body: ChatRequest, target: chat_service.ChatTarget, messages: list[dict[str, str]]
 ) -> AsyncIterator[str]:
-    """SSE 生成器：双流转发 → 成功后落库（校验与预处理已在路由层完成）。"""
+    """SSE 生成器：路由化双流转发（步 3：主模型 + 备用链首帧前兜底、熔断、记账）
+    → 成功后落库（校验与预处理已在路由层完成）。"""
     collected: list[str] = []
     collected_reasoning: list[str] = []
     thinking = chat_service.resolve_effective_thinking(target)
-    try:
-        async for chunk in llm_gateway.chat_stream(target.cfg, messages, thinking=thinking):
-            if chunk.reasoning_delta:
-                collected_reasoning.append(chunk.reasoning_delta)
-                yield _sse({"reasoning_delta": chunk.reasoning_delta})
-            elif chunk.delta:
-                collected.append(chunk.delta)
-                yield _sse({"delta": chunk.delta})
-    except llm_gateway.UpstreamError:
-        # 流中途失败：已产生文字（含思维）不落库（PRD §4.6）
-        yield _sse({"error": "刚刚卡了一下，没听清，要不再说一次？"})
-        yield "data: [DONE]\n\n"
-        return
-
-    # 流正常结束：完整助手消息（含思维链，64KB 截断在 service 层）落库后发送 [DONE]
     async with SessionLocal() as db:
+        try:
+            async for chunk in model_caller.chat_stream(
+                db, chat_service.CHAT_APP_KEY, target.plan, messages, thinking=thinking
+            ):
+                if chunk.reasoning_delta:
+                    collected_reasoning.append(chunk.reasoning_delta)
+                    yield _sse({"reasoning_delta": chunk.reasoning_delta})
+                elif chunk.delta:
+                    collected.append(chunk.delta)
+                    yield _sse({"delta": chunk.delta})
+        except llm_gateway.UpstreamError:
+            # 首帧前兜底全失败 / 流中途失败：已产生文字（含思维）不落库（PRD §4.6）
+            yield _sse({"error": "刚刚卡了一下，没听清，要不再说一次？"})
+            yield "data: [DONE]\n\n"
+            return
+
+        # 流正常结束：完整助手消息（含思维链，64KB 截断在 service 层）落库后发送 [DONE]
         await chat_service.persist_exchange(
             db,
             user_id=user.id,

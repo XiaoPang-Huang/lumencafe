@@ -123,7 +123,7 @@ async def test_chat_reuses_latest_conversation(client):
 async def test_chat_midstream_failure_not_persisted(client, monkeypatch):
     headers = await _chat_user(client)
 
-    async def broken_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def broken_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         yield llm_gateway.StreamChunk(delta="半截")
         raise llm_gateway.UpstreamError("boom")
 
@@ -146,10 +146,10 @@ async def test_chat_midstream_failure_not_persisted(client, monkeypatch):
 
 
 async def test_chat_no_default_route_503(client, monkeypatch):
-    async def no_route(db):
+    async def no_route(db, app_key):
         return None
 
-    monkeypatch.setattr(route_service, "resolve_default", no_route)
+    monkeypatch.setattr(route_service, "resolve_for", no_route)
     headers = await _chat_user(client)
     resp = await client.post(
         "/chat", json={"app_id": "chat", "message": "hi"}, headers=headers

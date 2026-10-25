@@ -30,7 +30,7 @@ from app.schemas.money import (
     TransactionUpdate,
     TrendStats,
 )
-from app.services import llm_gateway, route_service
+from app.services import llm_gateway, model_caller
 
 _TXN_KIND_COMPAT = {
     "expense": ("expense", "both"),
@@ -494,20 +494,23 @@ def extract_json(text: str) -> dict[str, Any]:
 async def parse_text(
     db: AsyncSession, text: str
 ) -> ParseResponse:
-    """AI 记一笔：仅生成草稿不落库。模型未配置 503；解析/超时失败 502。"""
-    route = await route_service.resolve_default(db)
-    if route is None:
-        raise HTTPException(
-            status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
-        )
+    """AI 记一笔：仅生成草稿不落库。模型未配置 503；解析/超时失败 502。
+
+    步 3：走 app_key="money_parse" 路由编排（主模型 + 备用链兜底 + 熔断 + 记账）。
+    """
     try:
-        reply = await llm_gateway.chat_once(
-            route.cfg,
+        reply = await model_caller.chat_once(
+            db,
+            "money_parse",
             [
                 {"role": "system", "content": PARSE_SYSTEM_PROMPT},
                 {"role": "user", "content": text},
             ],
             timeout=8.0,  # PRD N5
+        )
+    except model_caller.RouteUnavailable:
+        raise HTTPException(
+            status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
         )
     except llm_gateway.UpstreamError as exc:
         raise HTTPException(status_code=502, detail="AI 解析失败，请手动记一笔") from exc

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261024e">
+<link rel="stylesheet" href="assets/css/main.css?v=20261025a">
 </head>
 <body data-route="workspace">
 
@@ -349,11 +349,15 @@
           <select data-mm-default></select>
         </div>
       </div>
+      <div class="mm-grid" style="margin-top:12px;">
+        <div class="field" style="margin-bottom:0;"><label>输入单价（元 / 百万 token）</label><input type="number" min="0" step="0.0001" data-mm-price-in placeholder="留空 = 不计量费用"></div>
+        <div class="field" style="margin-bottom:0;"><label>输出单价（元 / 百万 token）</label><input type="number" min="0" step="0.0001" data-mm-price-out placeholder="留空 = 不计量费用"></div>
+      </div>
       <div class="mm-checks" style="margin-top:12px;">
         <label class="chk"><input type="checkbox" data-mm-tools> 工具调用 <span class="badge-soon">预留</span></label>
         <label class="chk"><input type="checkbox" data-mm-custom> 自定义协议 <span class="badge-soon">预留</span></label>
       </div>
-      <div class="hint" style="margin-top:10px;">「工具调用 / 自定义协议」本期仅保存配置不落功能；档位配置保存后，对话模型弹层按此处渲染强度选择。</div>
+      <div class="hint" style="margin-top:10px;">「工具调用 / 自定义协议」本期仅保存配置不落功能；档位配置保存后，对话模型弹层按此处渲染强度选择。单价用于用量统计计费：调用时固化为快照，事后改价不动历史账。</div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
@@ -405,6 +409,6 @@
 <script src="assets/js/data.js?v=20261024a"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
 <script src="assets/js/api.js?v=20261024a"></script>
-<script src="assets/js/app.js?v=20261024c"></script>
+<script src="assets/js/app.js?v=20261025a"></script>
 </body>
 </html>

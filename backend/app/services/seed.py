@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.apps import AppRegistry
-from app.models.llm import GatewayToken, LLMModel, Provider
+from app.models.llm import GatewayToken, LLMModel, ModelAssignment, Provider
 from app.models.money import MoneyCategory
 from app.models.user import Permission, Role, RolePermission, User, UserRole
 from app.security import hash_password
@@ -228,6 +228,37 @@ async def _seed_llm(db: AsyncSession) -> None:
     )
 
 
+# 步 3（D12）：内部调用方 app_key；种子指派行覆盖现有三个调用面
+MODEL_ASSIGNMENT_APP_KEYS = ("chat", "money_parse", "polish")
+
+
+async def _seed_model_assignments(db: AsyncSession) -> None:
+    """为各 app_key 种子指派行：主模型 = 当前默认路由模型，备用链空（步 3 Q1 拍板）。
+
+    幂等：仅当对应 app_key 无指派行时补建；默认路由未配置则跳过（兼容期回落默认路由）。
+    """
+    default_model = (
+        await db.execute(select(LLMModel.id).where(LLMModel.is_default.is_(True)))
+    ).scalar_one_or_none()
+    if default_model is None:
+        return
+    for app_key in MODEL_ASSIGNMENT_APP_KEYS:
+        exists = (
+            await db.execute(
+                select(ModelAssignment.id).where(ModelAssignment.app_key == app_key)
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            db.add(
+                ModelAssignment(
+                    app_key=app_key,
+                    primary_model_id=default_model,
+                    fallback_chain=[],
+                    enabled=True,
+                )
+            )
+
+
 async def _seed_gateway_tokens(db: AsyncSession) -> None:
     """首个网关令牌由 LUMEN_INTERNAL_TOKEN 种子（Q17）；之后全部界面管理。"""
     if not settings.internal_token:
@@ -261,5 +292,6 @@ async def run_seed(db: AsyncSession) -> None:
     if admin is not None:
         await seed_money_categories(db, admin.id)
     await _seed_llm(db)
+    await _seed_model_assignments(db)
     await _seed_gateway_tokens(db)
     await db.commit()

@@ -7,7 +7,9 @@
 - 会话标题 = 首条用户消息截取 16 字；
 - SSE 落库用独立 SessionLocal（§9.1：请求级 session 已被回收）；
 - 增量 v1：思维链随 assistant 消息落库（64KB 截断）；已启用 skill 的 prompt
-  片段按 installed_at 升序注入 system（内置常量在前，用户不可改写）。
+  片段按 installed_at 升序注入 system（内置常量在前，用户不可改写）；
+- 步 3（B1/D12）：调用面传 app_key="chat" 走路由编排（model_caller：主模型 +
+  有序备用链兜底 + 熔断 + 记账）；会话级显式 model_id 仍直查单候选（Q15）。
 """
 import datetime as dt
 from dataclasses import dataclass
@@ -28,8 +30,8 @@ from app.schemas.chat import (
     LatestConversationOut,
 )
 from app.schemas.llm import MetaReasoning
-from app.services import llm_gateway, route_service, skill_service
-from app.services.llm_gateway import ClientCfg
+from app.services import llm_gateway, model_caller, route_service, skill_service
+from app.services.route_service import RoutePlan
 
 # Q14：chat 应用系统提示词（后端内置常量）
 SYSTEM_PROMPT = "你是一个乐于助人的 AI 助手"
@@ -45,13 +47,20 @@ POLISH_SYSTEM_PROMPT = (
 )
 
 
+# 步 3：chat 应用的调用面 app_key（B1）
+CHAT_APP_KEY = "chat"
+
+
 @dataclass(frozen=True)
 class ChatTarget:
-    """一轮对话的解析结果：会话 + 客户端配置 + 厂商/元数据（thinking 校验用）。"""
+    """一轮对话的解析结果：会话 + 有序路由计划 + 厂商/元数据（thinking 校验用）。
+
+    步 3：cfg 演进为 RoutePlan（主模型 + 备用链）；首候选的 vendor/meta 供
+    thinking_level 白名单校验（与解析模型保持一致）。
+    """
 
     conversation: ChatConversation
-    cfg: ClientCfg
-    model_name: str
+    plan: RoutePlan
     vendor: str
     meta: dict[str, Any] | None
     is_new_conversation: bool
@@ -121,8 +130,9 @@ def validate_thinking_level(
 
 async def _resolve_model_for_conversation(
     db: AsyncSession, conversation: ChatConversation, requested_model_id: int | None
-) -> tuple[ClientCfg, str, str, dict[str, Any] | None]:
-    """模型解析（Q15）：会话/请求 model_id 优先，缺省走网关默认路由。"""
+) -> RoutePlan:
+    """模型解析（Q15 + 步 3 B1）：会话/请求 model_id 优先（直查单候选）；
+    缺省走 app_key="chat" 的指派路由（主模型 + 有序备用链，未配置回落默认路由）。"""
     model_id = requested_model_id or conversation.model_id
     if model_id is not None:
         row = (
@@ -135,24 +145,17 @@ async def _resolve_model_for_conversation(
             raise HTTPException(status_code=400, detail="模型已停用")
         if not provider.enabled:
             raise HTTPException(status_code=503, detail="模型所属渠道已停用")
-        return (
-            ClientCfg(
-                base_url=provider.base_url,
-                api_key=provider.api_key,
-                model=model.name,
-                vendor=provider.vendor,
-            ),
-            model.name,
-            provider.vendor,
-            dict(model.meta) if model.meta else None,
-        )
+        plan = await route_service.direct_plan(db, model_id)
+        if plan is None:
+            raise HTTPException(status_code=400, detail="模型不存在")
+        return plan
 
-    route = await route_service.resolve_default(db)
-    if route is None:
+    plan = await route_service.resolve_for(db, CHAT_APP_KEY)
+    if plan is None:
         raise HTTPException(
             status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
         )
-    return route.cfg, route.model_name, route.vendor, route.meta
+    return plan
 
 
 async def prepare_chat(
@@ -196,9 +199,9 @@ async def prepare_chat(
             db.add(conversation)
             is_new = True
 
-    cfg, model_name, vendor, meta = await _resolve_model_for_conversation(
-        db, conversation, model_id
-    )
+    plan = await _resolve_model_for_conversation(db, conversation, model_id)
+    primary = plan.candidates[0]
+    vendor, meta = primary.vendor, primary.meta
     if model_id is not None:
         conversation.model_id = model_id  # 会话级快照：换模型只对后续消息生效（Q15）
     if thinking_level is not None:
@@ -211,8 +214,7 @@ async def prepare_chat(
     await db.refresh(conversation)
     return ChatTarget(
         conversation=conversation,
-        cfg=cfg,
-        model_name=model_name,
+        plan=plan,
         vendor=vendor,
         meta=meta,
         is_new_conversation=is_new,
@@ -222,7 +224,7 @@ async def prepare_chat(
 def resolve_effective_thinking(target: ChatTarget) -> str | None:
     """本次请求实际生效的思考档位：请求已快照进会话，直接回落会话快照；
     均无 → None（不传，厂商默认）。mock 链路忽略（校验阶段已拦截快照）。"""
-    if target.cfg.is_mock:
+    if target.plan.candidates[0].cfg.is_mock:
         return None
     return target.conversation.thinking_level
 
@@ -301,24 +303,24 @@ async def persist_exchange(
 
 
 async def polish_text(db: AsyncSession, text: str) -> str:
-    """P1-2：AI 润色（非流式，复用默认路由 + chat_once，与 /money/parse 同模式）。
+    """P1-2：AI 润色（非流式，步 3 起走 app_key="polish" 路由编排，与 /money/parse 同模式）。
 
     润色 prompt 为内置常量（N-增2）；超时 ≤8s，上游失败 502；mock 链路本地占位。
     """
-    route = await route_service.resolve_default(db)
-    if route is None:
+    plan = await route_service.resolve_for(db, "polish")
+    if plan is None:
         raise HTTPException(
             status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
         )
-    if route.cfg.is_mock:
-        # mock 不联网：本地占位润色，保持链路可测可用
+    if plan.candidates[0].cfg.is_mock:
+        # mock 不联网：本地占位润色，保持链路可测可用（也不产生调用日志）
         return f"{text.strip()}（mock 润色占位）"
     messages = [
         {"role": "system", "content": POLISH_SYSTEM_PROMPT},
         {"role": "user", "content": text},
     ]
     try:
-        return await llm_gateway.chat_once(route.cfg, messages, timeout=8.0)
+        return await model_caller.chat_once_plan(db, "polish", plan, messages, timeout=8.0)
     except llm_gateway.UpstreamError as exc:
         raise HTTPException(status_code=502, detail=f"润色失败：{exc}") from exc
 

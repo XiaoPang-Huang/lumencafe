@@ -4,41 +4,62 @@
 - 默认路由 = providers.is_default + llm_models.is_default 两标记（Q10/Q13），
   部分唯一索引兜底全库至多一个，切换时同事务先清旧标记；
 - fetch-models 调官方 GET {base_url}/models 平铺入库（custom/enabled 保留）；
-- 网关令牌（Q17）：仅存 sha256 哈希 + 掩码，完整令牌仅创建时返回一次。
+- 网关令牌（Q17）：仅存 sha256 哈希 + 掩码，完整令牌仅创建时返回一次；
+- 步 3（D4 管理面约束）：模型指派 / 熔断状态 / 用量统计全部挂本路由
+  （现有 admin:models 权限，零新增鉴权面），统计仅管理员可见。
 """
 import hashlib
 import secrets
 import time
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import require_permission
-from app.models.llm import GatewayToken, LLMModel, Provider
+from app.models.llm import (
+    GatewayToken,
+    LLMCallLog,
+    LLMModel,
+    ModelAssignment,
+    ModelCircuitState,
+    Provider,
+)
 from app.models.user import User
 from app.schemas.llm import (
     DEFAULT_MODEL_META,
     VENDOR_WHITELIST,
+    AppUsageStat,
+    AssignmentListOut,
+    CircuitStateOut,
     DefaultRouteOut,
     DefaultRouteSet,
+    FallbackRef,
     FetchedModel,
     GatewayTokenCreate,
     GatewayTokenCreated,
     GatewayTokenOut,
+    ModelAssignmentOut,
+    ModelAssignmentSet,
     ModelCreate,
     ModelMeta,
     ModelOut,
+    ModelPoolItem,
     ModelUpdate,
+    ModelUsageStat,
     ProviderCreate,
     ProviderDetailOut,
     ProviderOut,
     ProviderUpdate,
     RouteRef,
     TestResult,
+    UsageLogOut,
+    UsageLogPage,
+    UsageSummaryOut,
 )
-from app.services import llm_gateway, route_service
+from app.services import circuit_service, llm_gateway, route_service
 
 router = APIRouter(prefix="/admin/models", tags=["admin-models"])
 
@@ -495,3 +516,308 @@ async def revoke_gateway_token(
     row.active = False  # 吊销立即生效
     await db.commit()
     return {"ok": True}
+
+
+# ── 模型指派（步 3 D2：app_key → 主模型 + 有序备用链）──────────
+def _assignment_out(
+    assignment: ModelAssignment, names: dict[int, str]
+) -> ModelAssignmentOut:
+    return ModelAssignmentOut(
+        app_key=assignment.app_key,
+        primary_model_id=assignment.primary_model_id,
+        primary_model_name=names.get(assignment.primary_model_id, "（已删除）"),
+        fallback_chain=[
+            FallbackRef(id=mid, name=names.get(mid, "（已删除）"))
+            for mid in (assignment.fallback_chain or [])
+        ],
+        enabled=assignment.enabled,
+    )
+
+
+async def _model_names(db: AsyncSession) -> dict[int, str]:
+    rows = (
+        await db.execute(select(LLMModel.id, LLMModel.name).order_by(LLMModel.id))
+    ).all()
+    return {int(mid): name for mid, name in rows}
+
+
+@router.get("/assignments", response_model=AssignmentListOut)
+async def list_assignments(
+    admin: User = Depends(_admin_models), db: AsyncSession = Depends(get_db)
+):
+    """指派列表 + 模型池（指派编辑下拉用：启用模型，id + 展示名）。"""
+    assignments = (
+        await db.execute(select(ModelAssignment).order_by(ModelAssignment.app_key))
+    ).scalars().all()
+    names = await _model_names(db)
+    pool_rows = (
+        await db.execute(
+            select(LLMModel, Provider)
+            .join(Provider, Provider.id == LLMModel.provider_id)
+            .where(LLMModel.enabled.is_(True), Provider.enabled.is_(True))
+            .order_by(Provider.id, LLMModel.sort, LLMModel.id)
+        )
+    ).all()
+    return AssignmentListOut(
+        assignments=[_assignment_out(a, names) for a in assignments],
+        model_pool=[
+            ModelPoolItem(id=m.id, name=m.name, provider_name=p.name)
+            for m, p in pool_rows
+        ],
+    )
+
+
+@router.put("/assignments/{app_key}", response_model=ModelAssignmentOut)
+async def set_assignment(
+    app_key: str,
+    body: ModelAssignmentSet,
+    admin: User = Depends(_admin_models),
+    db: AsyncSession = Depends(get_db),
+):
+    """写入指派（upsert）：校验主模型与备用链模型均存在且启用；链内去重、排除主模型。"""
+    wanted = [body.primary_model_id, *body.fallback_chain]
+    if len(set(wanted)) != len(wanted):
+        raise HTTPException(status_code=400, detail="备用链与主模型重复")
+    rows = (
+        await db.execute(select(LLMModel).where(LLMModel.id.in_(wanted)))
+    ).scalars().all()
+    found = {m.id: m for m in rows}
+    missing = [m for m in wanted if m not in found]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"模型不存在：{missing}")
+    disabled = [m.id for m in found.values() if not m.enabled]
+    if disabled:
+        raise HTTPException(status_code=400, detail=f"模型已停用：{disabled}")
+
+    assignment = (
+        await db.execute(select(ModelAssignment).where(ModelAssignment.app_key == app_key))
+    ).scalar_one_or_none()
+    if assignment is None:
+        assignment = ModelAssignment(app_key=app_key)
+        db.add(assignment)
+    assignment.primary_model_id = body.primary_model_id
+    assignment.fallback_chain = list(body.fallback_chain or [])
+    assignment.enabled = body.enabled
+    await db.commit()
+    await db.refresh(assignment)
+    return _assignment_out(assignment, await _model_names(db))
+
+
+# ── 熔断状态（步 3 Q2，Portkey 语义，存库）───────────────────
+@router.get("/circuit-states", response_model=list[CircuitStateOut])
+async def list_circuit_states(
+    admin: User = Depends(_admin_models), db: AsyncSession = Depends(get_db)
+):
+    rows = (
+        await db.execute(
+            select(ModelCircuitState, LLMModel)
+            .outerjoin(LLMModel, LLMModel.id == ModelCircuitState.model_id)
+            .order_by(ModelCircuitState.model_id)
+        )
+    ).all()
+    return [
+        CircuitStateOut(
+            model_id=s.model_id,
+            model_name=m.name if m else "（已删除）",
+            state=s.state,
+            consecutive_failures=s.consecutive_failures,
+            opened_at=s.opened_at,
+            next_probe_at=s.next_probe_at,
+            updated_at=s.updated_at,
+        )
+        for s, m in rows
+    ]
+
+
+@router.post("/circuit-states/{model_id}/reset")
+async def reset_circuit_state(
+    model_id: int,
+    admin: User = Depends(_admin_models),
+    db: AsyncSession = Depends(get_db),
+):
+    """手动恢复熔断（管理面运维操作）：清状态，路由立即重新采纳该模型。"""
+    await circuit_service.reset(db, model_id)
+    return {"ok": True}
+
+
+# ── 用量统计（步 3 D3，布局抄 one-api：卡片 + 表格；Q3 无限期保留 + 时间筛选）──
+def _usage_window(
+    start: datetime | None, end: datetime | None
+) -> tuple[datetime, datetime]:
+    """时间窗 [start, end)，默认近 7 天（PG 聚合口径，Q6：卡片 + 表格即够）。"""
+    end_at = end or datetime.now(UTC)
+    start_at = start or (end_at - timedelta(days=7))
+    if start_at >= end_at:
+        raise HTTPException(status_code=400, detail="start 须早于 end")
+    return start_at, end_at
+
+
+@router.get("/usage/summary", response_model=UsageSummaryOut)
+async def usage_summary(
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
+    admin: User = Depends(_admin_models),
+    db: AsyncSession = Depends(get_db),
+):
+    start_at, end_at = _usage_window(start, end)
+    cond = [LLMCallLog.created_at >= start_at, LLMCallLog.created_at < end_at]
+
+    total_row = (
+        await db.execute(
+            select(
+                func.count(LLMCallLog.id),
+                func.coalesce(func.sum(LLMCallLog.input_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.output_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.cost), 0),
+                func.coalesce(func.avg(LLMCallLog.latency_ms), 0),
+            ).where(*cond)
+        )
+    ).one()
+    success_calls = int(
+        (
+            await db.execute(
+                select(func.count(LLMCallLog.id)).where(*cond, LLMCallLog.success.is_(True))
+            )
+        ).scalar_one()
+    )
+    total_calls = int(total_row[0])
+    input_tokens = int(total_row[1])
+    output_tokens = int(total_row[2])
+    total_cost = float(total_row[3])
+
+    by_model_rows = (
+        await db.execute(
+            select(
+                LLMCallLog.model_id,
+                LLMCallLog.model_name,
+                func.count(LLMCallLog.id),
+                func.coalesce(func.sum(LLMCallLog.input_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.output_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.cost), 0),
+            )
+            .where(*cond)
+            .group_by(LLMCallLog.model_id, LLMCallLog.model_name)
+            .order_by(func.coalesce(func.sum(LLMCallLog.cost), 0).desc())
+        )
+    ).all()
+    success_by_model = {
+        row[0]: int(row[1])
+        for row in (
+            await db.execute(
+                select(LLMCallLog.model_id, func.count(LLMCallLog.id))
+                .where(*cond, LLMCallLog.success.is_(True))
+                .group_by(LLMCallLog.model_id)
+            )
+        ).all()
+    }
+    by_app_rows = (
+        await db.execute(
+            select(
+                LLMCallLog.app_key,
+                func.count(LLMCallLog.id),
+                func.coalesce(func.sum(LLMCallLog.input_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.output_tokens), 0),
+                func.coalesce(func.sum(LLMCallLog.cost), 0),
+            )
+            .where(*cond)
+            .group_by(LLMCallLog.app_key)
+            .order_by(func.count(LLMCallLog.id).desc())
+        )
+    ).all()
+    success_by_app = {
+        row[0]: int(row[1])
+        for row in (
+            await db.execute(
+                select(LLMCallLog.app_key, func.count(LLMCallLog.id))
+                .where(*cond, LLMCallLog.success.is_(True))
+                .group_by(LLMCallLog.app_key)
+            )
+        ).all()
+    }
+    return UsageSummaryOut(
+        total_calls=total_calls,
+        success_calls=success_calls,
+        failed_calls=total_calls - success_calls,
+        success_rate=round(success_calls / total_calls, 4) if total_calls else 0.0,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_cost=total_cost,
+        avg_latency_ms=round(float(total_row[4]), 1),
+        by_model=[
+            ModelUsageStat(
+                model_id=row[0],
+                model_name=row[1],
+                calls=int(row[2]),
+                success_calls=success_by_model.get(row[0], 0),
+                input_tokens=int(row[3]),
+                output_tokens=int(row[4]),
+                cost=float(row[5]),
+            )
+            for row in by_model_rows
+        ],
+        by_app=[
+            AppUsageStat(
+                app_key=row[0],
+                calls=int(row[1]),
+                success_calls=success_by_app.get(row[0], 0),
+                input_tokens=int(row[2]),
+                output_tokens=int(row[3]),
+                cost=float(row[4]),
+            )
+            for row in by_app_rows
+        ],
+    )
+
+
+@router.get("/usage/logs", response_model=UsageLogPage)
+async def usage_logs(
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
+    app_key: str | None = Query(default=None, max_length=64),
+    model_id: int | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    admin: User = Depends(_admin_models),
+    db: AsyncSession = Depends(get_db),
+):
+    """调用日志明细分页（one-api 日志式；时间筛选 + app_key/模型过滤，Q3 无限期保留）。"""
+    start_at, end_at = _usage_window(start, end)
+    cond = [LLMCallLog.created_at >= start_at, LLMCallLog.created_at < end_at]
+    if app_key:
+        cond.append(LLMCallLog.app_key == app_key)
+    if model_id is not None:
+        cond.append(LLMCallLog.model_id == model_id)
+
+    total = int(
+        (await db.execute(select(func.count(LLMCallLog.id)).where(*cond))).scalar_one()
+    )
+    rows = (
+        await db.execute(
+            select(LLMCallLog)
+            .where(*cond)
+            .order_by(LLMCallLog.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    return UsageLogPage(
+        items=[
+            UsageLogOut(
+                id=r.id,
+                app_key=r.app_key,
+                model_id=r.model_id,
+                model_name=r.model_name,
+                input_tokens=r.input_tokens,
+                output_tokens=r.output_tokens,
+                latency_ms=r.latency_ms,
+                success=r.success,
+                error=r.error,
+                cost=float(r.cost) if r.cost is not None else None,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

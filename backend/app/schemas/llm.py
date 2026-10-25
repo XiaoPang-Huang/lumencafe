@@ -41,8 +41,18 @@ class MetaReasoning(BaseModel):
         return v
 
 
+class MetaPricing(BaseModel):
+    """llm_models.meta.pricing（步 3 D3，Langfuse 单价表）：元/百万 token，可空。
+
+    记账时把单价快照固化进 llm_call_logs，事后改价不动历史账。
+    """
+
+    input_per_million: float | None = Field(default=None, ge=0)
+    output_per_million: float | None = Field(default=None, ge=0)
+
+
 class ModelMeta(BaseModel):
-    """llm_models.meta 固定结构（Q16 + R4/R5）：管理端读写统一校验入口。"""
+    """llm_models.meta 固定结构（Q16 + R4/R5 + 步3 pricing）：管理端读写统一校验入口。"""
 
     context: str | None = None
     vision: bool = False
@@ -50,6 +60,7 @@ class ModelMeta(BaseModel):
     reasoning: MetaReasoning | None = None  # 无该键 = 不支持思考（enabled=false 等效）
     tools: bool = False  # R4 预留位：本期只落数据不落功能
     custom_protocol: bool = False  # R4 预留位：同上
+    pricing: MetaPricing | None = None  # 步 3：调用单价（元/百万 token，可空 = 不计量费用）
 
 
 # ── Provider ────────────────────────────────────────────
@@ -157,3 +168,103 @@ class GatewayTokenCreated(BaseModel):
 
     token: str
     item: GatewayTokenOut
+
+
+# ── 模型指派（步 3 D2：按消费者路由）────────────────────────
+class FallbackRef(BaseModel):
+    id: int
+    name: str
+
+
+class ModelAssignmentOut(BaseModel):
+    app_key: str
+    primary_model_id: int
+    primary_model_name: str
+    fallback_chain: list[FallbackRef] = Field(default_factory=list)
+    enabled: bool
+
+
+class ModelAssignmentSet(BaseModel):
+    """指派写入：主模型必填；备用链有序（元素 = llm_models.id）。"""
+
+    primary_model_id: int
+    fallback_chain: list[int] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class ModelPoolItem(BaseModel):
+    """指派编辑用的模型池：全部启用模型（id + 展示名）。"""
+
+    id: int
+    name: str
+    provider_name: str
+
+
+class AssignmentListOut(BaseModel):
+    assignments: list[ModelAssignmentOut] = Field(default_factory=list)
+    model_pool: list[ModelPoolItem] = Field(default_factory=list)
+
+
+# ── 熔断状态（步 3 Q2，Portkey 语义）─────────────────────────
+class CircuitStateOut(BaseModel):
+    model_id: int
+    model_name: str
+    state: str
+    consecutive_failures: int
+    opened_at: datetime | None
+    next_probe_at: datetime | None
+    updated_at: datetime
+
+
+# ── 用量统计（步 3 D3，布局抄 one-api：卡片 + 表格）────────────
+class ModelUsageStat(BaseModel):
+    model_id: int | None
+    model_name: str
+    calls: int
+    success_calls: int
+    input_tokens: int
+    output_tokens: int
+    cost: float
+
+
+class AppUsageStat(BaseModel):
+    app_key: str
+    calls: int
+    success_calls: int
+    input_tokens: int
+    output_tokens: int
+    cost: float
+
+
+class UsageSummaryOut(BaseModel):
+    total_calls: int
+    success_calls: int
+    failed_calls: int
+    success_rate: float
+    input_tokens: int
+    output_tokens: int
+    total_cost: float
+    avg_latency_ms: float
+    by_model: list[ModelUsageStat] = Field(default_factory=list)
+    by_app: list[AppUsageStat] = Field(default_factory=list)
+
+
+class UsageLogOut(BaseModel):
+    id: int
+    app_key: str
+    model_id: int | None
+    model_name: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    success: bool
+    error: str | None
+    cost: float | None
+    created_at: datetime
+
+
+class UsageLogPage(BaseModel):
+    items: list[UsageLogOut] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int

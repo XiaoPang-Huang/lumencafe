@@ -113,7 +113,7 @@ async def test_skill_prompt_injection_into_system(client, monkeypatch):
 
     captured: dict = {}
 
-    async def spy_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def spy_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         captured["messages"] = messages
         yield llm_gateway.StreamChunk(delta="ok")
 
@@ -139,7 +139,7 @@ async def test_skill_disabled_stops_injection(client, monkeypatch):
 
     captured: dict = {}
 
-    async def spy_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def spy_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         captured["messages"] = messages
         yield llm_gateway.StreamChunk(delta="ok")
 
@@ -283,7 +283,7 @@ async def test_skill_upload_injects_into_system(client, monkeypatch):
 
     captured: dict = {}
 
-    async def spy_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def spy_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         captured["messages"] = messages
         yield llm_gateway.StreamChunk(delta="ok")
 

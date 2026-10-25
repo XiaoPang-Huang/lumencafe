@@ -1,12 +1,20 @@
 """ORM 模型汇总：Alembic autogenerate 的 metadata 来源。
 
 分模块对应架构设计 §3：
-user（§3.1 五表）/ llm（§3.2 三表）/ apps（§3.3 三表）/
+user（§3.1 五表）/ llm（§3.2 三表 + 步3 增 model_assignments、
+model_circuit_states、llm_call_logs）/ apps（§3.3 三表）/
 chat（§3.4 两表）/ user_settings（§3.5 一表）/ money（§3.6 两表）。
 """
 from app.models.apps import AppRegistry, AppVisibility, Category
 from app.models.chat import ChatConversation, ChatMessage
-from app.models.llm import GatewayToken, LLMModel, Provider
+from app.models.llm import (
+    GatewayToken,
+    LLMCallLog,
+    LLMModel,
+    ModelAssignment,
+    ModelCircuitState,
+    Provider,
+)
 from app.models.money import MoneyCategory, MoneyTransaction
 from app.models.papers import (
     Paper,
@@ -26,7 +34,10 @@ __all__ = [
     "ChatConversation",
     "ChatMessage",
     "GatewayToken",
+    "LLMCallLog",
     "LLMModel",
+    "ModelAssignment",
+    "ModelCircuitState",
     "MoneyCategory",
     "MoneyTransaction",
     "Paper",

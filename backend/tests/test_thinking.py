@@ -322,17 +322,19 @@ async def test_polish_mock_success_and_validation(client):
 
 
 async def test_polish_upstream_failure_502(client, monkeypatch):
-    async def fake_route(db):
-        return ResolvedRoute(
-            provider_id=1,
-            provider_name="t",
-            vendor="openai",
-            model_id=1,
-            model_name="m",
-            cfg=ClientCfg(base_url="http://127.0.0.1:9", api_key="k", model="m", vendor="openai"),
-        )
+    route = ResolvedRoute(
+        provider_id=1,
+        provider_name="t",
+        vendor="openai",
+        model_id=1,
+        model_name="m",
+        cfg=ClientCfg(base_url="http://127.0.0.1:9", api_key="k", model="m", vendor="openai"),
+    )
 
-    monkeypatch.setattr(route_service, "resolve_default", fake_route)
+    async def fake_plan(db, app_key):
+        return route_service.RoutePlan(candidates=(route,), source="direct")
+
+    monkeypatch.setattr(route_service, "resolve_for", fake_plan)
     headers = await _chat_user(client, "polish502")
     resp = await client.post("/chat/polish", json={"text": "润色我"}, headers=headers)
     assert resp.status_code == 502
@@ -357,7 +359,7 @@ async def test_persist_exchange_truncates_reasoning(client):
     headers = await _chat_user(client, "truncuser")
     big = "思" * (70 * 1024)
 
-    async def fat_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def fat_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         yield llm_gateway.StreamChunk(reasoning_delta=big)
         yield llm_gateway.StreamChunk(delta="回答")
 

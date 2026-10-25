@@ -16,6 +16,10 @@
 fetch_model_names 的瞬时错误（网络类/5xx/429）由 tenacity 重试收口
 （app/services/retry.py，4xx 与鉴权错误不重试）。chat_stream 不做内联
 重试：流式首帧之后不可重发（步 3 备用链兜底只管首 token 前）。
+
+步 3 记账：chat_once/chat_stream 可选 usage_out 参数回填 token 计量
+（非流式取响应 usage；流式发 stream_options.include_usage 从末帧取；
+mock 记 0），费用快照固化在 meter_service。
 """
 import asyncio
 import json
@@ -120,11 +124,20 @@ async def _post_chat_completions(
 
 
 async def chat_once(
-    cfg: ClientCfg, messages: list[dict[str, Any]], timeout: float = 30.0
+    cfg: ClientCfg,
+    messages: list[dict[str, Any]],
+    timeout: float = 30.0,
+    usage_out: dict[str, Any] | None = None,
 ) -> str:
-    """一次性（非流式）对话，返回完整文本。"""
+    """一次性（非流式）对话，返回完整文本。
+
+    步 3 记账：传 usage_out（dict）时回填 {"input_tokens": x, "output_tokens": y}；
+    mock 模式回填 0。费用不在此算（单价快照由 meter_service 记账时固化）。
+    """
     if cfg.is_mock:
         await asyncio.sleep(0.05)
+        if usage_out is not None:
+            usage_out.update({"input_tokens": 0, "output_tokens": 0})
         return _MOCK_PARSE_TEMPLATE.format(today=datetime.now().date().isoformat())
 
     payload: dict[str, Any] = {"model": cfg.model, "messages": messages}
@@ -133,6 +146,14 @@ async def chat_once(
             get_http_client(), cfg, payload, httpx.Timeout(timeout, connect=10.0)
         )
         data = resp.json()
+        if usage_out is not None:
+            usage = data.get("usage") or {}
+            usage_out.update(
+                {
+                    "input_tokens": int(usage.get("prompt_tokens") or 0),
+                    "output_tokens": int(usage.get("completion_tokens") or 0),
+                }
+            )
         return str(data["choices"][0]["message"]["content"]).strip()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         raise UpstreamError(str(exc)[:300]) from exc
@@ -143,8 +164,14 @@ async def chat_stream(
     messages: list[dict[str, Any]],
     thinking: str | None = None,
     timeout: float = 120.0,
+    usage_out: dict[str, Any] | None = None,
 ) -> AsyncIterator[StreamChunk]:
-    """SSE 流式对话，逐段 yield 双流帧（正文 delta / 思维 reasoning_delta）。"""
+    """SSE 流式对话，逐段 yield 双流帧（正文 delta / 思维 reasoning_delta）。
+
+    步 3 记账：真实调用发 stream_options.include_usage，usage 从末帧取（OpenAI
+    协议：usage 随最后一帧或不带 choices 的 usage 帧下发）；传 usage_out（dict）
+    时回填 {"input_tokens": x, "output_tokens": y}。mock 模式回填 0。
+    """
     if cfg.is_mock:
         # mock 也产出思维流，便于双流回归测试（P0-4 ② 语义不变）
         reasoning = MOCK_STREAM_REASONING
@@ -155,12 +182,15 @@ async def chat_stream(
         for i in range(0, len(reply), 4):
             yield StreamChunk(delta=reply[i : i + 4])
             await asyncio.sleep(0.01)
+        if usage_out is not None:
+            usage_out.update({"input_tokens": 0, "output_tokens": 0})
         return
 
     payload: dict[str, Any] = {
         "model": cfg.model,
         "messages": messages,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
     payload.update(build_thinking_params(cfg.vendor, thinking))
     try:
@@ -181,11 +211,23 @@ async def chat_stream(
                     return
                 try:
                     chunk = json.loads(data)
-                    delta = chunk["choices"][0].get("delta", {})
-                    content = delta.get("content")
-                    reasoning_content = delta.get("reasoning_content")
-                except (json.JSONDecodeError, KeyError, IndexError):
+                except json.JSONDecodeError:
                     continue
+                # 末帧 usage（include_usage）：可能随空 choices 的 usage 帧下发
+                usage = chunk.get("usage")
+                if usage_out is not None and usage:
+                    usage_out.update(
+                        {
+                            "input_tokens": int(usage.get("prompt_tokens") or 0),
+                            "output_tokens": int(usage.get("completion_tokens") or 0),
+                        }
+                    )
+                choices = chunk.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta", {})
+                content = delta.get("content")
+                reasoning_content = delta.get("reasoning_content")
                 # 双流透传：思维帧先于正文帧到达（DeepSeek R1 协议，R3）
                 if reasoning_content:
                     yield StreamChunk(reasoning_delta=str(reasoning_content))

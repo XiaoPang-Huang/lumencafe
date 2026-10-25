@@ -132,7 +132,7 @@ async def test_injection_reads_from_disk(client, monkeypatch):
 
     captured: dict = {}
 
-    async def spy_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def spy_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         captured["messages"] = messages
         yield llm_gateway.StreamChunk(delta="ok")
 
@@ -189,7 +189,7 @@ async def test_legacy_db_row_falls_back_to_stored_prompt(client, monkeypatch):
 
     captured: dict = {}
 
-    async def spy_stream(cfg, messages, thinking=None, timeout=120.0):
+    async def spy_stream(cfg, messages, thinking=None, timeout=120.0, usage_out=None):
         captured["messages"] = messages
         yield llm_gateway.StreamChunk(delta="ok")
 
