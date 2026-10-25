@@ -411,11 +411,118 @@
   };
 
   /* ---------- 步 3 · 模型指派（one-api 渠道管理式表格行内编辑） ---------- */
-  function modelPoolOptions(curId) {
-    return adminState.modelPool.map(function (m) {
-      return '<option value="' + m.id + '"' + (String(m.id) === String(curId) ? " selected" : "") + ">" +
-        esc(m.name) + "（" + esc(m.provider_name) + "）</option>";
-    }).join("");
+
+  /* ================= 通用自定义下拉 xselect =================
+   * 视觉/交互参考：Arco Design Select（触发器与弹层同宽、当前项右侧对勾、hover 高亮、
+   * 圆角浮层带阴影 + 弹出动画、↑↓/Enter/Esc 键盘语义、超长列表限高滚动）与
+   * LobeChat 模型选择器（选中项对勾回显、选项行名称 + 辅助信息）。
+   * 用法：xselectHtml({ value, placeholder, options: [{ value, label }], attrs, cls })
+   * 取值：xselectValue(root) / xselectLabel(root)；attrs 里可放业务 data-* 属性。
+   * 事件全部走全局委托；选中后 root 派发 "xselect:change"（bubbles，detail = { value, label }），
+   * 供后续页面按需订阅；本次页面直接读值即可（PUT 请求体格式不变）。 */
+  function xselectHtml(opts) {
+    var value = opts.value != null ? String(opts.value) : "";
+    var placeholder = opts.placeholder || "请选择";
+    var options = opts.options || [];
+    var attrs = opts.attrs || "";
+    var cls = opts.cls || "";
+    var current = options.filter(function (o) { return String(o.value) === value; })[0];
+    var label = current ? current.label : "";
+    return '<div class="xselect' + (cls ? " " + cls : "") + (label ? "" : " is-placeholder") + '" data-xselect ' + attrs +
+      ' data-value="' + esc(value) + '">' +
+      '<button class="xselect-trigger" type="button" data-xselect-trigger aria-haspopup="listbox" aria-expanded="false">' +
+      '<span class="xselect-label">' + esc(label || placeholder) + "</span>" +
+      '<i data-ic="down" class="xselect-caret"></i></button>' +
+      '<div class="xselect-pop hide" data-xselect-pop role="listbox">' +
+      (options.length
+        ? options.map(function (o) {
+            var on = String(o.value) === value;
+            return '<div class="xselect-opt' + (on ? " selected" : "") + '" role="option" aria-selected="' + (on ? "true" : "false") +
+              '" data-xselect-opt="' + esc(String(o.value)) + '" title="' + esc(o.label) + '">' +
+              '<span class="xselect-opt-label">' + esc(o.label) + "</span>" +
+              '<i data-ic="check" class="xselect-check"></i></div>';
+          }).join("")
+        : '<div class="xselect-empty">暂无选项</div>') +
+      "</div></div>";
+  }
+  function xselectValue(root) { return root ? (root.getAttribute("data-value") || "") : ""; }
+  function xselectLabel(root) {
+    if (!root) return "";
+    var v = xselectValue(root);
+    var hit = qsa("[data-xselect-opt]", root).filter(function (o) { return o.getAttribute("data-xselect-opt") === v; })[0];
+    if (hit) { var l = hit.querySelector(".xselect-opt-label"); return l ? l.textContent : ""; }
+    return root.classList.contains("is-placeholder") ? "" : ((qs(".xselect-label", root) || {}).textContent || "");
+  }
+  function xselectClosePop(root) {
+    if (!root) return;
+    var pop = qs("[data-xselect-pop]", root);
+    if (pop) pop.classList.add("hide");
+    root.classList.remove("open");
+    var trg = qs("[data-xselect-trigger]", root);
+    if (trg) trg.setAttribute("aria-expanded", "false");
+  }
+  function xselectOpenPop(root) {
+    if (!root) return;
+    /* 单开：打开前收起其它 xselect 弹层（同页多个指派行互不干扰） */
+    qsa(".xselect-pop:not(.hide)").forEach(function (p) { xselectClosePop(p.closest("[data-xselect]")); });
+    var pop = qs("[data-xselect-pop]", root);
+    if (!pop) return;
+    pop.classList.remove("hide");
+    root.classList.add("open");
+    var trg = qs("[data-xselect-trigger]", root);
+    if (trg) trg.setAttribute("aria-expanded", "true");
+    /* 高亮当前选中项（无则首项），并对齐到可视区 */
+    qsa(".xselect-opt", pop).forEach(function (o) { o.classList.remove("active"); });
+    var cur = qs(".xselect-opt.selected", pop) || qs(".xselect-opt", pop);
+    if (cur) {
+      cur.classList.add("active");
+      if (cur.scrollIntoView) cur.scrollIntoView({ block: "nearest" });
+    }
+  }
+  function xselectToggle(root) {
+    var pop = qs("[data-xselect-pop]", root);
+    if (!pop) return;
+    if (pop.classList.contains("hide")) xselectOpenPop(root);
+    else xselectClosePop(root);
+  }
+  function xselectMove(root, dir) {
+    var pop = qs("[data-xselect-pop]", root);
+    if (!pop) return;
+    var list = qsa(".xselect-opt", pop);
+    if (!list.length) return;
+    var idx = list.indexOf(qs(".xselect-opt.active", pop));
+    idx = ((idx < 0 ? 0 : idx) + dir + list.length) % list.length;
+    list.forEach(function (o, i) { o.classList.toggle("active", i === idx); });
+    if (list[idx].scrollIntoView) list[idx].scrollIntoView({ block: "nearest" });
+  }
+  function xselectPick(root, opt) {
+    if (!root || !opt) return;
+    var value = opt.getAttribute("data-xselect-opt") || "";
+    var labelEl = opt.querySelector(".xselect-opt-label");
+    var label = labelEl ? labelEl.textContent : "";
+    root.setAttribute("data-value", value);
+    root.classList.remove("is-placeholder");
+    var lbl = qs(".xselect-label", root);
+    if (lbl) lbl.textContent = label;
+    var pop = qs("[data-xselect-pop]", root);
+    if (pop) qsa(".xselect-opt", pop).forEach(function (o) {
+      var on = o === opt;
+      o.classList.toggle("selected", on);
+      o.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    xselectClosePop(root);
+    root.dispatchEvent(new CustomEvent("xselect:change", { bubbles: true, detail: { value: value, label: label } }));
+  }
+  /* 模型指派：模型池 → xselect（替代原生 select；data-value 存模型 id，保存时 parseInt，请求体格式不变） */
+  function modelPoolXselect(attrs, curId, placeholder) {
+    return xselectHtml({
+      value: curId,
+      placeholder: placeholder || "选择模型",
+      options: adminState.modelPool.map(function (m) {
+        return { value: String(m.id), label: m.name + "（" + m.provider_name + "）" };
+      }),
+      attrs: attrs
+    });
   }
   /* 备用链 chips：有序，支持 ↑↓ 调序与移除（数据存 DOM，保存时收集） */
   function chainChipHtml(appKey, ref, idx) {
@@ -435,9 +542,9 @@
     var chain = (a.fallback_chain || []).map(function (ref, i) { return chainChipHtml(a.app_key, ref, i); }).join("");
     return '<tr data-asg-row="' + esc(a.app_key) + '">' +
       "<td><b>" + esc(a.app_key) + "</b></td>" +
-      '<td><select data-asg-primary>' + modelPoolOptions(a.primary_model_id) + "</select></td>" +
+      '<td>' + modelPoolXselect('data-asg-primary', a.primary_model_id, "选择主模型") + "</td>" +
       '<td><div class="chain-box" data-asg-chain="' + esc(a.app_key) + '">' + chain +
-      '<span class="chain-add"><select data-asg-add-sel>' + modelPoolOptions("") + '</select>' +
+      '<span class="chain-add">' + modelPoolXselect('data-asg-add-sel', "", "选择要加入的模型") +
       '<button class="btn btn-ghost btn-sm" type="button" data-asg-add="' + esc(a.app_key) + '"><i data-ic="plus"></i>加入</button></span></div></td>' +
       '<td><button class="switch' + (a.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (a.enabled ? "true" : "false") + '" data-asg-toggle aria-label="启用该指派"></button></td>' +
       '<td class="t-right"><button class="btn btn-sm" type="button" data-asg-save="' + esc(a.app_key) + '">保存</button></td></tr>';
@@ -448,6 +555,8 @@
     tb.innerHTML = adminState.assignments.length
       ? adminState.assignments.map(assignmentRowHtml).join("")
       : '<tr><td colspan="5" class="muted" style="padding:14px;">暂无指派</td></tr>';
+    /* xselect 的 caret/check 图标为 data-ic 注入（异步重渲染后必须补注入） */
+    injectIcons(tb);
   }
   function renderCircuitStates() {
     var tb = qs("[data-cb-rows]");
@@ -1822,6 +1931,17 @@
         if (!el.closest(".role-cell")) p.classList.add("hide");
       });
     }
+    /* 通用自定义下拉 xselect：点击外部收起（与角色下拉同一风格） */
+    if (el.closest) {
+      qsa(".xselect-pop:not(.hide)").forEach(function (p) {
+        if (!el.closest("[data-xselect]")) xselectClosePop(p.closest("[data-xselect]"));
+      });
+    }
+    /* 通用自定义下拉 xselect：触发器开关 / 选项选中 */
+    var xsT = el.closest("[data-xselect-trigger]");
+    if (xsT) { xselectToggle(xsT.closest("[data-xselect]")); return; }
+    var xsO = el.closest("[data-xselect-opt]");
+    if (xsO) { xselectPick(xsO.closest("[data-xselect]"), xsO); return; }
 
     var opener = el.closest("[data-modal-open]");
     if (opener) {
@@ -2670,18 +2790,20 @@
       }
       if (el.closest("[data-asg-add]")) {
         var sel = qs("[data-asg-add-sel]", asgRow);
-        var addBtn = el.closest("[data-asg-add]");
-        if (sel && sel.value) {
-          var mid2 = parseInt(sel.value, 10);
+        var selVal = sel ? xselectValue(sel) : "";
+        if (sel && selVal) {
+          var mid2 = parseInt(selVal, 10);
           var exists2 = chainIds(appKey).indexOf(mid2) !== -1;
           var primarySel = qs("[data-asg-primary]", asgRow);
-          if (exists2 || (primarySel && parseInt(primarySel.value, 10) === mid2)) {
+          if (exists2 || (primarySel && parseInt(xselectValue(primarySel), 10) === mid2)) {
             toast("该模型已在指派中");
           } else {
-            var name2 = sel.options[sel.selectedIndex].textContent;
+            var name2 = xselectLabel(sel);
             chainBox.insertAdjacentHTML("afterbegin",
               chainChipHtml(appKey, { id: mid2, name: name2 }, 0));
           }
+        } else {
+          toast("先在下拉中选择要加入的模型");
         }
         return;
       }
@@ -2694,9 +2816,9 @@
       if (el.closest("[data-asg-save]")) {
         var primary2 = qs("[data-asg-primary]", asgRow);
         var sw3 = qs("[data-asg-toggle]", asgRow);
-        if (!primary2 || !primary2.value) { toast("先选择主模型"); return; }
+        if (!primary2 || !xselectValue(primary2)) { toast("先选择主模型"); return; }
         API.put("/admin/models/assignments/" + appKey, {
-          primary_model_id: parseInt(primary2.value, 10),
+          primary_model_id: parseInt(xselectValue(primary2), 10),
           fallback_chain: chainIds(appKey),
           enabled: sw3 ? sw3.classList.contains("on") : true
         }).then(function () {
@@ -2819,6 +2941,27 @@
       e.target.click();
       return;
     }
+    /* 通用自定义下拉 xselect：↑↓ 移动高亮（未开则打开）、Enter 确认、Esc 关闭（对齐原生 select 键盘语义） */
+    var xsRoot = e.target.closest ? e.target.closest("[data-xselect]") : null;
+    if (xsRoot && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Escape")) {
+      var xsPop = qs("[data-xselect-pop]", xsRoot);
+      var xsOpen = xsPop && !xsPop.classList.contains("hide");
+      if (e.key === "Escape") {
+        if (xsOpen) { e.preventDefault(); xselectClosePop(xsRoot); }
+      } else if (e.key === "Enter") {
+        /* IME 选词回车不算确认；收起态不拦截，交给 button 原生 click 打开 */
+        if (xsOpen && !e.isComposing && !imeComposing) {
+          e.preventDefault();
+          var xsAct = qs(".xselect-opt.active", xsPop);
+          if (xsAct) xselectPick(xsRoot, xsAct);
+        }
+      } else {
+        e.preventDefault();
+        if (!xsOpen) xselectOpenPop(xsRoot);
+        else xselectMove(xsRoot, e.key === "ArrowDown" ? 1 : -1);
+      }
+      return;
+    }
     if (paletteOpen) {
       if (e.key === "Escape") { closePalette(); return; }
       if (e.key === "ArrowDown") { e.preventDefault(); paletteIndex = Math.min(paletteIndex + 1, paletteFiltered.length - 1); renderPaletteList(); return; }
@@ -2837,6 +2980,7 @@
       qsa("dialog.modal-mask[open]").forEach(function (m) { m.close(); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       qsa(".role-pop:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
+      qsa(".xselect-pop:not(.hide)").forEach(function (p) { xselectClosePop(p.closest("[data-xselect]")); });
       closeDrawers();
       return;
     }
