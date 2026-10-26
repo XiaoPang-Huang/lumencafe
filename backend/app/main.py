@@ -13,6 +13,7 @@ from app.db import SessionLocal, engine
 from app.logging_conf import get_logger, setup_logging
 from app.routers import (
     admin_models,
+    admin_service_keys,
     admin_users,
     apps,
     auth,
@@ -51,6 +52,7 @@ app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(admin_users.router)
 app.include_router(admin_models.router)
+app.include_router(admin_service_keys.router)
 app.include_router(money.router)
 app.include_router(apps.router)
 app.include_router(internal.router)

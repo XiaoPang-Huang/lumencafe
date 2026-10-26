@@ -407,8 +407,90 @@
     pvDetail: null, defaultRoute: null, addRowOpen: false,
     /* 步 3：模型指派 / 熔断状态 / 用量统计 */
     assignments: [], modelPool: [], circuitStates: [],
-    usage: { summary: null, logs: null, start: "", end: "", page: 1, pageSize: 20 }
+    usage: { summary: null, logs: null, start: "", end: "", page: 1, pageSize: 20 },
+    /* 底座小件：服务 Key 表（/admin/service-keys；skEditing = null 新增，否则为编辑行） */
+    serviceKeys: [], skEditing: null
   };
+
+  /* ---------- 服务 Key 管理（异构服务钥匙集中管理：表格 + 中央弹窗新增/编辑） ---------- */
+  var SK_RE = /^[a-z0-9_]{1,64}$/;
+  function skeyRowHtml(k) {
+    return '<tr data-sk-row="' + k.id + '">' +
+      "<td><b>" + esc(k.service_key) + "</b></td>" +
+      "<td>" + esc(k.vendor || "—") + "</td>" +
+      '<td><code class="mono-mask">' + esc(k.api_key_masked || "") + "</code></td>" +
+      '<td><span class="muted" style="font-size:13px;">' + esc(k.base_url || "—") + "</span></td>" +
+      '<td><span class="muted" style="font-size:13px;">' + esc(k.note || "—") + "</span></td>" +
+      '<td><button class="switch' + (k.enabled ? " on" : "") + '" type="button" role="switch" aria-checked="' + (k.enabled ? "true" : "false") + '" data-sk-toggle="' + k.id + '" aria-label="启用该服务钥匙"></button></td>' +
+      '<td class="t-right">' +
+        '<button class="link-op" type="button" data-sk-edit="' + k.id + '">编辑</button>' +
+        '<button class="link-op danger" type="button" data-sk-del="' + k.id + '" style="margin-left:8px;">删除</button>' +
+      "</td></tr>";
+  }
+  function renderServiceKeys() {
+    var tb = qs("[data-sk-rows]");
+    if (!tb) return;
+    tb.innerHTML = adminState.serviceKeys.length
+      ? adminState.serviceKeys.map(skeyRowHtml).join("")
+      : '<tr><td colspan="7" class="muted" style="padding:14px;">暂无服务钥匙，点击右上角「新增钥匙」添加</td></tr>';
+  }
+  function loadServiceKeys() {
+    API.get("/admin/service-keys").then(function (rows) {
+      adminState.serviceKeys = rows || [];
+      renderServiceKeys();
+    }).catch(function (e) { toast(e.detail || "服务钥匙加载失败"); });
+  }
+  /* 弹窗复位/填充：row = null 新增（服务名可填），否则编辑（服务名只读、钥匙留空 = 不改） */
+  function openSkeyModal(row) {
+    adminState.skEditing = row || null;
+    var title = qs("#modal-skey-title");
+    if (title) title.textContent = row ? "编辑钥匙" : "新增钥匙";
+    var svc = qs("#modal-skey [data-sk-service]");
+    var vendor = qs("#modal-skey [data-sk-vendor]");
+    var key = qs("#modal-skey [data-sk-key]");
+    var url = qs("#modal-skey [data-sk-url]");
+    var note = qs("#modal-skey [data-sk-note]");
+    if (svc) { svc.value = row ? row.service_key : ""; svc.disabled = !!row; }
+    if (vendor) vendor.value = row ? (row.vendor || "") : "";
+    if (key) key.value = "";
+    if (url) url.value = row ? (row.base_url || "") : "";
+    if (note) note.value = row ? (row.note || "") : "";
+    if (key) key.placeholder = row ? "留空 = 不修改" : "厂商颁发的完整 API 钥匙";
+    openModal("#modal-skey");
+  }
+  function saveSkey() {
+    var row = adminState.skEditing;
+    var svc = qs("#modal-skey [data-sk-service]");
+    var vendor = qs("#modal-skey [data-sk-vendor]");
+    var key = qs("#modal-skey [data-sk-key]");
+    var url = qs("#modal-skey [data-sk-url]");
+    var note = qs("#modal-skey [data-sk-note]");
+    var serviceKey = svc ? svc.value.trim() : "";
+    var vendorVal = vendor ? vendor.value.trim() : "";
+    var keyVal = key ? key.value.trim() : "";
+    if (!row) {
+      if (!serviceKey) { toast("先填服务名"); return; }
+      if (!SK_RE.test(serviceKey)) { toast("服务名仅允许小写字母、数字、下划线"); return; }
+      if (!vendorVal) { toast("先填厂商"); return; }
+      if (!keyVal) { toast("先填 API 钥匙"); return; }
+    } else if (!vendorVal) { toast("先填厂商"); return; }
+    var body = { vendor: vendorVal, base_url: url ? url.value.trim() : "", note: note ? note.value.trim() : "" };
+    var req;
+    if (row) {
+      if (keyVal) body.api_key = keyVal; /* 留空 = 不修改 */
+      req = API.put("/admin/service-keys/" + row.id, body);
+    } else {
+      body.service_key = serviceKey;
+      body.api_key = keyVal;
+      req = API.post("/admin/service-keys", body);
+    }
+    req.then(function () {
+      toast(row ? "钥匙已更新" : "钥匙已新增");
+      var mask = qs("#modal-skey");
+      if (mask && mask.close) { if (mask.open) mask.close(); } else if (mask) mask.classList.remove("open");
+      loadServiceKeys();
+    }).catch(function (e) { toast(e.detail || "保存失败"); });
+  }
 
   /* ---------- 步 3 · 模型指派（每个应用一条有序模型链：chips + 拖拽排序 + 全局保存） ---------- */
 
@@ -1088,6 +1170,7 @@
     }).catch(function () {});
     loadAssignments();       // 步 3：模型指派 + 熔断状态
     loadUsage(1);            // 步 3：用量统计（默认近 7 天）
+    loadServiceKeys();       // 底座小件：服务 Key 表
   }
 
   var PAGES = {
@@ -1280,6 +1363,7 @@
           '<button class="admin-tab" type="button" data-admin-tab="#pane-tokens"><i data-ic="token" style="vertical-align:-3px;"></i> 网关密钥</button>' +
           '<button class="admin-tab" type="button" data-admin-tab="#pane-assign"><i data-ic="bot" style="vertical-align:-3px;"></i> 模型指派</button>' +
           '<button class="admin-tab" type="button" data-admin-tab="#pane-usage"><i data-ic="chart" style="vertical-align:-3px;"></i> 用量统计</button>' +
+          '<button class="admin-tab" type="button" data-admin-tab="#pane-keys"><i data-ic="key" style="vertical-align:-3px;"></i> Key 管理</button>' +
         "</div>" +
         /* 用户与角色 */
         '<div class="admin-pane active" id="pane-users">' +
@@ -1351,6 +1435,15 @@
           '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
           "<tr><th>时间</th><th>app_key</th><th>模型</th><th>输入</th><th>输出</th><th>延迟</th><th>结果</th><th>费用</th></tr></thead>" +
           '<tbody data-usage-log-rows><tr><td colspan="8" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
+        "</div>" +
+        /* 服务 Key 管理（底座小件：异构服务 MinerU/FunASR 等钥匙集中管理，只托管不走网关） */
+        '<div class="admin-pane" id="pane-keys">' +
+          '<div class="page-desc" style="margin-bottom:12px;">非 LLM 异构服务（MinerU 解析、FunASR 语音、DashScope 等）的钥匙集中托管：后端服务按服务名取钥匙直连厂商，轮换改库即生效。钥匙一律掩码显示，仅新增/编辑时写入完整值。</div>' +
+          '<div class="sec-head"><span class="sec-title">服务钥匙</span>' +
+            '<button class="btn btn-sm" type="button" data-sk-add><i data-ic="plus"></i>新增钥匙</button></div>' +
+          '<div class="card" style="padding:8px 6px;overflow-x:auto;"><table class="table"><thead>' +
+          "<tr><th>服务名</th><th>厂商</th><th>钥匙</th><th>网址</th><th>备注</th><th>启用</th><th>操作</th></tr></thead>" +
+          '<tbody data-sk-rows><tr><td colspan="7" class="muted" style="padding:14px;">加载中…</td></tr></tbody></table></div>' +
         "</div>";
     },
 
@@ -3059,6 +3152,40 @@
       if (next2 !== adminState.usage.page) loadUsage(next2);
       return;
     }
+    /* 服务 Key：新增 / 编辑 / 删除 / 启用开关 / 弹窗保存 */
+    if (el.closest("[data-sk-add]")) { openSkeyModal(null); return; }
+    var skEdit = el.closest("[data-sk-edit]");
+    if (skEdit) {
+      var skRow = null;
+      adminState.serviceKeys.forEach(function (x) { if (String(x.id) === String(skEdit.getAttribute("data-sk-edit"))) skRow = x; });
+      if (skRow) openSkeyModal(skRow); else toast("该行已不存在，请刷新");
+      return;
+    }
+    var skDel = el.closest("[data-sk-del]");
+    if (skDel) {
+      var skDelId = skDel.getAttribute("data-sk-del");
+      var skDelRow = null;
+      adminState.serviceKeys.forEach(function (x) { if (String(x.id) === String(skDelId)) skDelRow = x; });
+      if (!window.confirm("删除服务「" + (skDelRow ? skDelRow.service_key : skDelId) + "」的钥匙？删除后该服务将无法取到钥匙。")) return;
+      API.del("/admin/service-keys/" + skDelId).then(function () {
+        toast("钥匙已删除");
+        loadServiceKeys();
+      }).catch(function (e) { toast(e.detail || "删除失败"); });
+      return;
+    }
+    var skToggle = el.closest("[data-sk-toggle]");
+    if (skToggle) {
+      var skTid = skToggle.getAttribute("data-sk-toggle");
+      var skTRow = null;
+      adminState.serviceKeys.forEach(function (x) { if (String(x.id) === String(skTid)) skTRow = x; });
+      if (!skTRow) return;
+      API.put("/admin/service-keys/" + skTid, { enabled: !skTRow.enabled }).then(function () {
+        toast(skTRow.enabled ? "已停用" : "已启用");
+        loadServiceKeys();
+      }).catch(function (e) { toast(e.detail || "操作失败"); });
+      return;
+    }
+    if (el.closest("[data-sk-save]")) { saveSkey(); return; }
     /* 会话：删除（真删，级联消息） */
     if (el.closest("[data-conv-del]")) {
       var delItem = el.closest(".conv-item");

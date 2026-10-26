@@ -23,6 +23,7 @@ from app.models.papers import (
     PaperNote,
     PaperUser,
 )
+from app.models.service_key import ServiceKey
 from app.models.skill import UserSkill
 from app.models.user import Permission, Role, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
@@ -49,6 +50,7 @@ __all__ = [
     "Provider",
     "Role",
     "RolePermission",
+    "ServiceKey",
     "User",
     "UserRole",
     "UserSetting",

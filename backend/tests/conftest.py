@@ -77,7 +77,7 @@ async def clean(client):
         "users, roles, permissions, user_roles, role_permissions, "
         "user_settings, app_registry, app_visibility, categories, "
         "chat_conversations, chat_messages, "
-        "providers, llm_models, gateway_tokens, "
+        "providers, llm_models, gateway_tokens, service_keys, "
         "model_assignments, model_circuit_states, llm_call_logs, "
         "money_categories, money_transactions, "
         "papers, paper_users, paper_favorites, paper_notes, paper_explanations, "
