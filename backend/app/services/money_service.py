@@ -8,7 +8,7 @@
 """
 import json
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
@@ -54,12 +54,20 @@ def transaction_out(txn: MoneyTransaction, *, idempotent: bool = False) -> Trans
 
 
 def _today() -> date:
-    return datetime.now(UTC).date()
+    """业务默认日期（记账归属日、AI 记一笔草稿日期）——用服务器本地时区。
+
+    历史实现误用 UTC：每天本地 00:00-08:00 窗口会把「今天」记成昨天
+    （2026-10-27 凌晨实测踩中，test_parse_mock_route 等 7 例暴露）。
+    """
+    return datetime.now().date()
 
 
 def _today_local() -> date:
-    """服务器本地时区的今天（每日看板日期边界口径，PRD v1.1-rev7）。"""
-    return datetime.now().date()
+    """服务器本地时区的今天（每日看板日期边界口径，PRD v1.1-rev7）。
+
+    与 _today() 同口径，保留别名以兼容既有调用点。
+    """
+    return _today()
 
 
 async def _get_category(
@@ -364,11 +372,15 @@ async def trend_stats(db: AsyncSession, user_id: int, months: int) -> TrendStats
     labels.reverse()
 
     first = date(int(labels[0][:4]), int(labels[0][5:7]), 1)
-    month_start = func.date_trunc("month", MoneyTransaction.date).label("month_start")
+    # 直接从 date 列取 YYYY-MM 文本做分桶键——免疫时区：
+    # date_trunc('month', date) 会返回会话时区的 timestamptz，经 SQLAlchemy
+    # 以 naive UTC 归一后 +08 时区下月桶会整体回退一月（2026-10-27 被分进 2026-09，
+    # 2026-10-27 凌晨实测踩中）；to_char 在 date 列上算，无此问题
+    month_label = func.to_char(MoneyTransaction.date, "YYYY-MM").label("month_label")
     rows = (
         await db.execute(
             select(
-                month_start,
+                month_label,
                 MoneyTransaction.type,
                 func.coalesce(func.sum(MoneyTransaction.amount), 0),
             )
@@ -376,14 +388,13 @@ async def trend_stats(db: AsyncSession, user_id: int, months: int) -> TrendStats
                 MoneyTransaction.user_id == user_id,
                 MoneyTransaction.date >= first,
             )
-            .group_by(month_start, MoneyTransaction.type)
+            .group_by(month_label, MoneyTransaction.type)
         )
     ).all()
     data: dict[str, dict[str, int]] = {
         label: {"expense": 0, "income": 0} for label in labels
     }
-    for start, txn_type, total in rows:
-        label = start.strftime("%Y-%m")
+    for label, txn_type, total in rows:
         if label in data:
             data[label][txn_type] = int(total)
     return TrendStats(

@@ -10,6 +10,9 @@ services:
       POSTGRES_USER: lumencafe
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lumencafe}
       POSTGRES_DB: lumencafe
+      # 库层时区（CURRENT_DATE/日期约束 ck_money_txn_date 依赖它）：不设则 UTC，
+      # 凌晨窗口「本地今天」会被约束判成未来日期而拒绝插入（2026-10-27 凌晨实测踩中）
+      TZ: Asia/Shanghai
     volumes:
       # PG 18+ 镜像要求挂载父目录 /var/lib/postgresql（数据存版本号子目录，便于未来 pg_upgrade）
       - pgdata:/var/lib/postgresql

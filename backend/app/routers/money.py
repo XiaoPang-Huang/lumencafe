@@ -4,7 +4,7 @@
 - 入账幂等：request_id 冲突回查原记录 200 + idempotent:true；
 - 统计按 date 归属月；parse（AI 记一笔）仅生成草稿不落库，限流 10 次/分钟/用户（N14）。
 """
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,7 +96,7 @@ async def list_transactions(
     user: User = Depends(_bookkeeper),
     db: AsyncSession = Depends(get_db),
 ):
-    today = datetime.now(UTC).date()
+    today = datetime.now().date()  # 本地时区「今天」（默认本月口径；UTC 会在凌晨窗口错位一天）
     if date_from is None and date_to is None:
         date_from = today.replace(day=1)  # 默认本月（PRD：必填其一，默认本月）
     items, total = await money_service.list_transactions(

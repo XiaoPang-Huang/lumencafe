@@ -79,16 +79,20 @@ async def test_conversation_summary(client):
     assert summary["latest"]["id"] > 0
 
     # 回拨 updated_at 到本地时区「昨天」→ yesterday_count = 1（同日两条只算各自归属日）
+    # 口径必须与 service 的本地时区边界一致：在 Python 侧算好本地昨天正午再写入
+    # （历史上在 SQL 里用 now() 按库钟 UTC 算，凌晨窗口本地日期比 UTC 快一天，会回拨错日）
+    from datetime import datetime, timedelta
+
     from sqlalchemy import text
 
     from app.db import SessionLocal
 
+    ynoon = (
+        datetime.now().astimezone() - timedelta(days=1)
+    ).replace(hour=12, minute=0, second=0, microsecond=0)
     async with SessionLocal() as db:
         await db.execute(
-            text(
-                "UPDATE chat_conversations SET updated_at = "
-                "date_trunc('day', now()) - interval '1 day' + interval '12 hours'"
-            )
+            text("UPDATE chat_conversations SET updated_at = :ts"), {"ts": ynoon}
         )
         await db.commit()
     summary = (
