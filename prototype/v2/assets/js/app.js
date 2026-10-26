@@ -270,7 +270,7 @@
     return d ? d.name : (liveModels[0] ? liveModels[0].name : "default");
   }
   /* 对话会话状态（活数据：conversation_id / 模型 id / 思考档位） */
-  var chatState = { convId: null, modelId: null, thinkingLevel: null, sending: false };
+  var chatState = { convId: null, modelId: null, thinkingLevel: null, sending: false, newConv: false };
   /* 模型思考档位默认值（P0-2 ⑤：默认取 meta.reasoning.default_level） */
   function defaultThinkingOf(modelId) {
     var m = liveModels.filter(function (x) { return x.id === modelId; })[0];
@@ -1461,7 +1461,9 @@
   function refreshConversations(keepCurrent) {
     API.get("/chat/conversations?app_id=chat").then(function (convs) {
       renderConvList(convs || []);
-      if (!keepCurrent || !chatState.convId) {
+      /* convId=null 可能是用户主动进入的「新建会话」空态（newConv=true），此时不得自动选中；
+         仅在未要求保持、或确实无任何选中且非主动空态时回退选中首个会话 */
+      if (!keepCurrent || (!chatState.convId && !chatState.newConv)) {
         var first = (convs || [])[0];
         if (first) selectConversation(first.id, first.title);
       }
@@ -1469,6 +1471,7 @@
   }
   function selectConversation(id, title) {
     chatState.convId = id;
+    chatState.newConv = false;
     var t = qs("[data-chat-title]");
     if (t) t.textContent = title || "对话";
     qsa(".conv-item").forEach(function (i) {
@@ -2254,6 +2257,7 @@
       API.clearToken();
       LC_USER = null;
       chatState.convId = null;
+      chatState.newConv = false;
       go("login");
       return;
     }
@@ -3064,6 +3068,7 @@
           toast("会话已删除");
           if (chatState.convId === delId) {
             chatState.convId = null;
+            chatState.newConv = true; /* 删除当前会话后进入空态，禁止列表刷新时自动选中首个 */
             var innerEl = qs("[data-chat-inner]");
             if (innerEl) innerEl.innerHTML = '<div class="chat-empty muted" data-chat-empty>开始一段新对话吧</div>';
             var tEl = qs("[data-chat-title]");
@@ -3087,6 +3092,7 @@
     /* 新建会话（本地状态；首条消息发送后由后端建会话） */
     if (el.closest("[data-new-conv]")) {
       chatState.convId = null;
+      chatState.newConv = true; /* 标记主动空态：后续列表刷新不得自动选中首个会话 */
       qsa(".conv-item").forEach(function (i) { i.classList.remove("active"); });
       var inner2 = qs("[data-chat-inner]");
       if (inner2) inner2.innerHTML = '<div class="chat-empty muted" data-chat-empty>开始一段新对话吧</div>';
@@ -3283,46 +3289,72 @@
       if (body) body.classList.toggle("hide", !thinkOpenPref());
     }
 
-    var body = { app_id: "chat", message: text };
-    if (chatState.convId) body.conversation_id = chatState.convId;
-    if (chatState.modelId) body.model_id = chatState.modelId;
-    /* P0-2 ⑤：选择绑定会话快照（默认档在切模型时已回填）；不传 = 厂商默认 */
-    if (chatState.thinkingLevel) body.thinking_level = chatState.thinkingLevel;
-    chatState.sending = true;
+    /* 实际发送：组装请求体（conversation_id 由调用方保证已挂上）并消费 SSE 流 */
+    function dispatchSend() {
+      var body = { app_id: "chat", message: text };
+      if (chatState.convId) body.conversation_id = chatState.convId;
+      if (chatState.modelId) body.model_id = chatState.modelId;
+      /* P0-2 ⑤：选择绑定会话快照（默认档在切模型时已回填）；不传 = 厂商默认 */
+      if (chatState.thinkingLevel) body.thinking_level = chatState.thinkingLevel;
+      chatState.sending = true;
 
-    API.stream("/chat", body, function (ev) {
-      var dots = reply.querySelector(".think-dots");
-      if (ev.done) {
+      API.stream("/chat", body, function (ev) {
+        var dots = reply.querySelector(".think-dots");
+        if (ev.done) {
+          if (dots) dots.remove();
+          finalizeThink();
+          reply.classList.remove("cursor");
+          chatState.sending = false;
+          refreshConversations(true);
+          return;
+        }
         if (dots) dots.remove();
+        if (ev.reasoning_delta) {
+          /* 流式期间只累计 + 保持计时态，不逐字渲染 */
+          reasoningBuf += ev.reasoning_delta;
+          return;
+        }
         finalizeThink();
-        reply.classList.remove("cursor");
-        chatState.sending = false;
-        refreshConversations(true);
-        return;
-      }
-      if (dots) dots.remove();
-      if (ev.reasoning_delta) {
-        /* 流式期间只累计 + 保持计时态，不逐字渲染 */
-        reasoningBuf += ev.reasoning_delta;
-        return;
-      }
-      finalizeThink();
-      if (ev.delta) { node.textContent += ev.delta; scrollBottom(); }
-      if (ev.error) {
-        node.textContent += (node.textContent ? "\n" : "") + "⚠️ " + ev.error;
+        if (ev.delta) { node.textContent += ev.delta; scrollBottom(); }
+        if (ev.error) {
+          node.textContent += (node.textContent ? "\n" : "") + "⚠️ " + ev.error;
+          reply.classList.remove("cursor");
+          chatState.sending = false;
+          scrollBottom();
+        }
+      }).catch(function (ex) {
+        var dots2 = reply.querySelector(".think-dots");
+        if (dots2) dots2.remove();
+        finalizeThink();
+        node.textContent = "发送失败：" + (ex && ex.detail ? ex.detail : "网络错误");
         reply.classList.remove("cursor");
         chatState.sending = false;
         scrollBottom();
-      }
-    }).catch(function (ex) {
-      var dots2 = reply.querySelector(".think-dots");
-      if (dots2) dots2.remove();
-      finalizeThink();
-      node.textContent = "发送失败：" + (ex && ex.detail ? ex.detail : "网络错误");
-      reply.classList.remove("cursor");
-      chatState.sending = false;
-      scrollBottom();
-    });
+      });
+    }
+
+    if (chatState.convId) {
+      dispatchSend();
+    } else {
+      /* 新建会话首条消息：先显式建会话、挂上 id 再发送。后端在缺省 conversation_id 时
+         会「复用最近更新的会话」，不先建会话消息会串进旧会话（本次 bug 根因之一） */
+      API.post("/chat/conversations", { app_id: "chat", title: text.slice(0, 16) }).then(function (c) {
+        if (!c || !c.id) throw { detail: "创建会话失败" };
+        chatState.convId = c.id;
+        chatState.newConv = false;
+        var tEl = qs("[data-chat-title]");
+        if (tEl) tEl.textContent = c.title || "通用对话";
+        qsa(".conv-item").forEach(function (i) {
+          i.classList.toggle("active", parseInt(i.getAttribute("data-cid"), 10) === c.id);
+        });
+        dispatchSend();
+      }).catch(function (ex) {
+        finalizeThink();
+        node.textContent = "发送失败：" + (ex && ex.detail ? ex.detail : "网络错误");
+        reply.classList.remove("cursor");
+        scrollBottom();
+      });
+    }
   }
 
   /* 会话面板输入框自适应（委托 input 已覆盖文本域，此处针对 composer 高度 + 润色按钮态） */
