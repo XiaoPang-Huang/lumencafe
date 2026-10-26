@@ -547,6 +547,47 @@
     xselectClosePop(root);
     root.dispatchEvent(new CustomEvent("xselect:change", { bubbles: true, detail: { value: value, label: label } }));
   }
+  /* ================= 角色下拉 role-pop（fixed 定位，防表格容器 overflow 裁剪） =================
+   * 与 xselectPlacePop 同思路：读 trigger（.role-pill）的 getBoundingClientRect 计算坐标；
+   * 默认下方 6px、left 对齐；下方空间不足且上方够高时翻到上方；右缘超出视口时左移钳制；
+   * 打开时 rAF 二次校准；scroll(capture)/resize 期间直接收起（主流 popper 行为）。 */
+  var ROLE_POP_GAP = 6, ROLE_POP_W = 220;
+  function rolePopCloseAll() {
+    qsa(".role-pop:not(.hide)").forEach(function (p) { p.classList.add("hide"); });
+    rolePopBindViewport(false);
+  }
+  function rolePopOnViewportChange() { rolePopCloseAll(); }
+  function rolePopBindViewport(on) {
+    var fn = on ? "addEventListener" : "removeEventListener";
+    window[fn]("scroll", rolePopOnViewportChange, { capture: true, passive: true });
+    window[fn]("resize", rolePopOnViewportChange);
+  }
+  function rolePopPlace(cell) {
+    var pop = qs(".role-pop", cell);
+    var pill = qs("[data-role-picker]", cell);
+    if (!pop || !pill) return;
+    var r = pill.getBoundingClientRect();
+    var popH = pop.offsetHeight;
+    var below = window.innerHeight - r.bottom;
+    var top = r.bottom + ROLE_POP_GAP;
+    pop.classList.toggle("up", below < popH + ROLE_POP_GAP && r.top >= popH + ROLE_POP_GAP);
+    if (pop.classList.contains("up")) top = r.top - popH - ROLE_POP_GAP;
+    var left = r.left;
+    if (left + ROLE_POP_W > window.innerWidth - 8) left = Math.max(8, window.innerWidth - ROLE_POP_W - 8);
+    pop.style.left = Math.round(left) + "px";
+    pop.style.top = Math.round(top) + "px";
+  }
+  function rolePopOpen(cell) {
+    var pop = qs(".role-pop", cell);
+    if (!pop) return;
+    /* 单开：打开前收起其它角色弹层 */
+    rolePopCloseAll();
+    pop.classList.remove("hide");
+    /* 定位 + 视口监听；rAF 再校一次——click 触发的 :active transform 回弹动画会短暂改变坐标系 */
+    rolePopPlace(cell);
+    if (window.requestAnimationFrame) window.requestAnimationFrame(function () { if (!pop.classList.contains("hide")) rolePopPlace(cell); });
+    rolePopBindViewport(true);
+  }
   /* 模型指派：模型池 → xselect（替代原生 select；data-value 存模型 id，保存时 parseInt，请求体格式不变） */
   function modelPoolXselect(attrs, curId, placeholder) {
     return xselectHtml({
@@ -2104,7 +2145,7 @@
     /* 角色下拉：点击外部收起 */
     if (el.closest) {
       qsa(".role-pop:not(.hide)").forEach(function (p) {
-        if (!el.closest(".role-cell")) p.classList.add("hide");
+        if (!el.closest(".role-cell")) rolePopCloseAll();
       });
     }
     /* 通用自定义下拉 xselect：点击外部收起（与角色下拉同一风格） */
@@ -2365,16 +2406,19 @@
     }
     /* 角色下拉（Zeda 模式：选项带权限说明）→ 整体重设角色 */
     if (el.closest("[data-role-picker]")) {
-      var rpPop = el.closest(".role-cell").querySelector(".role-pop");
-      if (rpPop) rpPop.classList.toggle("hide");
+      var rpCell = el.closest(".role-cell");
+      var rpPop = qs(".role-pop", rpCell);
+      if (rpPop) {
+        if (rpPop.classList.contains("hide")) rolePopOpen(rpCell);
+        else { rpPop.classList.add("hide"); rolePopBindViewport(false); }
+      }
       return;
     }
     var roleOpt = el.closest("[data-role-opt]");
     if (roleOpt) {
       var rid2 = parseInt(roleOpt.getAttribute("data-role-opt"), 10);
       var uid2 = roleOpt.getAttribute("data-uid");
-      var cellEl = roleOpt.closest(".role-cell");
-      cellEl.querySelector(".role-pop").classList.add("hide");
+      rolePopCloseAll();
       API.put("/admin/users/" + uid2 + "/roles", { role_ids: [rid2] }).then(function () {
         return API.get("/admin/users?page_size=100");
       }).then(function (p) {
@@ -3134,7 +3178,7 @@
       /* 原生 <dialog> 的 Esc 由浏览器自行处理（cancel → close），这里兜底非 dialog 弹层 */
       qsa("dialog.modal-mask[open]").forEach(function (m) { m.close(); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
-      qsa(".role-pop:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
+      rolePopCloseAll();
       qsa(".xselect-pop:not(.hide)").forEach(function (p) { xselectClosePop(p.closest("[data-xselect]")); });
       closeDrawers();
       return;
