@@ -88,7 +88,10 @@
     down: '<path d="m6 9 6 6 6-6"/>',
     token: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><circle cx="12" cy="14" r="1.6"/>',
     star: '<path d="m12 3.6 2.6 5.4 5.8.7-4.3 4 1.1 5.7L12 16.6l-5.2 2.8 1.1-5.7-4.3-4 5.8-.7z"/>',
-    wand: '<path d="m15 4 5 5L7 22l-5-5z"/><path d="M14 3.5 16.5 6M19 8.5 21.5 11M5 3v3M3.5 4.5h3M20 15v3M18.5 16.5h3"/>'
+    wand: '<path d="m15 4 5 5L7 22l-5-5z"/><path d="M14 3.5 16.5 6M19 8.5 21.5 11M5 3v3M3.5 4.5h3M20 15v3M18.5 16.5h3"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+    dl: '<path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/>',
+    inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>'
   };
   function injectIcons(root) {
     qsa("[data-ic]", root).forEach(function (el) {
@@ -110,10 +113,50 @@
     toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2200);
   }
 
+  /* ================= 暗色模式（P12 拍板；2026-10-27）
+   * 三档：跟随系统 / 浅色 / 深色，存 user_settings.theme.mode（默认跟随系统）。
+   * localStorage 仅存最近一次的模式作启动闪现兜底；权威值在用户设置接口。 */
+  var THEME_KEY = "lc_theme_mode";
+  var themeState = { mode: "system", applied: "light" };
+  var darkMedia = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+  function themeResolved() {
+    if (themeState.mode === "dark") return "dark";
+    if (themeState.mode === "light") return "light";
+    return darkMedia && darkMedia.matches ? "dark" : "light";
+  }
+  function applyTheme() {
+    themeState.applied = themeResolved();
+    document.documentElement.setAttribute("data-theme", themeState.applied);
+    try { localStorage.setItem(THEME_KEY, themeState.mode); } catch (err) {}
+    /* 通用设置弹窗内的主题段同步高亮 */
+    qsa("[data-theme-mode]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-theme-mode") === themeState.mode);
+    });
+  }
+  /* 系统深浅切换时，仅「跟随系统」档响应 */
+  if (darkMedia && darkMedia.addEventListener) {
+    darkMedia.addEventListener("change", function () { if (themeState.mode === "system") applyTheme(); });
+  }
+  /* 启动兜底：localStorage 里上次模式先上，/auth/me 回来后再以 user_settings 为准 */
+  (function () {
+    try {
+      var m = localStorage.getItem(THEME_KEY);
+      if (m === "system" || m === "light" || m === "dark") themeState.mode = m;
+    } catch (err) {}
+    document.documentElement.setAttribute("data-theme", themeResolved());
+  })();
+  /* 用户设置里的主题档（无记录 = 跟随系统） */
+  function loadThemeFromSettings(settings) {
+    var m = ((settings || {}).theme || {}).mode;
+    themeState.mode = (m === "light" || m === "dark" || m === "system") ? m : "system";
+    applyTheme();
+  }
+
   /* ================= 用户头像（localStorage: lc_avatar） =================
    * 形状约定：{"type":"img","data":"<dataURL>"} 或 {"type":"initial","color":"<hex>"}；
    * 未设置 / 解析失败 → 回退用户名首字 + 灰底（AGENTS.md：用户头像锚定身份、允许自定义） */
-  var AVATAR_FALLBACK_BG = "#eef0f3";
+  var AVATAR_FALLBACK_BG = "#eef0f3"; /* 历史常量：自定义色合法性校验用；回退展示已改走 var(--bg-soft) */
   function avatarSetting() {
     try {
       var raw = localStorage.getItem("lc_avatar");
@@ -129,12 +172,13 @@
     name = String(name).trim();
     return name ? name.slice(0, 1) : "?";
   }
-  /* 头像内层：img 填充，或色底白字首字（未设置时灰底深字回退） */
+  /* 头像内层：img 填充，或色底白字首字（未设置时用主题变量回退，暗色下不突兀） */
   function avatarInnerHtml() {
     var s = avatarSetting();
     if (s && s.type === "img") return '<img class="avatar-img" src="' + esc(s.data) + '" alt="">';
-    var color = (s && s.type === "initial" && s.color) ? s.color : AVATAR_FALLBACK_BG;
-    var fg = color === AVATAR_FALLBACK_BG ? "var(--ink-2)" : "#ffffff";
+    var custom = !!(s && s.type === "initial" && s.color);
+    var color = custom ? s.color : "var(--bg-soft)";
+    var fg = custom ? "#ffffff" : "var(--ink-2)";
     return '<span class="avatar-initial" style="background:' + color + ";color:" + fg + ';">' + esc(userInitial()) + "</span>";
   }
   function saveAvatar(obj) {
@@ -1333,23 +1377,37 @@
         '<div class="empty-state hide" data-app-empty>没有匹配的应用</div>';
     },
 
-    /* ---------- 文献（PRD §4.8；PubMed 行式列表 + 点击行详情抽屉，参考 PubMed/RIMICIA pdigest） ---------- */
+    /* ---------- 文献（步 C 重排，P7 线框：顶栏 digest + 左导航 + 中间卡片流 + 右详情面板；
+       参考 Zotero 三栏 / Semantic Scholar 卡片 / SciSpace 详情面板） ---------- */
     papers: function () {
-      var tagChips = ["全部", "AD", "PD", "ALS", "scale"].map(function (t, i) {
-        return '<button class="chip' + (i === 0 ? " active" : "") + '" type="button" data-ptag="' + t + '">' + t + "</button>";
-      }).join("");
       return '' +
-        '<div class="page-head"><div><h1 class="page-title">文献</h1>' +
-        '<div class="page-desc">PubMed 每日新文献 · AI 中译与解读</div></div></div>' +
-        '<div class="seg" data-papers-seg style="max-width:260px;margin-bottom:14px;">' +
-          '<button class="active" type="button" style="flex:1;">每日推送</button>' +
-          '<button type="button" style="flex:1;">我的收藏</button>' +
-        "</div>" +
-        '<div class="chips" data-paper-tags style="margin-bottom:14px;">' + tagChips + "</div>" +
-        '<div class="card" data-paper-list><div class="muted" style="padding:14px;">加载中…</div></div>' +
-        /* 详情抽屉（题录 + 摘要/中译 + AI 解读 + 笔记） */
-        '<div class="ud-mask hide" data-pp-mask></div>' +
-        '<aside class="udrawer hide" data-pp-drawer></aside>';
+        '<div class="pp-page">' +
+          /* 顶栏：今日命中 + 高相关红标 + 更新时间 + 立即检索 + 订阅设置齿轮 */
+          '<div class="card pp-topbar">' +
+            '<div class="pp-digest">' +
+              '<span class="pp-count">今日命中 <b data-pp-total>—</b> 篇</span>' +
+              '<span class="pill pp-high hide" data-pp-high></span>' +
+              '<span class="pp-updated" data-pp-updated></span>' +
+            "</div>" +
+            '<div class="pp-actions">' +
+              '<button class="btn btn-ghost btn-sm pp-crawl" type="button" data-pp-crawl><i data-ic="refresh"></i>立即检索</button>' +
+              '<button class="icon-btn" type="button" data-pp-subscribe aria-label="订阅设置"><i data-ic="gear"></i></button>' +
+            "</div>" +
+          "</div>" +
+          '<div class="pp-body">' +
+            /* 左导航（我的笔记 = 灰字占位，后批） */
+            '<nav class="card pp-nav">' +
+              '<button class="pp-nav-item active" type="button" data-pp-nav="digest"><i data-ic="inbox"></i>今日推送</button>' +
+              '<button class="pp-nav-item" type="button" data-pp-nav="favorites"><i data-ic="star"></i>我的收藏</button>' +
+              '<button class="pp-nav-item" type="button" data-pp-nav="all"><i data-ic="book"></i>全部论文</button>' +
+              '<button class="pp-nav-item is-disabled" type="button" disabled title="后续批次开放"><i data-ic="edit"></i>我的笔记</button>' +
+            "</nav>" +
+            /* 中间卡片流 */
+            '<div class="pp-list" data-pp-list><div class="muted" style="padding:14px 4px;font-size:13px;">加载中…</div></div>' +
+            /* 右侧详情面板（点卡片展开；本批不接预览） */
+            '<aside class="card pp-detail hide" data-pp-detail></aside>' +
+          "</div>" +
+        "</div>";
     },
 
     /* ---------- 平台管理：用户与角色（Supabase 式表格 + 角色矩阵 + 详情抽屉）/ 模型管理（LobeChat 式双栏）/ 网关密钥（已联调 /admin/*） ---------- */
@@ -1971,72 +2029,280 @@
     }).catch(function (e) { toast(e.detail || "应用加载失败"); });
   }
 
-  /* ================= 文献页活数据（/papers 联调） ================= */
-  var paperState = { mode: "daily", tag: null, items: [] };
+  /* ================= 文献页活数据（步 C 三栏骨架；digest / daily / favorites 三源） ================= */
+  var paperState = { nav: "digest", items: [], digest: null, crawlBusy: false };
+
+  var PP_NAV_EMPTY = {
+    digest: "今日暂无命中：点右上角「⚙ 订阅设置」配置关键词与数据源，再「⟳ 立即检索」跑一轮",
+    favorites: "还没有收藏文献：点卡片上的 ☆ 即可收藏",
+    all: "暂无文献：先配置订阅，再点「立即检索」抓一轮"
+  };
+  /* 数据源 key → 徽标名（GET /papers/sources 同集） */
+  var PP_SRC_NAMES = { pubmed: "PubMed", arxiv: "arXiv", openalex: "OpenAlex", semantic_scholar: "S2", doaj: "DOAJ" };
+  function _srcName(key) { return PP_SRC_NAMES[key] || key || ""; }
 
   function _paperAuthors(authors) {
     if (!authors || !authors.length) return "";
     var s = authors.slice(0, 3).join(", ");
     return authors.length > 3 ? s + " 等" : s;
   }
-  function renderPaperRows(items) {
-    paperState.items = items || [];
-    var box = qs("[data-paper-list]");
+  /* digest 条目（DigestItemOut，无摘要字段）→ 卡片统一视图 */
+  function _digestCardView(it) {
+    return {
+      id: it.paper_id, title: it.title, source: it.source,
+      year: it.year, url: it.url || "", matched: it.matched_keywords || [],
+      hi: !!it.is_high_relevance, abstract: "", saved: false
+    };
+  }
+  /* 列表接口条目（PaperOut）→ 卡片统一视图 */
+  function _paperCardView(p) {
+    return {
+      id: p.id, title: p.title, source: "",
+      year: p.pub_date ? String(p.pub_date).slice(0, 4) : null,
+      url: "", matched: p.tags || [], hi: false,
+      abstract: p.abstract || "", saved: !!p.saved
+    };
+  }
+
+  /* 顶栏 digest 摘要（今日命中 N 篇 · M 篇高相关 · 已更新于 HH:MM） */
+  function renderDigestBar() {
+    var totalEl = qs("[data-pp-total]"), highEl = qs("[data-pp-high]"), updEl = qs("[data-pp-updated]");
+    if (!totalEl) return;
+    var d = paperState.digest;
+    if (!d) { totalEl.textContent = "—"; if (updEl) updEl.textContent = ""; if (highEl) highEl.classList.add("hide"); return; }
+    totalEl.textContent = String(d.total_today);
+    if (highEl) {
+      var hc = d.high_relevance_count || 0;
+      highEl.textContent = hc + " 篇高相关";
+      highEl.classList.toggle("hide", hc <= 0);
+    }
+    if (updEl) {
+      updEl.textContent = d.last_run_at ? "已更新于 " + String(d.last_run_at).slice(11, 16) : "今日尚未抓取";
+      if (d.last_run_status === "failed") updEl.textContent += " · 上轮抓取失败";
+    }
+  }
+  function refreshDigestBar() {
+    API.get("/papers/digest").then(function (d) { paperState.digest = d; renderDigestBar(); }).catch(function () {});
+  }
+
+  /* 中间卡片流：标题 + 来源徽标 + 高相关红标 + 年份 + 两行摘要 + 操作行（收藏/下载占位/解读） */
+  function paperCardHtml(v) {
+    var kws = v.matched.slice(0, 4).map(function (k) { return '<span class="pill pill-mute">' + esc(k) + "</span>"; }).join("");
+    if (v.matched.length > 4) kws += '<span class="pill pill-mute">+' + (v.matched.length - 4) + "</span>";
+    var src = v.source ? '<span class="pp-src">' + esc(_srcName(v.source)) + "</span>" : "";
+    var hi = v.hi ? '<span class="pill pp-hi">高相关</span>' : "";
+    var year = v.year ? '<span class="pp-year">' + esc(String(v.year)) + "</span>" : '<span class="pp-year"></span>';
+    return '<article class="pp-card" data-pp-card="' + v.id + '" role="button" tabindex="0">' +
+      '<div class="pp-card-head">' + src + hi + year + "</div>" +
+      '<h3 class="pp-card-title">' + esc(v.title) + "</h3>" +
+      '<p class="pp-card-abs' + (v.abstract ? "" : " is-loading") + '" data-pp-abs="' + v.id + '">' +
+        (v.abstract ? esc(v.abstract) : "摘要加载中…") + "</p>" +
+      (kws ? '<div class="pp-card-kws">' + kws + "</div>" : "") +
+      '<div class="pp-card-ops">' +
+        '<button class="pp-op' + (v.saved ? " is-on" : "") + '" type="button" data-paper-save="' + v.id + '">' +
+          '<i data-ic="star"></i>' + (v.saved ? "已收藏" : "收藏") + "</button>" +
+        '<button class="pp-op is-disabled" type="button" data-pp-dl="' + v.id + '" title="下批开放">' +
+          '<i data-ic="dl"></i>下载</button>' +
+        '<button class="pp-op" type="button" data-paper-explain="' + v.id + '">' +
+          '<i data-ic="spark"></i>解读</button>' +
+      "</div>" +
+    "</article>";
+  }
+  function renderPaperCards() {
+    var box = qs("[data-pp-list]");
     if (!box) return;
-    box.innerHTML = paperState.items.length ? paperState.items.map(function (p) {
-      var tags = (p.tags || []).map(function (t) {
-        return '<span class="pill">' + esc(t) + "</span>";
-      }).join("");
-      if (p.abstract_zh) tags += '<span class="pill pill-ok">中译</span>';
-      return '<div class="pp-row" data-paper="' + p.id + '" role="button" tabindex="0">' +
-        '<div class="grow" style="min-width:0;">' +
-          '<div class="pp-title">' + esc(p.title) + "</div>" +
-          '<div class="pp-meta">' + esc(_paperAuthors(p.authors)) + (p.journal ? " · " + esc(p.journal) : "") +
-            (p.pub_date ? " · " + esc(String(p.pub_date).slice(0, 4)) : "") + "</div>" +
-          (tags ? '<div class="pp-tags">' + tags + "</div>" : "") +
-        "</div>" +
-        '<button class="btn btn-ghost btn-sm pp-save' + (p.saved ? " is-on" : "") + '" type="button" data-paper-save="' + p.id + '">' +
-          (p.saved ? "已收藏" : "收藏") + "</button>" +
-      "</div>";
-    }).join("") : '<div class="muted" style="padding:16px 14px;font-size:13px;">' +
-      (paperState.mode === "favorites" ? "还没有收藏文献" : "今日暂无推送：请在「我的 → 应用设置」配置订阅关键词，等待每日抓取") + "</div>";
+    if (!paperState.items.length) {
+      box.innerHTML = '<div class="card" style="padding:22px;"><div class="muted" style="font-size:13.5px;">' +
+        (PP_NAV_EMPTY[paperState.nav] || PP_NAV_EMPTY.all) + "</div></div>";
+      return;
+    }
+    box.innerHTML = paperState.items.map(paperCardHtml).join("");
+    injectIcons(box);
+    /* digest 卡片不带摘要字段：逐卡懒加载补摘要（异步填槽，不挡列表渲染） */
+    if (paperState.nav === "digest") {
+      paperState.items.slice(0, 30).forEach(function (v) {
+        API.get("/papers/" + v.id).then(function (p) {
+          var el = qs('[data-pp-abs="' + v.id + '"]');
+          if (!el) return;
+          el.textContent = (p && p.abstract) ? p.abstract : "（无摘要）";
+          el.classList.remove("is-loading");
+        }).catch(function () {
+          var el2 = qs('[data-pp-abs="' + v.id + '"]');
+          if (el2) { el2.textContent = "（摘要加载失败）"; el2.classList.remove("is-loading"); }
+        });
+      });
+    }
   }
-  function loadPapersList() {
-    var path = paperState.mode === "favorites" ? "/papers/favorites" : "/papers/daily?limit=100";
-    if (paperState.mode === "daily" && paperState.tag) path += "&tag=" + encodeURIComponent(paperState.tag);
-    API.get(path).then(renderPaperRows).catch(function (e) { toast(e.detail || "文献加载失败"); });
+  function loadPapersNav() {
+    var box = qs("[data-pp-list]");
+    if (box) box.innerHTML = '<div class="card" style="padding:22px;"><span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span></div>';
+    closePaperDetail();
+    if (paperState.nav === "digest") {
+      API.get("/papers/digest").then(function (d) {
+        paperState.digest = d;
+        renderDigestBar();
+        paperState.items = (d.items || []).map(_digestCardView);
+        renderPaperCards();
+      }).catch(function (e) { toast(e.detail || "今日推送加载失败"); });
+      return;
+    }
+    var path = paperState.nav === "favorites" ? "/papers/favorites" : "/papers/daily?limit=100";
+    API.get(path).then(function (items) {
+      paperState.items = (items || []).map(_paperCardView);
+      renderPaperCards();
+    }).catch(function (e) { toast(e.detail || "文献加载失败"); });
   }
-  function paperDrawerHtml(p) {
-    var tags = (p.tags || []).map(function (t) { return '<span class="pill">' + esc(t) + "</span>"; }).join(" ");
+
+  /* 立即检索：按钮 loading → POST /papers/crawl-now → 刷新 digest（防并发） */
+  function crawlNow(btn) {
+    if (paperState.crawlBusy) return;
+    paperState.crawlBusy = true;
+    if (btn) { btn.classList.add("is-loading"); btn.disabled = true; }
+    API.post("/papers/crawl-now", {}).then(function (r) {
+      paperState.crawlBusy = false;
+      if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
+      toast("检索完成：本轮新入库 " + (r.added || 0) + " 篇");
+      if (paperState.nav === "digest") loadPapersNav(); else refreshDigestBar();
+    }).catch(function (e) {
+      paperState.crawlBusy = false;
+      if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
+      toast(e.detail || "检索失败");
+    });
+  }
+
+  /* 右侧详情面板（点卡片展开：摘要全文 + 作者 + DOI/链接 + 命中关键词；本批不接预览） */
+  function paperDetailHtml(p, view) {
+    var url = (view && view.url) || "";
+    if (!url && p.pmid) url = "https://pubmed.ncbi.nlm.nih.gov/" + p.pmid + "/";
+    var kws = ((view && view.matched) || p.tags || []).map(function (k) {
+      return '<span class="pill pill-mute">' + esc(k) + "</span>";
+    }).join("");
     var explainBlock = p.explanation
-      ? '<div class="ud-sec">AI 解读 <span class="muted" style="font-weight:400;font-size:12px;">（' + esc(p.explanation_model || "") + "）</span></div>" +
-        '<div class="pp-abstract" data-explain-body>' + esc(p.explanation) + "</div>"
+      ? '<div class="pp-abstract" data-explain-body>' + esc(p.explanation) + "</div>"
       : '<button class="btn btn-ghost btn-sm" type="button" data-paper-explain="' + p.id + '"><i data-ic="spark"></i>生成 AI 解读</button>' +
         '<div class="pp-abstract hide" data-explain-body></div>';
     return '' +
-      '<div class="ud-head"><span class="ico-box" style="background:#f2f3f5;color:#4e5969;flex:none;"><i data-ic="book"></i></span>' +
-      '<div style="flex:1;min-width:0;"><div class="ud-name" style="white-space:normal;line-height:1.4;">' + esc(p.title) + "</div>" +
-      '<div class="ud-sub">PMID ' + esc(p.pmid) + " · " + esc(p.journal || "—") + (p.pub_date ? " · " + esc(String(p.pub_date)) : "") + "</div></div>" +
-      '<button class="icon-btn" type="button" data-pp-close aria-label="关闭"><i data-ic="close"></i></button></div>' +
-      '<div class="ud-body">' +
-        (tags ? '<div style="margin-bottom:10px;">' + tags + "</div>" : "") +
-        '<div class="ud-sec">摘要</div>' +
-        '<div class="pp-abstract">' + esc(p.abstract || "（无摘要）") + "</div>" +
-        (p.abstract_zh
-          ? '<div class="ud-sec">中文摘要</div><div class="pp-abstract">' + esc(p.abstract_zh) + "</div>"
-          : "") +
-        '<div class="ud-sec">AI 解读</div>' + explainBlock +
-        '<div class="ud-sec">我的笔记</div>' +
-        '<textarea class="pp-note" data-note-content rows="3" placeholder="记录你的想法，每人每篇一条">' + esc(p.note || "") + "</textarea>" +
-        '<div style="margin-top:8px;text-align:right;"><button class="btn btn-ghost btn-sm" type="button" data-note-save="' + p.id + '">保存笔记</button></div>' +
-      "</div>";
+      '<div class="pp-detail-head">' +
+        '<div class="pp-detail-title">' + esc(p.title) + "</div>" +
+        '<button class="icon-btn" type="button" data-pp-close aria-label="关闭"><i data-ic="close"></i></button></div>' +
+      '<div class="pp-detail-meta">' +
+        esc(_paperAuthors(p.authors) || "（作者不详）") + "<br>" +
+        esc(p.journal || "—") + (p.pub_date ? " · " + esc(String(p.pub_date)) : "") +
+        (url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">打开原文链接 ↗</a>' : "") +
+      "</div>" +
+      (kws ? '<div class="pp-detail-kws">' + kws + "</div>" : "") +
+      '<div class="pp-detail-sec">摘要</div>' +
+      '<div class="pp-abstract">' + esc(p.abstract || "（无摘要）") + "</div>" +
+      (p.abstract_zh
+        ? '<div class="pp-detail-sec">中文摘要</div><div class="pp-abstract">' + esc(p.abstract_zh) + "</div>"
+        : "") +
+      '<div class="pp-detail-sec">AI 解读</div>' + explainBlock +
+      '<div class="pp-detail-sec">我的笔记</div>' +
+      '<textarea class="pp-note" data-note-content rows="3" placeholder="记录你的想法，每人每篇一条">' + esc(p.note || "") + "</textarea>" +
+      '<div style="margin-top:8px;text-align:right;"><button class="btn btn-ghost btn-sm" type="button" data-note-save="' + p.id + '">保存笔记</button></div>';
   }
-  function openPaperDrawer(pid) {
+  function openPaperDetail(pid) {
+    var view = null;
+    paperState.items.forEach(function (v) { if (v.id === pid) view = v; });
     API.get("/papers/" + pid).then(function (p) {
-      var dr = qs("[data-pp-drawer]"), mk = qs("[data-pp-mask]");
-      if (dr) { dr.innerHTML = paperDrawerHtml(p); injectIcons(dr); dr.classList.remove("hide"); }
-      if (mk) mk.classList.remove("hide");
+      var box = qs("[data-pp-detail]");
+      if (!box) return;
+      box.innerHTML = paperDetailHtml(p, view);
+      injectIcons(box);
+      box.classList.remove("hide");
+      qsa("[data-pp-card]").forEach(function (c) {
+        c.classList.toggle("is-active", parseInt(c.getAttribute("data-pp-card"), 10) === pid);
+      });
     }).catch(function (e) { toast(e.detail || "详情加载失败"); });
+  }
+  function closePaperDetail() {
+    var box = qs("[data-pp-detail]");
+    if (box) box.classList.add("hide");
+    qsa("[data-pp-card]").forEach(function (c) { c.classList.remove("is-active"); });
+  }
+
+  /* ================= 订阅设置弹窗（步 C；P5 拍板：文献页内齿轮单入口） =================
+   * 三区块：订阅关键词（标签增删）/ AI 生成（大白话 → suggest-keywords → 点选追加）/ 数据源勾选。
+   * 读写通道：GET /me（settings.subscribe_keywords / subscribe_sources）+ PUT /me/settings。 */
+  var subState = { loaded: false, keywords: [], sources: [], allSources: [], baseline: "" };
+  var SUB_DEFAULT_SOURCES = ["pubmed", "arxiv", "openalex"];
+
+  function subSnapshot() { return JSON.stringify({ k: subState.keywords, s: subState.sources }); }
+  function subRefreshSaveBtn() {
+    var btn = qs("[data-sub-save]");
+    if (btn) btn.disabled = subSnapshot() === subState.baseline;
+  }
+  function renderSubKeywords() {
+    var box = qs("[data-sub-kw-box]");
+    if (!box) return;
+    var input = qs("[data-sub-kw-input]");
+    var tags = subState.keywords.map(function (k, i) {
+      return '<span class="sub-kw-tag">' + esc(k) +
+        '<button class="sub-kw-del" type="button" data-sub-kw-del="' + i + '" aria-label="移除"><i data-ic="close"></i></button></span>';
+    }).join("");
+    box.innerHTML = tags + '<input class="sub-kw-input" type="text" data-sub-kw-input placeholder="输入关键词，回车添加" autocomplete="off">';
+    injectIcons(box);
+    var ni = qs("[data-sub-kw-input]", box);
+    if (ni && input && document.activeElement === input) ni.focus();
+  }
+  function renderSubSources() {
+    var box = qs("[data-sub-src-list]");
+    if (!box) return;
+    if (!subState.allSources.length) {
+      box.innerHTML = '<div class="muted" style="padding:6px 2px;font-size:13px;">暂无可选数据源</div>';
+      return;
+    }
+    box.innerHTML = subState.allSources.map(function (s) {
+      var on = subState.sources.indexOf(s.key) !== -1;
+      return '<label class="sub-src-item"><input type="checkbox" data-sub-src="' + esc(s.key) + '"' + (on ? " checked" : "") + "> " +
+        "<span>" + esc(s.name) + '</span><span class="muted" style="font-size:12px;margin-left:auto;">' + esc(s.key) + "</span></label>";
+    }).join("");
+  }
+  function renderSubAiPicked() {
+    /* AI 生成区：已加入订阅词的词置灰（is-added），其余可点选追加 */
+    qsa("[data-sub-ai-kw]").forEach(function (chip) {
+      var on = subState.keywords.indexOf(chip.getAttribute("data-sub-ai-kw")) !== -1;
+      chip.classList.toggle("is-added", on);
+    });
+  }
+  function openSubscribeModal() {
+    openModal("#modal-papers-sub");
+    var out = qs("[data-sub-ai-out]");
+    if (out) out.classList.add("hide");
+    var desc = qs("[data-sub-ai-desc]");
+    if (desc) desc.value = "";
+    Promise.all([API.get("/me"), API.get("/papers/sources")]).then(function (rs) {
+      var settings = (rs[0] && rs[0].settings) || {};
+      var kws = ((settings.subscribe_keywords || {}).keywords) || [];
+      /* 后端契约：value 必须是对象，subscribe_sources 存 {sources: [...]}（SettingUpsert.value: dict） */
+      var srcObj = settings.subscribe_sources;
+      var srcs = (srcObj && Array.isArray(srcObj.sources)) ? srcObj.sources : null;
+      subState.keywords = kws.slice();
+      subState.sources = (srcs && srcs.length) ? srcs.slice() : SUB_DEFAULT_SOURCES.slice();
+      subState.allSources = rs[1] || [];
+      subState.loaded = true;
+      subState.baseline = subSnapshot();
+      renderSubKeywords();
+      renderSubSources();
+      subRefreshSaveBtn();
+    }).catch(function (e) { toast(e.detail || "订阅设置加载失败"); });
+  }
+  function saveSubscribe() {
+    var btn = qs("[data-sub-save]");
+    if (btn) btn.disabled = true;
+    Promise.all([
+      API.put("/me/settings", { key: "subscribe_keywords", value: { keywords: subState.keywords } }),
+      API.put("/me/settings", { key: "subscribe_sources", value: { sources: subState.sources } })
+    ]).then(function () {
+      subState.baseline = subSnapshot();
+      toast("订阅设置已保存");
+      var dlg = qs("#modal-papers-sub");
+      if (dlg && dlg.close) dlg.close();
+    }).catch(function (e) {
+      if (btn) btn.disabled = false;
+      var msg = e && typeof e.detail === "string" ? e.detail : "保存失败";
+      toast(msg);
+    });
   }
 
   /* ================= 页面初始化 ================= */
@@ -2104,9 +2370,10 @@
     },
 
     papers: function (view) {
-      paperState.mode = "daily";
-      paperState.tag = null;
-      loadPapersList();
+      paperState.nav = "digest";
+      paperState.items = [];
+      paperState.digest = null;
+      loadPapersNav();
     },
 
 
@@ -2281,7 +2548,7 @@
         var tOnceBox = qs("#token-once");
         if (tOnceBox) tOnceBox.classList.add("hide");
       }
-      if (targetSel === "#modal-set-general") refreshAvatarPanel();
+      if (targetSel === "#modal-set-general") { refreshAvatarPanel(); applyTheme(); } /* applyTheme 同步主题段高亮 */
       /* 我的技能：打开弹窗/应用设置时刷新已安装列表（含条数徽标） */
       if (targetSel === "#modal-set-apps") loadMySkills();
       if (targetSel === "#modal-skillhub") loadMySkills();
@@ -2304,6 +2571,77 @@
       toast("已恢复默认头像");
       return;
     }
+    /* 主题切换（通用设置 · 跟随系统/浅色/深色 → user_settings.theme.mode） */
+    var themeBtn = el.closest("[data-theme-mode]");
+    if (themeBtn) {
+      var mode = themeBtn.getAttribute("data-theme-mode");
+      if (mode !== themeState.mode) {
+        themeState.mode = mode;
+        applyTheme();
+        API.put("/me/settings", { key: "theme", value: { mode: mode } }).catch(function (e) {
+          toast(e.detail || "主题偏好保存失败");
+        });
+      }
+      return;
+    }
+    /* 订阅设置弹窗：关键词标签 × 移除 */
+    var subKwDel = el.closest("[data-sub-kw-del]");
+    if (subKwDel) {
+      subState.keywords.splice(parseInt(subKwDel.getAttribute("data-sub-kw-del"), 10), 1);
+      renderSubKeywords();
+      renderSubAiPicked();
+      subRefreshSaveBtn();
+      return;
+    }
+    /* 订阅设置弹窗：点输入框区域任意处 → 聚焦输入框 */
+    if (el.closest("[data-sub-kw-box]")) {
+      var subInput = qs("[data-sub-kw-input]");
+      if (subInput) subInput.focus();
+      return;
+    }
+    /* 订阅设置弹窗：AI 生成关键词（大白话 → suggest-keywords → 可点选标签） */
+    if (el.closest("[data-sub-ai-gen]")) {
+      var descEl = qs("[data-sub-ai-desc]");
+      var desc = descEl ? descEl.value.trim() : "";
+      if (!desc) { toast("先用一句话描述你的研究方向"); return; }
+      var genBtn = el.closest("[data-sub-ai-gen]");
+      genBtn.disabled = true;
+      var outEl = qs("[data-sub-ai-out]");
+      if (outEl) {
+        outEl.classList.remove("hide");
+        outEl.innerHTML = '<span class="muted" style="font-size:13px;">AI 生成中…</span>';
+      }
+      API.post("/papers/suggest-keywords", { description: desc }).then(function (r) {
+        genBtn.disabled = false;
+        var kws = (r && r.keywords) || [];
+        if (!kws.length) { if (outEl) outEl.innerHTML = '<span class="muted" style="font-size:13px;">未生成关键词，换个说法试试</span>'; return; }
+        if (outEl) {
+          outEl.innerHTML = kws.map(function (k) {
+            return '<button class="sub-ai-chip" type="button" data-sub-ai-kw="' + esc(k) + '">' + esc(k) + "</button>";
+          }).join("");
+        }
+        renderSubAiPicked();
+      }).catch(function (e) {
+        genBtn.disabled = false;
+        if (outEl) outEl.classList.add("hide");
+        toast(e.detail || "AI 生成失败");
+      });
+      return;
+    }
+    /* 订阅设置弹窗：点选 AI 生成的词 → 追加到订阅关键词（重复置灰不可再点） */
+    var subAiKw = el.closest("[data-sub-ai-kw]");
+    if (subAiKw && !subAiKw.classList.contains("is-added")) {
+      var kw = subAiKw.getAttribute("data-sub-ai-kw");
+      if (subState.keywords.indexOf(kw) === -1) {
+        subState.keywords.push(kw);
+        renderSubKeywords();
+        renderSubAiPicked();
+        subRefreshSaveBtn();
+      }
+      return;
+    }
+    /* 订阅设置弹窗：保存（脏状态亮起，写 subscribe_keywords + subscribe_sources） */
+    if (el.closest("[data-sub-save]")) { saveSubscribe(); return; }
     /* 我的技能：「上传技能」按钮 → 触发隐藏 file input */
     if (el.closest("[data-skill-upload]")) {
       var skillFile = qs("[data-skill-file]");
@@ -2985,24 +3323,30 @@
       }).catch(function (e) { toast(e.detail || "删除失败"); });
       return;
     }
-    if (el.closest('[data-modal-open="#modal-set-apps"]')) {
-      API.get("/me").then(function (m) {
-        var kws = ((m.settings || {}).subscribe_keywords || {}).keywords || [];
-        var kwVal = qs("[data-kw-val]");
-        if (kwVal) kwVal.textContent = kws.length ? kws.join("、") : "未配置";
-      }).catch(function () {});
-      /* 不 return：继续走弹层打开逻辑 */
+    /* 订阅设置统一走文献页齿轮入口（P5 拍板）：「我的 → 应用设置」不再重复放编辑入口 */
+    if (el.closest("[data-kw-edit]")) { toast("请前往文献页，点右上角 ⚙ 订阅设置"); return; }
+    /* 文献页：左导航切换（今日推送 / 我的收藏 / 全部论文） */
+    var pNav = el.closest("[data-pp-nav]");
+    if (pNav && !pNav.classList.contains("is-disabled")) {
+      qsa("[data-pp-nav]").forEach(function (b) { b.classList.remove("active"); });
+      pNav.classList.add("active");
+      paperState.nav = pNav.getAttribute("data-pp-nav");
+      loadPapersNav();
+      return;
     }
-    if (el.closest("[data-kw-edit]")) {
-      var kwVal = qs("[data-kw-val]");
-      var current = kwVal && kwVal.textContent !== "未配置" ? kwVal.textContent : "";
-      var input = window.prompt("订阅关键词（逗号分隔；每日据此抓取 PubMed 新文献）", current);
-      if (input === null) return;
-      var kws = input.split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean);
-      API.put("/me/settings", { key: "subscribe_keywords", value: { keywords: kws } }).then(function () {
-        if (kwVal) kwVal.textContent = kws.length ? kws.join("、") : "未配置";
-        toast(kws.length ? "订阅关键词已保存" : "已清空订阅关键词");
-      }).catch(function (e) { toast(e.detail || "保存失败"); });
+    /* 文献页：立即检索（loading → crawl-now → 刷新 digest） */
+    var pCrawl = el.closest("[data-pp-crawl]");
+    if (pCrawl) { crawlNow(pCrawl); return; }
+    /* 文献页：订阅设置齿轮 → 中央弹窗（P5 拍板单入口） */
+    if (el.closest("[data-pp-subscribe]")) { openSubscribeModal(); return; }
+    /* 文献页：下载占位（下批开放） */
+    if (el.closest("[data-pp-dl]")) { toast("全文下载下批开放"); return; }
+    /* 文献页：关闭详情面板 */
+    if (el.closest("[data-pp-close]")) { closePaperDetail(); return; }
+    /* 文献页：点卡片展开右侧详情（点在操作行上时不展开） */
+    var pCard = el.closest("[data-pp-card]");
+    if (pCard && !el.closest(".pp-card-ops")) {
+      openPaperDetail(parseInt(pCard.getAttribute("data-pp-card"), 10));
       return;
     }
     /* 文献页：收藏 toggle */
@@ -3010,15 +3354,19 @@
     if (pSave) {
       var pid5 = parseInt(pSave.getAttribute("data-paper-save"), 10);
       API.post("/papers/" + pid5 + "/save", {}).then(function (r) {
-        pSave.textContent = r.saved ? "已收藏" : "收藏";
-        pSave.classList.toggle("is-on", r.saved);
         paperState.items.forEach(function (it) { if (it.id === pid5) it.saved = r.saved; });
-        if (paperState.mode === "favorites") loadPapersList();
+        /* 卡片操作行与详情面板内可能各有一个收藏按钮，同步刷新 */
+        qsa('[data-paper-save="' + pid5 + '"]').forEach(function (b) {
+          b.classList.toggle("is-on", r.saved);
+          var lbl = b.childNodes[b.childNodes.length - 1];
+          if (lbl && lbl.nodeType === 3) lbl.textContent = r.saved ? "已收藏" : "收藏";
+        });
+        if (paperState.nav === "favorites") loadPapersNav();
         toast(r.saved ? "已收藏" : "已取消收藏");
       }).catch(function (e) { toast(e.detail || "操作失败"); });
       return;
     }
-    /* 文献页：生成 AI 解读 */
+    /* 文献页：生成 AI 解读（按钮在详情面板内） */
     var pExplain = el.closest("[data-paper-explain]");
     if (pExplain) {
       var pid6 = pExplain.getAttribute("data-paper-explain");
@@ -3046,40 +3394,6 @@
       API.post("/papers/" + pid7 + "/note", { content: content }).then(function () {
         toast("笔记已保存");
       }).catch(function (e) { toast(e.detail || "保存失败"); });
-      return;
-    }
-    /* 文献页：关闭抽屉 */
-    if (el.closest("[data-pp-close]") || el.closest("[data-pp-mask]")) {
-      var ppDr = qs("[data-pp-drawer]"), ppMk = qs("[data-pp-mask]");
-      if (ppDr) ppDr.classList.add("hide");
-      if (ppMk) ppMk.classList.add("hide");
-      return;
-    }
-    /* 文献页：点击行打开详情 */
-    var pRow = el.closest("[data-paper]");
-    if (pRow) {
-      openPaperDrawer(parseInt(pRow.getAttribute("data-paper"), 10));
-      return;
-    }
-    /* 文献页：每日推送 / 我的收藏 切换 */
-    if (el.closest("[data-papers-seg]")) {
-      var segBtns = qsa("[data-papers-seg] button");
-      segBtns.forEach(function (b) { b.classList.remove("active"); });
-      el.closest("button").classList.add("active");
-      paperState.mode = segBtns.indexOf(el.closest("button")) === 1 ? "favorites" : "daily";
-      var tagBox = qs("[data-paper-tags]");
-      if (tagBox) tagBox.style.display = paperState.mode === "daily" ? "" : "none";
-      loadPapersList();
-      return;
-    }
-    /* 文献页：标签筛选 */
-    var pTag = el.closest("[data-ptag]");
-    if (pTag) {
-      qsa("[data-ptag]").forEach(function (c) { c.classList.remove("active"); });
-      pTag.classList.add("active");
-      var tv = pTag.getAttribute("data-ptag");
-      paperState.tag = tv === "全部" ? null : tv;
-      loadPapersList();
       return;
     }
     /* 应用中心：打开应用 */
@@ -3328,6 +3642,21 @@
       syncPolishBtn();
       return;
     }
+    /* 订阅设置弹窗：关键词输入框回车 = 添加标签（IME 选词回车不算） */
+    if (e.key === "Enter" && e.target.matches && e.target.matches("[data-sub-kw-input]")) {
+      if (e.isComposing || imeComposing) return;
+      e.preventDefault();
+      var v = e.target.value.trim();
+      if (!v) return;
+      if (subState.keywords.indexOf(v) !== -1) { toast("关键词已在列表中"); e.target.value = ""; return; }
+      subState.keywords.push(v);
+      renderSubKeywords();
+      renderSubAiPicked();
+      subRefreshSaveBtn();
+      var ni = qs("[data-sub-kw-input]");
+      if (ni) ni.focus();
+      return;
+    }
     if (e.key === "Enter" && e.target.matches && e.target.matches(".composer textarea") && !e.shiftKey) {
       /* IME 选词回车不发送（isComposing + composition 事件双保险，拼音用户必踩） */
       if (e.isComposing || imeComposing) return;
@@ -3350,6 +3679,17 @@
     var f = e.target.closest ? e.target.closest("[data-skill-file]") : null;
     if (!f) return;
     handleSkillFile(f);
+  });
+
+  /* 订阅设置弹窗：数据源勾选（checkbox 变化 → 脏状态亮起保存按钮） */
+  document.addEventListener("change", function (e) {
+    var c = e.target.closest ? e.target.closest("[data-sub-src]") : null;
+    if (!c) return;
+    var key = c.getAttribute("data-sub-src");
+    var idx = subState.sources.indexOf(key);
+    if (c.checked && idx === -1) subState.sources.push(key);
+    if (!c.checked && idx !== -1) subState.sources.splice(idx, 1);
+    subRefreshSaveBtn();
   });
 
   /* 对话发送：POST /chat SSE 双流渲染（reasoning_delta → 思维面板「思考中…」计时态；
@@ -3523,6 +3863,7 @@
   if (isLoggedIn()) {
     API.get("/auth/me").then(function (u) {
       LC_USER = u;
+      loadThemeFromSettings(u.settings); /* 主题权威值在 user_settings（默认跟随系统） */
       applyUserChrome();
       render();
     }).catch(function () { render(); });

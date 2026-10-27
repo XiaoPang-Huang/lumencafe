@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261026f">
+<link rel="stylesheet" href="assets/css/main.css?v=20261027b">
 </head>
 <body data-route="workspace">
 
@@ -211,6 +211,14 @@
         <input type="file" accept="image/*" data-avatar-file class="hide" aria-hidden="true" tabindex="-1">
       </div>
       <div class="set-row">
+        <i data-ic="spark"></i><span class="grow">主题</span>
+        <span class="theme-seg" data-theme-seg>
+          <button type="button" data-theme-mode="system">跟随系统</button>
+          <button type="button" data-theme-mode="light">浅色</button>
+          <button type="button" data-theme-mode="dark">深色</button>
+        </span>
+      </div>
+      <div class="set-row">
         <i data-ic="lock"></i><span class="grow">修改密码</span>
         <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-pass">修改</button>
       </div>
@@ -247,9 +255,8 @@
         <button class="btn btn-ghost btn-sm" type="button" data-modal-switch="#modal-skillhub">管理</button>
       </div>
       <div class="set-row">
-        <i data-ic="book"></i><span class="grow">文献 · 订阅关键词</span>
-        <span class="val" data-kw-val>未配置</span>
-        <button class="btn btn-ghost btn-sm" type="button" data-kw-edit>设置</button>
+        <i data-ic="book"></i><span class="grow">文献 · 订阅设置</span>
+        <span class="val">文献页内齿轮统一管理</span>
       </div>
     </div>
     <div class="modal-foot">
@@ -404,9 +411,45 @@
   </form>
 </dialog>
 
+<!-- 文献订阅设置（步 C；P5 拍板：文献页内齿轮单入口——关键词标签增删 + AI 生成 + 数据源勾选） -->
+<dialog class="modal-mask" id="modal-papers-sub">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>订阅设置</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" style="padding-top:8px;">
+      <div class="field">
+        <label>订阅关键词</label>
+        <div class="sub-kw-box" data-sub-kw-box>
+          <input class="sub-kw-input" type="text" data-sub-kw-input placeholder="输入关键词，回车添加" autocomplete="off">
+        </div>
+        <div class="hint">每日按关键词在你勾选的数据源检索新文献；点击标签上的 × 移除</div>
+      </div>
+      <div class="field">
+        <label>AI 生成关键词</label>
+        <textarea data-sub-ai-desc rows="3" placeholder="用一句话大白话描述你的研究方向，例如：阿尔茨海默症早期血液生物标志物研究"></textarea>
+        <div style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" type="button" data-sub-ai-gen><i data-ic="spark"></i>AI 生成</button>
+          <span class="muted" style="font-size:12.5px;margin-left:8px;">生成的词以标签列出，点选追加到上方订阅词</span>
+        </div>
+        <div class="sub-ai-out hide" data-sub-ai-out></div>
+      </div>
+      <div class="field" style="margin-bottom:0;">
+        <label>数据源</label>
+        <div class="sub-src-list" data-sub-src-list><div class="muted" style="padding:6px 2px;font-size:13px;">加载中…</div></div>
+        <div class="hint">未勾选的数据源不参与每日抓取与「立即检索」</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
+      <button class="btn sub-save" type="button" data-sub-save disabled>保存</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- 服务 Key：新增/编辑共用（编辑时服务名只读、钥匙留空 = 不改；/admin/service-keys） -->
-<dialog class="modal-mask" id="modal-skey">
-  <form class="modal" onsubmit="event.preventDefault();">
+<dialog class="modal-mask" id="modal-skey">  <form class="modal" onsubmit="event.preventDefault();">
     <div class="modal-head">
       <h3 id="modal-skey-title">新增钥匙</h3>
       <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
@@ -446,6 +489,6 @@
 <script src="assets/js/data.js?v=20261024a"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
 <script src="assets/js/api.js?v=20261026b"></script>
-<script src="assets/js/app.js?v=20261026h"></script>
+<script src="assets/js/app.js?v=20261027b"></script>
 </body>
 </html>
