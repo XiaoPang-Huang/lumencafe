@@ -1,9 +1,15 @@
-"""文献接口（PRD §4.8，权限点 app:papers，批次 2）。
+"""文献接口（PRD §4.8，权限点 app:papers，批次 2；步 A 多源扩展）。
 
 - /papers/daily：仅本人订阅抓到的文献（paper_users 归属隔离），tag JSONB `@>` 筛选；
 - 收藏为幂等 toggle；笔记每人每篇一条 upsert；
-- AI 解读全局缓存（paper_explanations 一篇一条，成功才入库，命中直返）。
+- AI 解读全局缓存（paper_explanations 一篇一条，成功才入库，命中直返）；
+- 步 A：/papers/sources 已注册源清单（订阅设置勾选框）；
+  /papers/suggest-keywords 大白话 → AI 生成订阅关键词（不写库，保存走 /me/settings）。
 """
+import json
+import logging
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -25,10 +31,16 @@ from app.schemas.papers import (
     PaperDetailOut,
     PaperOut,
     SaveResponse,
+    SourceOut,
+    SuggestKeywordsRequest,
+    SuggestKeywordsResponse,
 )
 from app.services import llm_gateway, route_service
+from app.services.sources import list_providers
 
 router = APIRouter(prefix="/papers", tags=["papers"])
+
+logger = logging.getLogger("lumencafe.papers")
 
 EXPLAIN_PROMPT = (
     "你是神经退行性疾病领域的文献解读助手。基于给出的论文标题与摘要输出中文解读，"
@@ -36,6 +48,18 @@ EXPLAIN_PROMPT = (
     "只依据摘要内容，不要臆测；摘要信息不足时明确说明。直接输出解读正文。"
     "\n\n标题：{title}\n\n摘要：{abstract}"
 )
+
+# 步 A：AI 生成订阅关键词的系统提示词（内置常量；app_key=papers_config 解析路由）
+SUGGEST_KEYWORDS_APP_KEY = "papers_config"
+SUGGEST_KEYWORDS_SYSTEM = (
+    "你是学术文献订阅关键词提炼助手。用户用一句大白话描述研究方向，"
+    "你要提炼成 8-12 个适合在文献数据库（PubMed/arXiv/OpenAlex 等）检索的关键词。"
+    "要求：中英文都给出（英文关键词用于国际库检索，中文用于说明可附）；"
+    "每个关键词 1-4 个词，覆盖核心概念、关键方法、应用场景等同义表达；"
+    "不要输出任何解释、编号或多余文字，严格返回 JSON 字符串数组，"
+    '形如 ["关键词1", "keyword 2", ...]。'
+)
+_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
 
 async def _reader(user: User = Depends(require_permission("app:papers"))) -> User:
@@ -85,6 +109,69 @@ async def _get_mine(db: AsyncSession, user_id: int, pid: int) -> Paper:
     if paper is None:
         raise HTTPException(status_code=404, detail="文献不存在")
     return paper
+
+
+@router.get("/sources", response_model=list[SourceOut])
+async def list_paper_sources(user: User = Depends(_reader)):
+    """已注册文献源清单（key + 展示名），订阅设置弹窗的勾选框数据源（步 A）。"""
+    return [SourceOut(key=p.name, name=p.display_name) for p in list_providers()]
+
+
+def _parse_keyword_array(content: str) -> list[str]:
+    """解析 LLM 返回为关键词数组：剥 code fence → json.loads → 校验字符串数组。
+
+    返回保序去重、去空白后的关键词；解析失败/结构不符抛 ValueError（路由层转 502）。
+    """
+    cleaned = _CODE_FENCE_RE.sub("", content or "").strip()
+    data = json.loads(cleaned)
+    if not isinstance(data, list) or not all(isinstance(k, str) for k in data):
+        raise ValueError("AI 返回不是 JSON 字符串数组")
+    out: list[str] = []
+    for kw in data:
+        kw = kw.strip()
+        if kw and kw not in out:
+            out.append(kw)
+    if not out:
+        raise ValueError("AI 返回的关键词数组为空")
+    return out
+
+
+@router.post("/suggest-keywords", response_model=SuggestKeywordsResponse)
+async def suggest_keywords(
+    body: SuggestKeywordsRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """大白话 → AI 生成 8-12 个中英检索关键词（步 A 拍板 P4）。
+
+    走网关按消费者路由（app_key=papers_config，未配置指派回落默认路由）；
+    不写库——用户勾选确认后由前端调 /me/settings 保存 subscribe_keywords。
+    """
+    plan = await route_service.resolve_for(db, SUGGEST_KEYWORDS_APP_KEY)
+    if plan is None:
+        raise HTTPException(
+            status_code=503, detail="模型未配置，请联系管理员在模型管理页设置默认路由"
+        )
+    try:
+        content = await llm_gateway.chat_once(
+            plan.candidates[0].cfg,
+            [
+                {"role": "system", "content": SUGGEST_KEYWORDS_SYSTEM},
+                {"role": "user", "content": body.description.strip()},
+            ],
+            timeout=60.0,
+        )
+    except llm_gateway.UpstreamError as exc:
+        logger.warning("生成订阅关键词失败：%s", exc)
+        raise HTTPException(status_code=502, detail="AI 生成失败，请稍后再试") from exc
+    try:
+        keywords = _parse_keyword_array(content)
+    except (ValueError, TypeError) as exc:
+        logger.warning("订阅关键词解析失败：%s（原文：%.200s）", exc, content)
+        raise HTTPException(
+            status_code=502, detail="AI 返回内容无法解析为关键词数组，请重试"
+        ) from exc
+    return SuggestKeywordsResponse(keywords=keywords)
 
 
 @router.get("/daily", response_model=list[PaperOut])

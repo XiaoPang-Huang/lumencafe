@@ -27,7 +27,10 @@ class Paper(Base):
     __tablename__ = "papers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pmid: Mapped[str] = mapped_column(String(16), unique=True)
+    # 全局去重键：PubMed 为纯数字 pmid；其余源为 "{source}:{external_id}"（步 A 多源扩展）
+    pmid: Mapped[str] = mapped_column(String(64), unique=True)
+    source: Mapped[str] = mapped_column(String(32), default="pubmed")  # 数据源 key（步 A）
+    doi: Mapped[str | None] = mapped_column(String(512), nullable=True)  # 跨源去重键（步 A）
     title: Mapped[str] = mapped_column(Text, default="")
     abstract: Mapped[str] = mapped_column(Text, default="")
     abstract_zh: Mapped[str] = mapped_column(Text, default="")  # LLM 中译（空串 = 未译）

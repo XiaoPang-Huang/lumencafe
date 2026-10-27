@@ -37,3 +37,17 @@ class ExplainResponse(BaseModel):
     content: str
     model: str
     cached: bool  # true = 命中缓存
+
+
+# ── 步 A：数据源清单 + AI 生成订阅关键词 ──────────────────
+class SourceOut(BaseModel):
+    key: str  # 源 key（subscribe_sources 存储值）
+    name: str  # 展示名（勾选框用）
+
+
+class SuggestKeywordsRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=2000)  # 大白话研究方向描述
+
+
+class SuggestKeywordsResponse(BaseModel):
+    keywords: list[str]  # 8-12 个中英检索关键词（AI 生成，用户勾选确认后自行入库）

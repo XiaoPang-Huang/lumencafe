@@ -1,22 +1,25 @@
-"""文献抓取执行体（批次 2 填充，PRD §4.8 + 架构设计 §3.8/Q11；NCBI 解析沿用旧版 pubmed.py）。
+"""文献抓取执行体（论文域步 A 改造：多源 × 按用户订阅聚合）。
 
-流程：聚合订阅关键词（用户设置 subscribe_keywords，未配置用户回落 env 默认）→
-NCBI esearch（≤3 req/s）→ efetch 分批（≤100/批、批间 sleep）→ 解析打标 →
-papers ON CONFLICT(pmid) DO NOTHING 入库 + paper_users 归属（ON CONFLICT 幂等）→
-LLM 中译回填（单轮 ≤20 篇、篇间 ≥1s，走网关默认路由，失败跳过不阻塞抓取）。
+流程（步 A 拍板）：对每个有文献权限（app:papers）的用户——
+按其勾选的订阅源（user_settings.subscribe_sources，未配置回落默认三源）×
+其订阅关键词（subscribe_keywords，未配置回落 env 默认）逐源抓取（SourceProvider
+契约，sources/ 目录）→ 轮内按 doi/arxiv_id/external_id 去重 →
+打标（tag_paper 不动，TAG_RULES 沿用）→ papers 幂等 upsert（pmid 列 = 全局
+去重键；doi 命中既有行则只补归属，跨源同一篇不重复入库）→ paper_users 归属。
 
-网络层（步 2 工程三小件，D10）：外部调用走共享 httpx 总机（http_client.py）；
-esearch/efetch 瞬时错误（网络类/5xx/429）由 tenacity 重试收口（retry.py），
-4xx 不重试；批间 sleep 为 NCBI polite 限速（≤3 req/s），不是重试。
+PubMed 的 esearch/efetch/XML 解析已收编至 app/services/sources/pubmed.py
+（逻辑搬家不改语义）；中译回填沿用网关默认路由（单轮 ≤20 篇、篇间 ≥1s）。
+
+网络层（步 2 工程三小件，D10）：外部调用走共享 httpx 总机（http_client.py，各
+provider 内部取）；瞬时错误由各源 tenacity 重试收口（retry.py），4xx 不重试；
+源间 polite sleep 是限速纪律（NCBI ≤3 req/s 等），不是重试。
 
 同日去重双保险（Q11）：进程内日期标记 + papers 表当日已有记录。
 """
 import asyncio
 import logging
-import re
-import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
 
 import httpx
 from sqlalchemy import func, select
@@ -25,16 +28,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.papers import Paper, PaperUser
+from app.models.user import Permission, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 from app.services import llm_gateway, route_service
-from app.services.http_client import get_http_client
-from app.services.retry import external_retry
+from app.services.sources import DEFAULT_SOURCES, PaperItem, get_provider
+from app.services.sources.pubmed import RATE_LIMIT_SLEEP  # NCBI polite 限速复用为源间隔
 
 logger = logging.getLogger("lumencafe.papers")
 
-EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-EFETCH_BATCH_SIZE = 100  # efetch 单批最多 100 个 pmid
-RATE_LIMIT_SLEEP = 0.4  # NCBI 限速 ≤3 req/s：请求间至少间隔 0.4s
 TRANSLATE_MAX_PER_ROUND = 20  # 中译单轮 ≤20 篇（PRD 4.8）
 TRANSLATE_INTERVAL = 1.0  # 中译篇间 ≥1s（PRD 4.8）
 
@@ -65,147 +66,6 @@ def mark_ran_today() -> None:
     _last_run_date = datetime.now(UTC).date().isoformat()
 
 
-# ── NCBI E-utilities（沿用旧版 island 实现） ──────────────
-def _common_params() -> dict[str, str]:
-    params: dict[str, str] = {"tool": "lumencafe"}
-    if settings.ncbi_email:
-        params["email"] = settings.ncbi_email
-    return params
-
-
-def build_headers() -> dict[str, str]:
-    headers = {"User-Agent": "lumencafe-papers/1.0"}
-    if settings.ncbi_email:
-        headers["User-Agent"] += f" (contact: {settings.ncbi_email})"
-    return headers
-
-
-@external_retry()
-async def esearch(
-    client: httpx.AsyncClient, keyword: str, retmax: int, days_back: int
-) -> list[str]:
-    """按关键词检索最近 days_back 天内发表的文献，返回 pmid 列表。
-
-    瞬时错误（网络类/5xx/429）由 tenacity 重试（指数退避，最小间隔 ≥0.5s
-    对齐 NCBI ≤3 req/s 纪律）；4xx 不重试。
-    """
-    today = date.today()
-    mindate = (today - timedelta(days=days_back)).strftime("%Y/%m/%d")
-    params: dict[str, Any] = {
-        **_common_params(),
-        "db": "pubmed",
-        "term": f"{keyword}[Title/Abstract]",
-        "retmax": retmax,
-        "retmode": "json",
-        "datetype": "pdat",
-        "mindate": mindate,
-        "maxdate": today.strftime("%Y/%m/%d"),
-        "sort": "pub date",
-    }
-    resp = await client.get(
-        f"{EUTILS_BASE}/esearch.fcgi", params=params, headers=build_headers()
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    idlist = data.get("esearchresult", {}).get("idlist", [])
-    return [str(pmid) for pmid in idlist]
-
-
-@external_retry()
-async def efetch(client: httpx.AsyncClient, pmids: list[str]) -> str:
-    """按 pmid 分批拉取题录 XML，批次间 sleep 限速（polite，非重试），拼接后返回。
-
-    瞬时错误由 tenacity 重试；整批重发幂等（NCBI 只读接口）。
-    """
-    if not pmids:
-        return ""
-    chunks = [pmids[i : i + EFETCH_BATCH_SIZE] for i in range(0, len(pmids), EFETCH_BATCH_SIZE)]
-    parts: list[str] = []
-    for idx, chunk in enumerate(chunks):
-        if idx > 0:
-            await asyncio.sleep(RATE_LIMIT_SLEEP)
-        params = {**_common_params(), "db": "pubmed", "id": ",".join(chunk), "retmode": "xml"}
-        resp = await client.post(
-            f"{EUTILS_BASE}/efetch.fcgi", data=params, headers=build_headers()
-        )
-        resp.raise_for_status()
-        parts.append(resp.text)
-        logger.info("efetch 第 %d/%d 批完成（%d 篇）", idx + 1, len(chunks), len(chunk))
-    return "".join(parts)
-
-
-def _element_text(el: ET.Element | None) -> str:
-    if el is None:
-        return ""
-    return "".join(el.itertext()).strip()
-
-
-def _parse_pub_date(article: ET.Element) -> date | None:
-    """解析期刊发表日期；只有 MedlineDate（如 "2024 Jan-Feb"）时取其中的年份。"""
-    pub_date = article.find("Journal/JournalIssue/PubDate")
-    if pub_date is None:
-        return None
-    year_el = pub_date.find("Year")
-    if year_el is not None and year_el.text:
-        try:
-            return date(int(year_el.text.strip()), 1, 1)
-        except ValueError:
-            return None
-    medline_el = pub_date.find("MedlineDate")
-    if medline_el is not None and medline_el.text:
-        match = re.search(r"(\d{4})", medline_el.text)
-        if match:
-            return date(int(match.group(1)), 1, 1)
-    return None
-
-
-def _parse_authors(article: ET.Element) -> list[str]:
-    authors: list[str] = []
-    for author in article.findall("AuthorList/Author"):
-        collective = _element_text(author.find("CollectiveName"))
-        if collective:
-            authors.append(collective)
-            continue
-        last_name = _element_text(author.find("LastName"))
-        initials = _element_text(author.find("Initials"))
-        if last_name and initials:
-            authors.append(f"{last_name} {initials}")
-        elif last_name:
-            authors.append(last_name)
-    return authors
-
-
-def parse_efetch(xml_text: str) -> list[dict[str, Any]]:
-    """解析 efetch 返回的 XML，提取每篇文献的题录字段。"""
-    if not xml_text.strip():
-        return []
-    root = ET.fromstring(xml_text)
-    papers: list[dict[str, Any]] = []
-    for art in root.findall(".//PubmedArticle"):
-        medline = art.find("MedlineCitation")
-        if medline is None:
-            continue
-        article = medline.find("Article")
-        if article is None:
-            continue
-        pmid = _element_text(medline.find("PMID"))
-        if not pmid:
-            continue
-        abstract_parts = [_element_text(ab) for ab in article.findall("Abstract/AbstractText")]
-        papers.append(
-            {
-                "pmid": pmid,
-                "title": _element_text(article.find("ArticleTitle")),
-                "abstract": "\n".join(p for p in abstract_parts if p),
-                "journal": _element_text(article.find("Journal/ISOAbbreviation"))
-                or _element_text(article.find("Journal/Title")),
-                "authors": _parse_authors(article),
-                "pub_date": _parse_pub_date(article),
-            }
-        )
-    return papers
-
-
 def tag_paper(title: str, abstract: str) -> tuple[list[str], list[str]]:
     """按规则打标签：标题+摘要大小写不敏感匹配，可多命中；返回 (标签, 命中词)。"""
     text = f"{title}\n{abstract}".lower()
@@ -219,59 +79,132 @@ def tag_paper(title: str, abstract: str) -> tuple[list[str], list[str]]:
     return tags, hit_words
 
 
-# ── 订阅关键词聚合 ────────────────────────────────────────
-async def collect_keywords(db: AsyncSession) -> dict[str, list[int]]:
-    """关键词 → 订阅用户列表。
+# ── 按用户订阅聚合 ────────────────────────────────────────
+@dataclass(frozen=True)
+class UserSubscription:
+    """一个用户的抓取计划：勾选源 × 订阅关键词。"""
 
-    用户设置（scope=user, key=subscribe_keywords, value={keywords:[...]}）优先；
-    未配置任何关键词的用户回落 env 默认关键词（papers_default_keywords）。
+    user_id: int
+    keywords: tuple[str, ...]
+    sources: tuple[str, ...]
+
+
+async def _papers_permission_user_ids(db: AsyncSession) -> list[int]:
+    """有文献权限（app:papers，经角色绑定）的启用用户（步 A：抓取按有权限用户聚合）。"""
+    stmt = (
+        select(User.id)
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            Permission.code == "app:papers",
+            User.is_active.is_(True),
+            User.is_deleted.is_(False),
+        )
+        .distinct()
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
+    """每个有文献权限用户的 (关键词, 源) 计划。
+
+    关键词：user_settings.subscribe_keywords.value.keywords，未配置回落 env 默认
+    （papers_default_keywords）；关键词为空的用户本轮跳过（与旧版语义一致）。
+    源：user_settings.subscribe_sources.value.sources，未配置回落默认三源
+    （sources.DEFAULT_SOURCES，见注册表 docstring）。
     """
+    user_ids = await _papers_permission_user_ids(db)
+    if not user_ids:
+        return []
+
     rows = (
-        await db.execute(select(UserSetting).where(UserSetting.key == "subscribe_keywords"))
+        await db.execute(select(UserSetting).where(UserSetting.key.in_(
+            ["subscribe_keywords", "subscribe_sources"]
+        )))
     ).scalars().all()
-    user_keywords: dict[int, list[str]] = {}
-    configured: set[int] = set()
+    keywords_by_user: dict[int, list[str]] = {}
+    sources_by_user: dict[int, list[str]] = {}
     for row in rows:
-        kws = [str(k).strip() for k in (row.value or {}).get("keywords", []) if str(k).strip()]
-        if kws:
-            user_keywords[row.user_id] = kws
-            configured.add(row.user_id)
+        if row.key == "subscribe_keywords":
+            kws = [str(k).strip() for k in (row.value or {}).get("keywords", []) if str(k).strip()]
+            if kws:
+                keywords_by_user[row.user_id] = kws
+        elif row.key == "subscribe_sources":
+            srcs = [str(s).strip() for s in (row.value or {}).get("sources", []) if str(s).strip()]
+            if srcs:
+                sources_by_user[row.user_id] = srcs
 
     defaults = [k.strip() for k in (settings.papers_default_keywords or "").split(",") if k.strip()]
 
-    from app.models.user import User
-
-    all_users = (await db.execute(select(User.id))).scalars().all()
-    keyword_map: dict[str, list[int]] = {}
-    for uid in all_users:
-        kws = user_keywords.get(uid) or defaults
-        for kw in kws:
-            (keyword_map.setdefault(kw, [])).append(uid)
-    return keyword_map
+    subs: list[UserSubscription] = []
+    for uid in user_ids:
+        kws = keywords_by_user.get(uid) or defaults
+        if not kws:
+            continue  # 无有效关键词：本轮不为其抓取（不回落别人配置的源）
+        srcs = sources_by_user.get(uid) or list(DEFAULT_SOURCES)
+        subs.append(UserSubscription(user_id=uid, keywords=tuple(kws), sources=tuple(srcs)))
+    return subs
 
 
 # ── 入库 ────────────────────────────────────────────────
-async def _upsert_paper(db: AsyncSession, record: dict[str, Any], tags: list[str], hits: list[str]) -> tuple[int, bool]:
-    """papers 幂等入库（ON CONFLICT(pmid) DO NOTHING）；返回 (paper_id, 是否新插入)。"""
+def external_key(item: PaperItem) -> str:
+    """papers.pmid 列承载的全局去重键：PubMed 纯数字 pmid，其余 "{source}:{external_id}"。"""
+    return item.external_id if item.source == "pubmed" else f"{item.source}:{item.external_id}"
+
+
+async def _find_existing_paper_id(db: AsyncSession, item: PaperItem) -> int | None:
+    """跨源去重查找：先按全局键（pmid 列），再按 doi（部分唯一索引列）。"""
+    key = external_key(item)
+    pid = (
+        await db.execute(select(Paper.id).where(Paper.pmid == key))
+    ).scalar_one_or_none()
+    if pid is not None:
+        return pid
+    if item.doi:
+        pid = (
+            await db.execute(select(Paper.id).where(Paper.doi == item.doi.lower()))
+        ).scalar_one_or_none()
+        if pid is not None:
+            return pid
+    return None
+
+
+async def _upsert_item(
+    db: AsyncSession, item: PaperItem, tags: list[str], hits: list[str]
+) -> tuple[int, bool]:
+    """单篇入库：跨源去重后 papers 幂等 upsert；返回 (paper_id, 是否新插入)。
+
+    同一篇被多源命中时（doi/arxiv 相同），第二轮起只补归属不重复建行的前提是
+    _find_existing_paper_id 命中；真正并发撞车由 pmid 唯一约束 +
+    ON CONFLICT DO NOTHING 兜底（与旧版同构）。
+    """
+    key = external_key(item)
+    existing = await _find_existing_paper_id(db, item)
+    if existing is not None:
+        return existing, False
+    pub_date = item.pub_date or (date(item.year, 1, 1) if item.year else None)
     stmt = (
         pg_insert(Paper)
         .values(
-            pmid=record["pmid"],
-            title=record["title"],
-            abstract=record["abstract"],
-            journal=record["journal"],
-            authors=record["authors"],
-            pub_date=record["pub_date"],
+            pmid=key,
+            source=item.source or "unknown",
+            doi=item.doi.lower() if item.doi else None,
+            title=item.title,
+            abstract=item.abstract,
+            journal=item.journal,
+            authors=list(item.authors),
+            pub_date=pub_date,
             tags=tags,
             keywords=hits,
         )
         .on_conflict_do_nothing(index_elements=["pmid"])
     )
-    result = await db.execute(stmt)
+    await db.execute(stmt)
     paper_id = (
-        await db.execute(select(Paper.id).where(Paper.pmid == record["pmid"]))
+        await db.execute(select(Paper.id).where(Paper.pmid == key))
     ).scalar_one()
-    return paper_id, result.rowcount == 1
+    return paper_id, True
 
 
 async def _attribute_paper(db: AsyncSession, paper_id: int, user_ids: list[int]) -> None:
@@ -328,7 +261,7 @@ async def _backfill_translations(db: AsyncSession) -> int:
                 timeout=60.0,
             )
         except llm_gateway.UpstreamError as exc:
-            logger.warning("PMID %s 中译失败，跳过：%s", paper.pmid, exc)
+            logger.warning("文献 %s 中译失败，跳过：%s", paper.pmid, exc)
             continue
         if zh and zh.strip():
             paper.abstract_zh = zh.strip()
@@ -339,45 +272,48 @@ async def _backfill_translations(db: AsyncSession) -> int:
 
 
 async def run_daily_crawl(db: AsyncSession) -> int:
-    """执行一轮文献抓取，返回本轮新入库文献数（PRD 4.8：{added: n}）。"""
+    """执行一轮文献抓取，返回本轮新入库文献数（PRD 4.8：{added: n} 的 n）。"""
     if already_ran_today():
         return 0
     if await _papers_created_today(db):
         mark_ran_today()  # 双保险：表内已有当日记录
         return 0
 
-    keyword_map = await collect_keywords(db)
-    if not keyword_map:
-        logger.info("无订阅关键词（用户未配置且未设 env 默认），本轮跳过")
+    subs = await collect_subscriptions(db)
+    if not subs:
+        logger.info("无可抓取用户（无文献权限或无有效订阅关键词），本轮跳过")
         mark_ran_today()
         return 0
 
+    since_date = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
     added = 0
-    client = get_http_client()  # 共享总机：复用 TCP/TLS 连接（步 2 工程三小件）
-    for keyword, user_ids in keyword_map.items():
-        try:
-            pmids = await esearch(
-                client, keyword, settings.papers_retmax, settings.papers_days_back
+    for sub in subs:
+        for source_name in sub.sources:
+            provider = get_provider(source_name)
+            if provider is None:
+                logger.warning("用户 %d 勾选了未注册源 %s，跳过", sub.user_id, source_name)
+                continue
+            try:
+                items = await provider.search(list(sub.keywords), since_date)
+            except httpx.HTTPError as exc:
+                logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
+                continue
+            await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
+            seen_keys: set[str] = set()
+            for item in items:
+                keys = [k for k in item.dedupe_keys if k]
+                if any(k in seen_keys for k in keys):
+                    continue  # 轮内跨源去重：doi > arxiv_id > external_id
+                seen_keys.update(keys)
+                tags, hits = tag_paper(item.title, item.abstract)
+                paper_id, is_new = await _upsert_item(db, item, tags, hits)
+                await _attribute_paper(db, paper_id, [sub.user_id])
+                if is_new:
+                    added += 1
+            await db.commit()
+            logger.info(
+                "用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added
             )
-        except httpx.HTTPError as exc:
-            logger.warning("esearch 失败（%s）：%s", keyword, exc)
-            continue
-        await asyncio.sleep(RATE_LIMIT_SLEEP)
-        if not pmids:
-            continue
-        try:
-            xml = await efetch(client, pmids)
-        except httpx.HTTPError as exc:
-            logger.warning("efetch 失败（%s）：%s", keyword, exc)
-            continue
-        for record in parse_efetch(xml):
-            tags, hits = tag_paper(record["title"], record["abstract"])
-            paper_id, is_new = await _upsert_paper(db, record, tags, hits)
-            await _attribute_paper(db, paper_id, user_ids)
-            if is_new:
-                added += 1
-        await db.commit()
-        logger.info("关键词「%s」入库完成（累计新增 %d）", keyword, added)
 
     mark_ran_today()
     translated = await _backfill_translations(db)
