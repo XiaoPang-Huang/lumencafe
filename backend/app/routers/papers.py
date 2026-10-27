@@ -1,14 +1,17 @@
-"""文献接口（PRD §4.8，权限点 app:papers，批次 2；步 A 多源扩展）。
+"""文献接口（PRD §4.8，权限点 app:papers，批次 2；步 A 多源扩展；步 B digest+立即检索）。
 
 - /papers/daily：仅本人订阅抓到的文献（paper_users 归属隔离），tag JSONB `@>` 筛选；
 - 收藏为幂等 toggle；笔记每人每篇一条 upsert；
 - AI 解读全局缓存（paper_explanations 一篇一条，成功才入库，命中直返）；
 - 步 A：/papers/sources 已注册源清单（订阅设置勾选框）；
-  /papers/suggest-keywords 大白话 → AI 生成订阅关键词（不写库，保存走 /me/settings）。
+  /papers/suggest-keywords 大白话 → AI 生成订阅关键词（不写库，保存走 /me/settings）；
+- 步 B：/papers/digest 今日命中 + 高相关（按本人订阅关键词重算命中）+ 最近抓取轮次；
+  /papers/crawl-now 立即检索（进程内锁防并发，force 跳过同日幂等）。
 """
 import json
 import logging
 import re
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -19,6 +22,7 @@ from app.db import get_db
 from app.deps import require_permission
 from app.models.papers import (
     Paper,
+    PaperCrawlRun,
     PaperExplanation,
     PaperFavorite,
     PaperNote,
@@ -26,6 +30,9 @@ from app.models.papers import (
 )
 from app.models.user import User
 from app.schemas.papers import (
+    CrawlNowResponse,
+    DigestItemOut,
+    DigestOut,
     ExplainResponse,
     NoteRequest,
     PaperDetailOut,
@@ -35,7 +42,7 @@ from app.schemas.papers import (
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
 )
-from app.services import llm_gateway, route_service
+from app.services import llm_gateway, papers_crawl, route_service
 from app.services.sources import list_providers
 
 router = APIRouter(prefix="/papers", tags=["papers"])
@@ -172,6 +179,97 @@ async def suggest_keywords(
             status_code=502, detail="AI 返回内容无法解析为关键词数组，请重试"
         ) from exc
     return SuggestKeywordsResponse(keywords=keywords)
+
+
+# ── 步 B：页内 digest + 立即检索 ──────────────────────────
+def _paper_url(p: Paper) -> str:
+    """文献落地页：doi 优先；否则按源从全局去重键（pmid 列）构造；拿不到为空串。"""
+    if p.doi:
+        return f"https://doi.org/{p.doi}"
+    key = p.pmid or ""
+    if p.source == "pubmed":
+        return f"https://pubmed.ncbi.nlm.nih.gov/{key}/"
+    prefix, _, rest = key.partition(":")
+    if prefix == "arxiv" and rest:
+        return f"https://arxiv.org/abs/{rest}"
+    if prefix == "openalex" and rest:
+        return f"https://openalex.org/{rest}"
+    if prefix == "semantic_scholar" and rest:
+        return f"https://www.semanticscholar.org/paper/{rest}"
+    return ""
+
+
+@router.get("/digest", response_model=DigestOut)
+async def digest(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """页内 digest（拍板 P1）：今日抓取入库且命中本人订阅关键词的文献 + 高相关标记。
+
+    口径：papers.created_at ≥ 本地今日零点（入库日=今日，本地时区）∩ paper_users
+    本人归属；命中 = 用与抓取打标同一套 match_keywords 按本人当前订阅关键词
+    （resolve_user_keywords，与抓取回落口径一致）重算；高相关 = 命中数 ≥
+    HIGH_RELEVANCE_MIN_KEYWORDS（步 B 常量，先简单后精细）。
+    """
+    keywords = await papers_crawl.resolve_user_keywords(db, user.id)
+    today_start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = (
+        await db.execute(
+            select(Paper)
+            .join(PaperUser, PaperUser.paper_id == Paper.id)
+            .where(PaperUser.user_id == user.id, Paper.created_at >= today_start)
+            .order_by(Paper.created_at.desc(), Paper.id.desc())
+        )
+    ).scalars().all()
+
+    items: list[DigestItemOut] = []
+    for p in rows:
+        matched = papers_crawl.match_keywords(p.title, p.abstract, keywords)
+        if not matched:
+            continue  # 今日入库但已不命中当前订阅关键词（改订阅后常见），digest 不推
+        score = len(matched)
+        items.append(
+            DigestItemOut(
+                paper_id=p.id,
+                title=p.title,
+                source=p.source,
+                year=p.pub_date.year if p.pub_date else None,
+                url=_paper_url(p),
+                matched_keywords=matched,
+                score=score,
+                is_high_relevance=score >= papers_crawl.HIGH_RELEVANCE_MIN_KEYWORDS,
+            )
+        )
+
+    last_run = (
+        await db.execute(
+            select(PaperCrawlRun).order_by(PaperCrawlRun.run_at.desc(), PaperCrawlRun.id.desc()).limit(1)
+        )
+    ).scalar_one_or_none()
+    return DigestOut(
+        last_run_at=last_run.run_at if last_run else None,
+        last_run_status=last_run.status if last_run else "",
+        total_today=len(items),
+        high_relevance_count=sum(1 for i in items if i.is_high_relevance),
+        items=items,
+    )
+
+
+@router.post("/crawl-now", response_model=CrawlNowResponse)
+async def crawl_now(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """立即检索（拍板 P6）：同步跑一轮按用户聚合抓取，写 runs(trigger=manual)。
+
+    进程内 asyncio 锁防并发：已有轮次进行中返回 409（不重排队，避免叠加压力）。
+    force 跳过 Q11 同日幂等——用户显式点「立即检索」就是要跑一轮；入库仍幂等
+    （papers upsert / paper_users ON CONFLICT DO NOTHING），重复跑不重复建行。
+    """
+    try:
+        return await papers_crawl.run_manual_crawl(db)
+    except papers_crawl.CrawlAlreadyRunning as exc:
+        raise HTTPException(
+            status_code=409, detail="已有抓取正在进行，请稍后再试"
+        ) from exc
 
 
 @router.get("/daily", response_model=list[PaperOut])

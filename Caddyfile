@@ -33,6 +33,13 @@
 	root * /srv/frontend
 	file_server
 
+	# Hatchet 引擎控制台（论文域步 B）：仅管理员入口，/admin/hatchet 子路径反代
+	# （引擎 8888 不另开端口、不公网暴露；LITE_FRONTEND_BASE_PATH 与之对应）。
+	# 注意用 handle 而非 handle_path：前缀必须原样转给引擎（其静态服务挂在 base path 下）
+	handle /admin/hatchet* {
+		reverse_proxy hatchet:8888
+	}
+
 	# handle_path 会剥掉 /api 前缀再转发（/api/auth/login → /auth/login）
 	# 注意：只代理 /api/*，/internal/* 不会到达 api 容器（落到 file_server 404），内网接口不暴露
 	handle_path /api/* {

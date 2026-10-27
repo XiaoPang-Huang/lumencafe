@@ -2,6 +2,13 @@
 # :80 通配所有 Host——本机 http://127.0.0.1、局域网 http://<本机IP>（手机调试）都进得来
 # SSE 反代关键：flush_interval -1 关闭缓冲
 :80 {
+	# Hatchet 引擎控制台（论文域步 B）：仅管理员入口，/admin/hatchet 子路径反代
+	# （引擎 8888 不另开端口、不公网暴露；LITE_FRONTEND_BASE_PATH 与之对应）。
+	# 注意用 handle 而非 handle_path：前缀必须原样转给引擎（其静态服务挂在 base path 下）
+	handle /admin/hatchet* {
+		reverse_proxy hatchet:8888
+	}
+
 	# 与生产语义对齐：/api/* 剥前缀反代（api.js 本地直连 :8000 不走这里；
 	# 本机经 127.0.0.1 验收 /api/* 时与生产一致）
 	handle_path /api/* {

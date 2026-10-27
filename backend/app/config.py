@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     papers_retmax: int = 20  # 每关键词每轮最多抓取篇数
     papers_days_back: int = 3  # 只抓最近 N 天发表的文献
 
+    # Hatchet 定时引擎（论文域步 B，组件选型 §三拍板）。只作接线开关与 cron 配置：
+    # SDK 连接参数（HATCHET_CLIENT_TOKEN / HATCHET_CLIENT_TLS_STRATEGY）由 compose
+    # 从 .env 原样注入容器、SDK 自行读取（不走 LUMEN_ 前缀）。
+    # token 留空 = 后端不接线 Hatchet（定时抓取退化到 /internal/jobs 触发），不报错。
+    hatchet_client_token: str = ""  # 镜像 settings.hatchet_client_token 仅作「是否接线」开关
+    papers_crawl_cron: str = "30 7 * * *"  # 每日抓取 cron；引擎容器 TZ=Asia/Shanghai → 本地 7:30
+
     # 系统状态（底座步 5）：/api/status 返回值；发版时手动 bump
     app_version: str = "1.0.0"
 

@@ -43,6 +43,13 @@ mdurl==0.1.2                    # markdown-it-py 传递依赖（显式钉住防�
 # ---- 表单 ----
 python-multipart==0.0.32        # POST /skills/upload multipart 解析（FastAPI UploadFile 依赖）
 
+# ---- Hatchet 定时引擎 SDK（论文域步 B，组件选型 §三拍板） ----
+hatchet-sdk==1.43.1            # 官方 Python SDK；与引擎 v0.114.2 同周发布的配套稳定版
+# 选型（D14）：引擎/镜像无次级版本 tag 可读（ghcr 可见 tag 停在旧线），按「引擎 latest
+# 与 SDK 同日发布版本互配」原则锁定：lite v0.114.2（2026-10-26）↔ SDK 1.43.1（2026-10-26）。
+# 重依赖（grpcio/aiohttp/protobuf 等）由编译器按本文件钉版解析入 requirements.txt。
+# 升级须走 D13 影响面评估，见 docs/依赖锁定清单-v1.md §步 B。
+
 # ---- 传递依赖显式钉版（D14：无未修高危 CVE 才可入锁） ----
 # starlette：fastapi 的传递依赖（约束 >=0.46.0，无上限，元数据兼容）。
 # 0.46.2 存在 3 条未修 HIGH CVE（CVE-2025-62727 / CVE-2026-48818 / CVE-2026-54283，

@@ -51,3 +51,29 @@ class SuggestKeywordsRequest(BaseModel):
 
 class SuggestKeywordsResponse(BaseModel):
     keywords: list[str]  # 8-12 个中英检索关键词（AI 生成，用户勾选确认后自行入库）
+
+
+# ── 步 B：页内 digest + 立即检索 ──────────────────────────
+class DigestItemOut(BaseModel):
+    paper_id: int
+    title: str
+    source: str  # 数据源 key（pubmed/arxiv/...）
+    year: int | None  # 发表年（pub_date 缺失时 null）
+    url: str  # 落地页（doi 优先；否则按源构造；拿不到为空串）
+    matched_keywords: list[str]  # 命中的本人订阅关键词（保序去重）
+    score: int  # 命中关键词数
+    is_high_relevance: bool  # score ≥ HIGH_RELEVANCE_MIN_KEYWORDS（步 B 阈值常量）
+
+
+class DigestOut(BaseModel):
+    last_run_at: dt.datetime | None  # 最近一次抓取轮次时间（无记录时 null）
+    last_run_status: str  # success | failed | ""（尚无轮次）
+    total_today: int  # 今日命中篇数
+    high_relevance_count: int  # 今日高相关篇数
+    items: list[DigestItemOut]
+
+
+class CrawlNowResponse(BaseModel):
+    added: int  # 本轮新入库文献数
+    runs_id: int  # papers_crawl_runs 行 id
+    per_source: dict[str, int]  # 各源本轮命中（provider 返回）篇数

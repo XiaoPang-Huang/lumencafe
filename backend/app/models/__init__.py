@@ -18,6 +18,7 @@ from app.models.llm import (
 from app.models.money import MoneyCategory, MoneyTransaction
 from app.models.papers import (
     Paper,
+    PaperCrawlRun,
     PaperExplanation,
     PaperFavorite,
     PaperNote,
@@ -42,6 +43,7 @@ __all__ = [
     "MoneyCategory",
     "MoneyTransaction",
     "Paper",
+    "PaperCrawlRun",
     "PaperExplanation",
     "PaperFavorite",
     "PaperNote",

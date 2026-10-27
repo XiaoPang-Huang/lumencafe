@@ -42,6 +42,23 @@ class Paper(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PaperCrawlRun(Base):
+    """抓取轮次记录（论文域步 B）：每轮抓取结束写一行，成功/失败都写。
+
+    stats JSONB 承载轮内统计（per_source 各源命中/新增数、users 覆盖用户数等），
+    支撑论文页「已更新于 HH:MM」与 runs 追溯。
+    """
+
+    __tablename__ = "papers_crawl_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    trigger: Mapped[str] = mapped_column(String(16))  # schedule（定时）| manual（立即检索）
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(16))  # success | failed
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class PaperUser(Base):
     """归属表：文献推送给哪些用户（PRD 4.8 归属隔离）。"""
 

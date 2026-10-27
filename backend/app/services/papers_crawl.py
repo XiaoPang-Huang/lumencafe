@@ -1,4 +1,4 @@
-"""文献抓取执行体（论文域步 A 改造：多源 × 按用户订阅聚合）。
+"""文献抓取执行体（论文域步 A 改造：多源 × 按用户订阅聚合；步 B：runs 记录 + 手动触发）。
 
 流程（步 A 拍板）：对每个有文献权限（app:papers）的用户——
 按其勾选的订阅源（user_settings.subscribe_sources，未配置回落默认三源）×
@@ -6,6 +6,13 @@
 契约，sources/ 目录）→ 轮内按 doi/arxiv_id/external_id 去重 →
 打标（tag_paper 不动，TAG_RULES 沿用）→ papers 幂等 upsert（pmid 列 = 全局
 去重键；doi 命中既有行则只补归属，跨源同一篇不重复入库）→ paper_users 归属。
+
+步 B 增量：
+- 每轮结束写 papers_crawl_runs 一行（成功/失败都写；trigger=schedule|manual），
+  stats 带 per_source 各源命中/新增数；
+- run_manual_crawl 供「立即检索」：进程内 asyncio 锁防并发，force=True 跳过
+  Q11 同日幂等（用户显式要求跑一轮），成功后不写当日标记（schedule 幂等照旧）；
+- match_keywords 抽出为 tag_paper 与 digest 共用的命中口径（大小写不敏感子串）。
 
 PubMed 的 esearch/efetch/XML 解析已收编至 app/services/sources/pubmed.py
 （逻辑搬家不改语义）；中译回填沿用网关默认路由（单轮 ≤20 篇、篇间 ≥1s）。
@@ -27,7 +34,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.papers import Paper, PaperUser
+from app.models.papers import Paper, PaperCrawlRun, PaperUser
 from app.models.user import Permission, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 from app.services import llm_gateway, route_service
@@ -38,6 +45,7 @@ logger = logging.getLogger("lumencafe.papers")
 
 TRANSLATE_MAX_PER_ROUND = 20  # 中译单轮 ≤20 篇（PRD 4.8）
 TRANSLATE_INTERVAL = 1.0  # 中译篇间 ≥1s（PRD 4.8）
+HIGH_RELEVANCE_MIN_KEYWORDS = 2  # digest 高相关阈值：命中订阅关键词数 ≥2（先简单后精细）
 
 # 打标规则：标签 -> 命中词列表（大小写不敏感，可多命中；沿用旧版）
 TAG_RULES: dict[str, list[str]] = {
@@ -57,26 +65,48 @@ TRANSLATE_PROMPT = (
 _last_run_date: str | None = None
 
 
+def _today_str() -> str:
+    """业务「今天」= 本地时区（容器 TZ=Asia/Shanghai），全模块统一口径。"""
+    return datetime.now().astimezone().date().isoformat()
+
+
 def already_ran_today() -> bool:
-    return _last_run_date == datetime.now(UTC).date().isoformat()
+    return _last_run_date == _today_str()
 
 
 def mark_ran_today() -> None:
     global _last_run_date
-    _last_run_date = datetime.now(UTC).date().isoformat()
+    _last_run_date = _today_str()
+
+
+def match_keywords(title: str, abstract: str, keywords: list[str]) -> list[str]:
+    """按关键词列表在标题+摘要中做大小写不敏感子串匹配，返回命中的关键词（保序去重）。
+
+    tag_paper（抓取打标）与 digest（页内命中）共用的命中口径，保证两处一致。
+    """
+    text = f"{title}\n{abstract}".lower()
+    hits: list[str] = []
+    for kw in keywords:
+        needle = str(kw).strip().lower()
+        if needle and needle in text and kw not in hits:
+            hits.append(kw)
+    return hits
 
 
 def tag_paper(title: str, abstract: str) -> tuple[list[str], list[str]]:
     """按规则打标签：标题+摘要大小写不敏感匹配，可多命中；返回 (标签, 命中词)。"""
-    text = f"{title}\n{abstract}".lower()
     tags: list[str] = []
     hit_words: list[str] = []
     for tag, words in TAG_RULES.items():
-        matched = [w for w in words if w in text]
+        matched = match_keywords(title, abstract, words)
         if matched:
             tags.append(tag)
             hit_words.extend(matched)
     return tags, hit_words
+
+
+class CrawlAlreadyRunning(Exception):
+    """「立即检索」并发护栏：已有抓取轮次进行中。"""
 
 
 # ── 按用户订阅聚合 ────────────────────────────────────────
@@ -145,6 +175,25 @@ async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
         srcs = sources_by_user.get(uid) or list(DEFAULT_SOURCES)
         subs.append(UserSubscription(user_id=uid, keywords=tuple(kws), sources=tuple(srcs)))
     return subs
+
+
+async def resolve_user_keywords(db: AsyncSession, user_id: int) -> list[str]:
+    """单个用户的订阅关键词：user_settings.subscribe_keywords 优先，回落 env 默认。
+
+    与 collect_subscriptions 同一口径（digest 按用户当前关键词重算命中用）。
+    """
+    row = (
+        await db.execute(
+            select(UserSetting).where(
+                UserSetting.user_id == user_id, UserSetting.key == "subscribe_keywords"
+            )
+        )
+    ).scalar_one_or_none()
+    if row is not None:
+        kws = [str(k).strip() for k in (row.value or {}).get("keywords", []) if str(k).strip()]
+        if kws:
+            return kws
+    return [k.strip() for k in (settings.papers_default_keywords or "").split(",") if k.strip()]
 
 
 # ── 入库 ────────────────────────────────────────────────
@@ -218,11 +267,15 @@ async def _attribute_paper(db: AsyncSession, paper_id: int, user_ids: list[int])
 
 
 async def _papers_created_today(db: AsyncSession) -> bool:
-    """Q11 第二重去重：papers 表当日已有抓取记录即视为已执行。"""
+    """Q11 第二重去重：papers 表当日已有抓取记录即视为已执行。
+
+    日期口径 = 本地（容器 TZ=Asia/Shanghai，与 PG 会话时区一致；digest 今日口径
+    同为本地零点）：created_at 经 func.date 按会话时区取日期，与本地今天比较。
+    """
     count = (
         await db.execute(
             select(func.count(Paper.id)).where(
-                func.date(Paper.created_at) == datetime.now(UTC).date()
+                func.date(Paper.created_at) == datetime.now().astimezone().date()
             )
         )
     ).scalar_one()
@@ -271,52 +324,115 @@ async def _backfill_translations(db: AsyncSession) -> int:
     return done
 
 
-async def run_daily_crawl(db: AsyncSession) -> int:
-    """执行一轮文献抓取，返回本轮新入库文献数（PRD 4.8：{added: n} 的 n）。"""
-    if already_ran_today():
-        return 0
-    if await _papers_created_today(db):
-        mark_ran_today()  # 双保险：表内已有当日记录
-        return 0
+# ── 轮次执行与 runs 记录（步 B） ──────────────────────────
+# 「立即检索」并发护栏：进程内 asyncio 锁，同一时刻只允许一轮抓取。
+_crawl_lock = asyncio.Lock()
+
+
+async def _write_run(
+    db: AsyncSession, trigger: str, stats: dict, status: str, error: str | None = None
+) -> PaperCrawlRun:
+    """写一行抓取轮次记录并提交；返回 run 行（含 ORM 生成的自增 id）。"""
+    run = PaperCrawlRun(trigger=trigger, stats=stats, status=status, error=error)
+    db.add(run)
+    await db.commit()
+    return run
+
+
+async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCrawlRun | None:
+    """执行一轮抓取并写 runs 表（成功/失败都写）；被 Q11 幂等跳过时返回 None。
+
+    force=True（手动「立即检索」）：跳过同日幂等，跑完整一轮；不写进程内当日标记
+    （schedule 的幂等语义不受手动轮影响，表内当日记录仍是第二重保险）。
+    失败时先 rollback 再写 failed 行，然后原异常上抛（Hatchet 侧据此标记运行失败）。
+    """
+    if not force:
+        if already_ran_today():
+            return None
+        if await _papers_created_today(db):
+            mark_ran_today()  # 双保险：表内已有当日记录
+            return None
 
     subs = await collect_subscriptions(db)
+    stats: dict = {"per_source": {}, "users": len(subs), "fetched": 0, "added": 0}
     if not subs:
         logger.info("无可抓取用户（无文献权限或无有效订阅关键词），本轮跳过")
-        mark_ran_today()
-        return 0
+        if not force:
+            mark_ran_today()
+        return await _write_run(db, trigger, stats, "success")
 
     since_date = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
     added = 0
-    for sub in subs:
-        for source_name in sub.sources:
-            provider = get_provider(source_name)
-            if provider is None:
-                logger.warning("用户 %d 勾选了未注册源 %s，跳过", sub.user_id, source_name)
-                continue
-            try:
-                items = await provider.search(list(sub.keywords), since_date)
-            except httpx.HTTPError as exc:
-                logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
-                continue
-            await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
-            seen_keys: set[str] = set()
-            for item in items:
-                keys = [k for k in item.dedupe_keys if k]
-                if any(k in seen_keys for k in keys):
-                    continue  # 轮内跨源去重：doi > arxiv_id > external_id
-                seen_keys.update(keys)
-                tags, hits = tag_paper(item.title, item.abstract)
-                paper_id, is_new = await _upsert_item(db, item, tags, hits)
-                await _attribute_paper(db, paper_id, [sub.user_id])
-                if is_new:
-                    added += 1
-            await db.commit()
-            logger.info(
-                "用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added
-            )
+    try:
+        for sub in subs:
+            for source_name in sub.sources:
+                provider = get_provider(source_name)
+                if provider is None:
+                    logger.warning("用户 %d 勾选了未注册源 %s，跳过", sub.user_id, source_name)
+                    continue
+                try:
+                    items = await provider.search(list(sub.keywords), since_date)
+                except httpx.HTTPError as exc:
+                    logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
+                    continue
+                await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
+                src_stats = stats["per_source"].setdefault(source_name, {"fetched": 0, "added": 0})
+                src_stats["fetched"] += len(items)
+                stats["fetched"] += len(items)
+                seen_keys: set[str] = set()
+                for item in items:
+                    keys = [k for k in item.dedupe_keys if k]
+                    if any(k in seen_keys for k in keys):
+                        continue  # 轮内跨源去重：doi > arxiv_id > external_id
+                    seen_keys.update(keys)
+                    tags, hits = tag_paper(item.title, item.abstract)
+                    paper_id, is_new = await _upsert_item(db, item, tags, hits)
+                    await _attribute_paper(db, paper_id, [sub.user_id])
+                    if is_new:
+                        added += 1
+                        src_stats["added"] += 1
+                await db.commit()
+                logger.info(
+                    "用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added
+                )
+        if not force:
+            mark_ran_today()
+        translated = await _backfill_translations(db)
+        if translated:
+            logger.info("中译回填 %d 篇", translated)
+        stats["translated"] = translated
+        stats["added"] = added
+        return await _write_run(db, trigger, stats, "success")
+    except Exception as exc:
+        await db.rollback()  # 会话可能处于中断事务，先复位再写 failed 行
+        logger.exception("抓取轮次失败（trigger=%s）", trigger)
+        return await _write_run(db, trigger, stats, "failed", error=str(exc)[:1000])
 
-    mark_ran_today()
-    translated = await _backfill_translations(db)
-    if translated:
-        logger.info("中译回填 %d 篇", translated)
-    return added
+
+async def run_daily_crawl(db: AsyncSession, trigger: str = "schedule") -> int:
+    """执行一轮文献抓取（Q11 同日幂等），写 runs 表，返回本轮新入库文献数。
+
+    PRD 4.8 {added: n} 的 n；被幂等跳过时返回 0 且不写 runs（本轮未执行）。
+    Hatchet cron 与 /internal/jobs/papers-crawl 共用本函数。
+    """
+    run = await _execute_round(db, trigger=trigger, force=False)
+    return run.stats.get("added", 0) if run is not None else 0
+
+
+async def run_manual_crawl(db: AsyncSession) -> dict:
+    """「立即检索」：force 跑一轮抓取，返回 {added, runs_id, per_source}。
+
+    进程内 asyncio 锁防并发：已有轮次进行中抛 CrawlAlreadyRunning（路由转 409）。
+    """
+    if _crawl_lock.locked():
+        raise CrawlAlreadyRunning()
+    async with _crawl_lock:
+        run = await _execute_round(db, trigger="manual", force=True)
+    assert run is not None  # force=True 不会被幂等跳过
+    return {
+        "added": run.stats.get("added", 0),
+        "runs_id": run.id,
+        "per_source": {
+            source: counts["fetched"] for source, counts in run.stats["per_source"].items()
+        },
+    }
