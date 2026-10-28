@@ -232,3 +232,30 @@ def test_arxiv_parse_error_returns_empty():
     from app.services.sources.arxiv import _parse_atom
 
     assert _parse_atom("not xml at all", "kw") == []
+
+
+def test_pubmed_pub_date_prefers_article_date_over_future_issue():
+    """期号预分配坑（2026-10-29 用户抓出 2027 年论文）：纸刊期号日期可能被出版社
+    提前挂到明年，必须优先 ArticleDate（在线实际发表），双未来则置空不编造。"""
+    from xml.etree import ElementTree as ET
+
+    from app.services.sources.pubmed import _parse_pub_date
+
+    xml_future_issue = """<Article>
+      <ArticleDate><Year>2026</Year><Month>8</Month><Day>15</Day></ArticleDate>
+      <Journal><JournalIssue><PubDate><Year>2027</Year><Month>Jan</Month></PubDate></JournalIssue></Journal>
+    </Article>"""
+    d = _parse_pub_date(ET.fromstring(xml_future_issue))
+    assert d is not None and d.year == 2026
+
+    xml_both_future = """<Article>
+      <ArticleDate><Year>2028</Year><Month>1</Month><Day>1</Day></ArticleDate>
+      <Journal><JournalIssue><PubDate><Year>2028</Year></PubDate></JournalIssue></Journal>
+    </Article>"""
+    assert _parse_pub_date(ET.fromstring(xml_both_future)) is None
+
+    xml_no_article_date = """<Article>
+      <Journal><JournalIssue><PubDate><MedlineDate>2026 Jan-Feb</MedlineDate></PubDate></JournalIssue></Journal>
+    </Article>"""
+    d2 = _parse_pub_date(ET.fromstring(xml_no_article_date))
+    assert d2 is not None and d2.year == 2026

@@ -107,22 +107,55 @@ def _element_text(el: ET.Element | None) -> str:
     return "".join(el.itertext()).strip()
 
 
-def _parse_pub_date(article: ET.Element) -> date | None:
-    """解析期刊发表日期；只有 MedlineDate（如 "2024 Jan-Feb"）时取其中的年份。"""
-    pub_date = article.find("Journal/JournalIssue/PubDate")
-    if pub_date is None:
+def _coerce_year(text: str | None) -> int | None:
+    if not text:
         return None
-    year_el = pub_date.find("Year")
-    if year_el is not None and year_el.text:
-        try:
-            return date(int(year_el.text.strip()), 1, 1)
-        except ValueError:
-            return None
-    medline_el = pub_date.find("MedlineDate")
-    if medline_el is not None and medline_el.text:
-        match = re.search(r"(\d{4})", medline_el.text)
-        if match:
-            return date(int(match.group(1)), 1, 1)
+    match = re.search(r"(\d{4})", text)
+    return int(match.group(1)) if match else None
+
+
+def _parse_pub_date(article: ET.Element) -> date | None:
+    """解析发表日期。
+
+    字段优先级（PubMed XML 的坑，2026-10-29 用户抓出 2027 年论文）：
+    1. ``Article/ArticleDate`` = 在线实际发表日（e-pub，真实首发时间）——**优先**；
+    2. ``JournalIssue/PubDate`` = 纸刊期号日期，出版社常提前分配（2026-10 就能挂
+       "2027 Jan"），只能作 fallback；
+    3. 年份 sanity：结果晚于「当前本地年 + 1」视为期号预分配错误，回落另一字段，
+       仍未来则返回 None（不编造日期）。
+    MedlineDate（如 "2024 Jan-Feb"）只取其中年份，月份不可得。
+    """
+    # 容忍度：纸刊期号日期允许最多提前约 4 个月（当年 10 月挂 "2027 Jan" 属正常
+    # 期号预分配）；超过则视为脏数据，回落下一候选，全未来返回 None（不编造）。
+    horizon = date.today() + timedelta(days=120)
+
+    candidates: list[date] = []
+
+    article_date = article.find("ArticleDate")
+    if article_date is not None:
+        y = _coerce_year((article_date.findtext("Year") or "").strip() or None)
+        if y:
+            m = _coerce_year((article_date.findtext("Month") or "").strip() or None) or 1
+            d = _coerce_year((article_date.findtext("Day") or "").strip() or None) or 1
+            try:
+                candidates.append(date(y, min(max(m, 1), 12), min(max(d, 1), 28)))
+            except ValueError:
+                candidates.append(date(y, 1, 1))
+
+    pub_date = article.find("Journal/JournalIssue/PubDate")
+    if pub_date is not None:
+        y = _coerce_year((pub_date.findtext("Year") or "").strip() or None)
+        if y:
+            candidates.append(date(y, 1, 1))
+        else:
+            medline_el = pub_date.find("MedlineDate")
+            y = _coerce_year((medline_el.text or "").strip() if medline_el is not None else None)
+            if y:
+                candidates.append(date(y, 1, 1))
+
+    for cand in candidates:
+        if cand <= horizon:
+            return cand
     return None
 
 
