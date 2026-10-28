@@ -354,10 +354,22 @@ _crawl_lock = asyncio.Lock()
 
 
 async def _write_run(
-    db: AsyncSession, trigger: str, stats: dict, status: str, error: str | None = None
+    db: AsyncSession,
+    trigger: str,
+    stats: dict,
+    status: str,
+    error: str | None = None,
+    run_at: datetime | None = None,
 ) -> PaperCrawlRun:
-    """写一行抓取轮次记录并提交；返回 run 行（含 ORM 生成的自增 id）。"""
+    """写一行抓取轮次记录并提交；返回 run 行（含 ORM 生成的自增 id）。
+
+    run_at 显式传轮次发起时刻（_execute_round 捕获）：该轮入库的论文 created_at
+    均 ≥ run_at，digest「自最近一轮检索以来」窗口才能把本轮命中算进来；
+    不传则回落数据库 now()（兼容直接调用方）。
+    """
     run = PaperCrawlRun(trigger=trigger, stats=stats, status=status, error=error)
+    if run_at is not None:
+        run.run_at = run_at
     db.add(run)
     await db.commit()
     return run
@@ -370,6 +382,7 @@ async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCr
     （schedule 的幂等语义不受手动轮影响，表内当日记录仍是第二重保险）。
     失败时先 rollback 再写 failed 行，然后原异常上抛（Hatchet 侧据此标记运行失败）。
     """
+    started_at = datetime.now(UTC)  # 轮次发起时刻：digest 窗口锚点（见 _write_run）
     if not force:
         if already_ran_today():
             return None
@@ -383,7 +396,7 @@ async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCr
         logger.info("无可抓取用户（无文献权限或无有效订阅关键词），本轮跳过")
         if not force:
             mark_ran_today()
-        return await _write_run(db, trigger, stats, "success")
+        return await _write_run(db, trigger, stats, "success", run_at=started_at)
 
     since_date = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
     added = 0
@@ -426,11 +439,13 @@ async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCr
             logger.info("中译回填 %d 篇", translated)
         stats["translated"] = translated
         stats["added"] = added
-        return await _write_run(db, trigger, stats, "success")
+        return await _write_run(db, trigger, stats, "success", run_at=started_at)
     except Exception as exc:
         await db.rollback()  # 会话可能处于中断事务，先复位再写 failed 行
         logger.exception("抓取轮次失败（trigger=%s）", trigger)
-        return await _write_run(db, trigger, stats, "failed", error=str(exc)[:1000])
+        return await _write_run(
+            db, trigger, stats, "failed", error=str(exc)[:1000], run_at=started_at
+        )
 
 
 async def run_daily_crawl(db: AsyncSession, trigger: str = "schedule") -> int:

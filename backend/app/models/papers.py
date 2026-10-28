@@ -51,6 +51,9 @@ class Paper(Base):
 class PaperCrawlRun(Base):
     """抓取轮次记录（论文域步 B）：每轮抓取结束写一行，成功/失败都写。
 
+    run_at 锚定轮次发起时刻（而非结束时刻）：该轮入库的 papers.created_at
+    均 ≥ run_at，digest「自最近一轮成功检索以来」窗口以它为界（发起时刻由
+    _execute_round 捕获显式写入；直接插入无显式值时回落数据库 now()）。
     stats JSONB 承载轮内统计（per_source 各源命中/新增数、users 覆盖用户数等），
     支撑论文页「已更新于 HH:MM」与 runs 追溯。
     """

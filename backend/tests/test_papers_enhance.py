@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models.papers import Paper, PaperFavorite, PaperNote, PaperUser
+from app.models.papers import Paper, PaperCrawlRun, PaperFavorite, PaperNote, PaperUser
 from app.services import papers_crawl
 from app.services.sources.arxiv import _parse_atom as arxiv_parse
 from app.services.sources.doaj import _parse_results as doaj_parse
@@ -313,6 +313,99 @@ async def test_daily_sort_if_min_limit(client):
 
     by_time = (await client.get("/papers/daily?sort=time&limit=1", headers=headers)).json()
     assert by_time[0]["title"] == "Alpha alzheimer"  # 最新入库
+
+
+# ── 排序 NULLS LAST 修复轮（PG DESC 默认 NULLS FIRST，没 IF 的须沉底） ──
+async def test_sort_if_nulls_last_digest_and_daily(client):
+    """IF 有/无混合：sort=if 时 null 条目沉底（digest 与 daily 同口径，不设 if_min）。"""
+    await _seed_papers_for_sorting(client, headers := await login(client))
+
+    by_if = (await client.get("/papers/digest?sort=if", headers=headers)).json()
+    titles = [i["title"] for i in by_if["items"]]
+    assert "Gamma alzheimer" in titles  # null IF 那篇仍在列表（未设 if_min 不过滤）
+    assert titles[-1] == "Gamma alzheimer"  # 但沉底
+    assert by_if["items"][-1]["if_approx"] is None
+    assert by_if["items"][0]["if_approx"] == 8.25  # 非 null 仍按倒序在顶
+
+    daily = (await client.get("/papers/daily?sort=if", headers=headers)).json()
+    daily_titles = [p["title"] for p in daily]
+    assert daily_titles[-1] == "Gamma alzheimer"
+    assert daily[0]["if_approx"] == 8.25
+
+
+# ── digest 时间窗口径：最近一轮成功检索以来入库（无 runs 回落本地今日零点） ──
+async def _seed_window_papers(run_at: datetime):
+    """造 3 篇归属文献：run_at 之前 / run_at 之后（昨天）/ 今天，均命中订阅关键词。"""
+    specs = [
+        ("win-before", "Before run alzheimer", run_at - timedelta(hours=1)),
+        ("win-after", "After run alzheimer", run_at + timedelta(hours=1)),
+        ("win-today", "Today fresh alzheimer", datetime.now(UTC)),
+    ]
+    async with SessionLocal() as db:
+        for pmid, title, created in specs:
+            paper = Paper(
+                pmid=pmid, source="openalex", title=title,
+                abstract="A study about alzheimer.", created_at=created,
+            )
+            db.add(paper)
+            await db.flush()
+            db.add(PaperUser(paper_id=paper.id, user_id=1))
+        await db.commit()
+
+
+async def test_digest_window_since_last_successful_run(client):
+    """窗口=最近一轮成功 runs 的 run_at：run 后的（含昨天）算入，run 前的排除；
+    之后的失败轮次不改窗口；total_today 同口径。"""
+    headers = await login(client)
+    await client.put(
+        "/me/settings",
+        json={"key": "subscribe_keywords", "value": {"keywords": ["alzheimer"]}},
+        headers=headers,
+    )
+    run_at = datetime.now(UTC) - timedelta(days=1)  # 最近一轮成功检索在昨天
+    await _seed_window_papers(run_at)
+    async with SessionLocal() as db:
+        db.add(PaperCrawlRun(trigger="manual", stats={}, status="success", run_at=run_at))
+        await db.commit()
+
+    data = (await client.get("/papers/digest", headers=headers)).json()
+    titles = [i["title"] for i in data["items"]]
+    assert "After run alzheimer" in titles  # 昨天但 run 之后 → 算入
+    assert "Today fresh alzheimer" in titles  # 今天 → 算入
+    assert "Before run alzheimer" not in titles  # run 之前 → 排除
+    assert data["total_today"] == 2
+    assert data["last_run_at"] is not None
+
+    # 其后追加一次失败轮次：窗口仍锚在最近成功轮，口径不变
+    async with SessionLocal() as db:
+        db.add(PaperCrawlRun(
+            trigger="schedule", stats={}, status="failed", error="boom",
+            run_at=run_at + timedelta(hours=2),
+        ))
+        await db.commit()
+    data = (await client.get("/papers/digest", headers=headers)).json()
+    titles = [i["title"] for i in data["items"]]
+    assert "After run alzheimer" in titles and "Today fresh alzheimer" in titles
+    assert "Before run alzheimer" not in titles
+    assert data["total_today"] == 2
+
+
+async def test_digest_window_falls_back_to_local_midnight_without_runs(client):
+    """无任何 runs 记录：窗口回落本地今日零点——今日入库算入、昨日入库不算。"""
+    headers = await login(client)
+    await client.put(
+        "/me/settings",
+        json={"key": "subscribe_keywords", "value": {"keywords": ["alzheimer"]}},
+        headers=headers,
+    )
+    run_at = datetime.now(UTC) - timedelta(days=1)  # 仅用于造「昨天 run 后」那篇
+    await _seed_window_papers(run_at)
+
+    data = (await client.get("/papers/digest", headers=headers)).json()
+    titles = [i["title"] for i in data["items"]]
+    assert titles == ["Today fresh alzheimer"]  # 两篇昨天的都不算今日
+    assert data["total_today"] == 1
+    assert data["last_run_at"] is None
 
 
 # ── 7 天滚动清理（P14） ─────────────────────────────────

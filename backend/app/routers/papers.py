@@ -10,6 +10,9 @@
 - 论文域增强（P15/P18）：digest 与 /papers/daily 支持 sort(time|if|score)、
   if_min（影响因子下限，null 值被过滤）、limit；未显式传的参数回落用户 papers_prefs
   （user_settings JSONB：{display_limit, sort, if_min}），响应条目带齐元数据字段。
+- 论文域修复轮：sort 三字段 SQL 显式 NULLS LAST（PG DESC 默认 NULLS FIRST，
+  没 IF/被引的沉底）；digest 窗口改为「最近一轮成功检索（runs.status=success）
+  的 run_at 之后入库」，无 runs 记录回落本地今日零点。
 """
 import json
 import logging
@@ -132,6 +135,19 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
     )
 
 
+async def _last_successful_run_at(db: AsyncSession) -> datetime | None:
+    """最近一轮成功抓取（runs.status=success）的 run_at；无成功轮次返回 None。
+
+    digest 的「本轮新命中」窗口锚点：失败轮次不算数（那轮没带来新数据），
+    窗口应锚在最近一次真正检索成功的时间上。
+    """
+    return (
+        await db.execute(
+            select(func.max(PaperCrawlRun.run_at)).where(PaperCrawlRun.status == "success")
+        )
+    ).scalar_one_or_none()
+
+
 async def _saved_ids(db: AsyncSession, user_id: int, paper_ids: list[int]) -> set[int]:
     if not paper_ids:
         return set()
@@ -248,18 +264,21 @@ async def digest(
     limit: int | None = Query(default=None, ge=1, le=500),
     user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
 ):
-    """页内 digest（拍板 P1）：今日抓取入库且命中本人订阅关键词的文献 + 高相关标记。
+    """页内 digest（拍板 P1）：本轮新命中且命中本人订阅关键词的文献 + 高相关标记。
 
-    口径：papers.created_at ≥ 本地今日零点（入库日=今日，本地时区）∩ paper_users
-    本人归属；命中 = 用与抓取打标同一套 match_keywords 按本人当前订阅关键词
-    （resolve_user_keywords，与抓取回落口径一致）重算；高相关 = 命中数 ≥
-    HIGH_RELEVANCE_MIN_KEYWORDS（步 B 常量，先简单后精细）。
+    窗口口径（修复轮）：papers.created_at ≥ 最近一轮成功检索（runs.status=success）
+    的 run_at——过了午夜昨天的命中仍属于「本轮」，与页头 last_run_at 对齐；
+    无任何成功轮次时回落本地今日零点（入库日=今日，本地时区）。
+    再 ∩ paper_users 本人归属；命中 = 用与抓取打标同一套 match_keywords 按本人
+    当前订阅关键词（resolve_user_keywords，与抓取回落口径一致）重算；高相关 =
+    命中数 ≥ HIGH_RELEVANCE_MIN_KEYWORDS（步 B 常量，先简单后精细）。
 
     排序过滤（P18）：sort=time|if|score（默认 time=入库时间倒序；if=影响因子近似
-    倒序 nulls last；score=命中词数倒序）；if_min=影响因子下限（设置了则近似值
-    为 null 的条目被过滤）；limit 截断展示条数。未显式传的参数回落 papers_prefs。
-    在已抓数据上筛排，不触发重检索；total_today/high_relevance_count 为过滤后、
-    截断前的口径（页头数字与筛选项所见一致）。
+    倒序 NULLS LAST；score=命中词数倒序）——三个字段 SQL 全部显式 NULLS LAST，
+    没 IF/没打分的沉底（PG 默认 DESC NULLS FIRST，不显式会被顶到最前）；
+    if_min=影响因子下限（设置了则近似值为 null 的条目被过滤）；limit 截断展示条数。
+    未显式传的参数回落 papers_prefs。在已抓数据上筛排，不触发重检索；
+    total_today/high_relevance_count 为过滤后、截断前的口径（页头数字与筛选项所见一致）。
     """
     prefs = await _papers_prefs(db, user.id)
     sort = sort or prefs["sort"]
@@ -267,13 +286,26 @@ async def digest(
     limit = limit or prefs["display_limit"]
 
     keywords = await papers_crawl.resolve_user_keywords(db, user.id)
-    today_start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
-    stmt = (
-        select(Paper)
-        .join(PaperUser, PaperUser.paper_id == Paper.id)
-        .where(PaperUser.user_id == user.id, Paper.created_at >= today_start)
-        .order_by(Paper.created_at.desc(), Paper.id.desc())
+    last_ok = await _last_successful_run_at(db)
+    if last_ok is not None:
+        window_start = last_ok
+    else:
+        window_start = datetime.now().astimezone().replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+    stmt = select(Paper).join(PaperUser, PaperUser.paper_id == Paper.id).where(
+        PaperUser.user_id == user.id, Paper.created_at >= window_start
     )
+    if sort == "if":
+        stmt = stmt.order_by(
+            Paper.if_approx.desc().nullslast(),
+            Paper.created_at.desc().nullslast(),
+            Paper.id.desc(),
+        )
+    else:
+        # time 与 score 的兜底顺序：入库时间倒序（score 的命中词数在 Python 侧重算后
+        # 稳定排序，行序即并列时的次序）；created_at 显式 NULLS LAST 保持一致口径
+        stmt = stmt.order_by(Paper.created_at.desc().nullslast(), Paper.id.desc())
     if if_min is not None:
         stmt = stmt.where(Paper.if_approx >= if_min)  # null 近似值被下限过滤
     rows = (await db.execute(stmt)).scalars().all()
@@ -303,11 +335,10 @@ async def digest(
             )
         )
 
-    # 稳定排序：行已按 created_at 倒序，同分并列保持时间倒序
+    # 稳定排序：if/time 已按 SQL NULLS LAST 定序；score（命中词数，Python 侧重算）
+    # 在行序（created_at 倒序）基础上稳定排序，同分并列保持时间倒序
     if sort == "score":
         items.sort(key=lambda i: -i.score)
-    elif sort == "if":
-        items.sort(key=lambda i: (i.if_approx is None, -(i.if_approx or 0.0)))
 
     total = len(items)
     high = sum(1 for i in items if i.is_high_relevance)
@@ -357,6 +388,7 @@ async def daily_papers(
     """每日推送：本人订阅抓到的文献；tag 为 JSONB 包含筛选。
 
     排序过滤（P18）同 /papers/digest：sort=time|if|score（score=抓取打标命中词数），
+    三个字段 SQL 全部显式 NULLS LAST（没 IF/没打分的沉底）；
     if_min 影响因子下限（null 被过滤），limit 截断；未显式传的参数回落 papers_prefs。
     在已抓数据上筛排，不触发重检索。
     """
@@ -374,17 +406,19 @@ async def daily_papers(
         stmt = stmt.where(Paper.if_approx >= if_min)  # null 近似值被下限过滤
     if sort == "if":
         stmt = stmt.order_by(
-            Paper.if_approx.desc().nullslast(), Paper.created_at.desc(), Paper.id.desc()
+            Paper.if_approx.desc().nullslast(),
+            Paper.created_at.desc().nullslast(),
+            Paper.id.desc(),
         )
     elif sort == "score":
         # 相关度=抓取打标命中词数（keywords JSONB 长度），数据库内排序
         stmt = stmt.order_by(
-            func.jsonb_array_length(Paper.keywords).desc(),
-            Paper.created_at.desc(),
+            func.jsonb_array_length(Paper.keywords).desc().nullslast(),
+            Paper.created_at.desc().nullslast(),
             Paper.id.desc(),
         )
     else:
-        stmt = stmt.order_by(Paper.created_at.desc(), Paper.id.desc())
+        stmt = stmt.order_by(Paper.created_at.desc().nullslast(), Paper.id.desc())
     stmt = stmt.limit(limit)
     papers = list((await db.execute(stmt)).scalars().all())
     saved = await _saved_ids(db, user.id, [p.id for p in papers])

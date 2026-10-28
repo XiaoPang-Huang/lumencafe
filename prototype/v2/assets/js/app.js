@@ -2065,6 +2065,11 @@
   };
 
   var PP_IF_TIP = "影响因子近似口径：OpenAlex 引文影响指标 FWCI（字段加权引用影响，非 JCR 官方值）";
+  /* IF≈ 徽标：常驻可见的「?」角标（口径说明不再只藏在 tooltip 里） */
+  function _ifBadge(v) {
+    return '<span class="pp-if" title="' + esc(PP_IF_TIP) + '">IF≈' + esc(String(v)) +
+      '<sup class="pp-if-q" aria-label="影响因子为近似口径，仅供参考">?</sup></span>';
+  }
 
   var PP_NAV_EMPTY = {
     digest: "今日暂无命中：点右上角「⚙ 订阅设置」配置关键词与数据源，再「⟳ 立即检索」跑一轮",
@@ -2094,7 +2099,7 @@
     if (v.year) parts.push(esc(String(v.year)));
     if (v.cited_count != null) parts.push("被引 " + esc(String(v.cited_count)));
     if (v.if_approx != null) {
-      parts.push('<span class="pp-if" title="' + esc(PP_IF_TIP) + '">IF≈' + esc(String(v.if_approx)) + "</span>");
+      parts.push(_ifBadge(v.if_approx));
     }
     return parts.join(" · ");
   }
@@ -2174,8 +2179,15 @@
     var box = qs("[data-pp-list]");
     if (!box) return;
     if (!paperState.items.length) {
+      /* digest 空态分两种：最近一轮检索无新命中（窗口口径，给 HH:MM）vs 尚未配置/抓取 */
+      var emptyText = PP_NAV_EMPTY[paperState.nav] || PP_NAV_EMPTY.all;
+      var dg = paperState.digest;
+      if (paperState.nav === "digest" && dg && dg.last_run_at && !(dg.total_today > 0)) {
+        emptyText = "最近一轮检索（" + String(dg.last_run_at).slice(11, 16) + "）无新命中：" +
+          "点「⟳ 立即检索」可再跑一轮，或放宽订阅关键词";
+      }
       box.innerHTML = '<div class="card" style="padding:22px;"><div class="muted" style="font-size:13.5px;">' +
-        (PP_NAV_EMPTY[paperState.nav] || PP_NAV_EMPTY.all) + "</div></div>";
+        emptyText + "</div></div>";
       return;
     }
     box.innerHTML = paperState.items.map(paperCardHtml).join("");
@@ -2306,7 +2318,7 @@
     var citeParts = [];
     if (p.cited_count != null) citeParts.push("被引 " + esc(String(p.cited_count)));
     if (p.if_approx != null) {
-      citeParts.push('<span class="pp-if" title="' + esc(PP_IF_TIP) + '">IF≈' + esc(String(p.if_approx)) + "</span>");
+      citeParts.push(_ifBadge(p.if_approx));
     }
     return '' +
       '<div class="pp-detail-head">' +

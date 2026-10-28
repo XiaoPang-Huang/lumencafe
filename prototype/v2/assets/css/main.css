@@ -1516,6 +1516,14 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
   background: var(--brand-soft); color: var(--brand-strong);
   font-weight: 600; cursor: help;
 }
+/* 「?」角标：口径说明常驻可见（小圆点，不再只藏在悬停 tooltip 里） */
+.pp-if-q {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; margin-left: 3px; border-radius: 50%;
+  background: var(--brand-strong); color: #fff;
+  font-size: 9px; font-weight: 700; line-height: 1;
+  vertical-align: super; cursor: help;
+}
 .pp-card {
   background: var(--surface);
   border: 1px solid var(--pop-line);
