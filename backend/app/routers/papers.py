@@ -13,6 +13,11 @@
 - 论文域修复轮：sort 三字段 SQL 显式 NULLS LAST（PG DESC 默认 NULLS FIRST，
   没 IF/被引的沉底）；digest 窗口改为「最近一轮成功检索（runs.status=success）
   的 run_at 之后入库」，无 runs 记录回落本地今日零点。
+- 论文域增强③（P16/P20）：POST /papers/{id}/collect-parse 收藏并解析（自动收藏幂等
+  → 触发 papers-parse workflow，引擎未接线回落进程内同步执行；done 直返/pending·
+  running 409/failed·none 可重跑）；GET /papers/{id}/parse-status 轮询；GET
+  /papers/parsed = 我的笔记列表（已收藏 ∩ 解析 done，parsed_at 倒序）；digest/daily
+  条目与详情带 parse_status（详情另带 parse_error 供失败指引区）。
 """
 import json
 import logging
@@ -44,6 +49,7 @@ from app.schemas.papers import (
     NoteRequest,
     PaperDetailOut,
     PaperOut,
+    ParseStatusOut,
     SaveResponse,
     SemanticSearchRequest,
     SemanticSearchResponse,
@@ -51,7 +57,7 @@ from app.schemas.papers import (
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
 )
-from app.services import llm_gateway, papers_crawl, route_service
+from app.services import llm_gateway, paper_parse, papers_crawl, pipeline, route_service
 from app.services.sources import SOURCE_CATALOG, SourceCatalogEntry, list_providers
 from app.services.sources.keys import fetch_service_api_key
 
@@ -122,6 +128,8 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
         keywords=list(p.keywords or []),
         created_at=p.created_at,
         saved=saved,
+        parse_status=p.parse_status or "none",
+        parsed_at=p.parsed_at,
     )
 
 
@@ -389,6 +397,7 @@ async def digest(
                 score=score,
                 is_high_relevance=score >= papers_crawl.HIGH_RELEVANCE_MIN_KEYWORDS,
                 saved=p.id in saved_ids,
+                parse_status=p.parse_status or "none",
             )
         )
 
@@ -497,6 +506,92 @@ async def favorite_papers(
     return [_out(p, True) for p in rows]
 
 
+# ── 收藏并解析全链路（P16/P20）────────────────────────────
+async def _parse_status_out(db: AsyncSession, user_id: int, pid: int) -> ParseStatusOut:
+    """按当前库内状态组轮询响应（saved 反映「收藏并解析」自动收藏后的回执）。"""
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == pid))
+    ).scalar_one_or_none()
+    if paper is None:
+        raise HTTPException(status_code=404, detail="文献不存在")
+    saved = await _saved_ids(db, user_id, [pid])
+    return ParseStatusOut(
+        parse_status=paper.parse_status or "none",
+        parse_error=paper.parse_error,
+        parsed_at=paper.parsed_at,
+        saved=pid in saved,
+    )
+
+
+@router.get("/parsed", response_model=list[PaperOut])
+async def parsed_papers(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """我的笔记列表（P16）：已收藏且解析完成（parse_status=done）的文献。
+
+    按 parsed_at 倒序；前端「我的笔记」左导航列表 = 标题 + 解析时间 + 进入笔记。
+    """
+    rows = (
+        await db.execute(
+            select(Paper)
+            .join(PaperFavorite, PaperFavorite.paper_id == Paper.id)
+            .where(PaperFavorite.user_id == user.id, Paper.parse_status == "done")
+            .order_by(Paper.parsed_at.desc().nullslast(), Paper.id.desc())
+        )
+    ).scalars().all()
+    return [_out(p, True) for p in rows]
+
+
+@router.get("/{pid}/parse-status", response_model=ParseStatusOut)
+async def parse_status(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """解析状态轮询（P16：详情面板 2s 轮询到 done/failed 停）；归属隔离同详情。"""
+    await _get_mine(db, user.id, pid)
+    return await _parse_status_out(db, user.id, pid)
+
+
+@router.post("/{pid}/collect-parse", response_model=ParseStatusOut)
+async def collect_parse(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """收藏并解析（P16 主按钮）：自动收藏（幂等）→ 触发 papers-parse workflow。
+
+    - 自动收藏 ON CONFLICT DO NOTHING，已收藏不重复建行（P19 持久化）；
+    - 幂等：done 直返不再跑；pending/running 返回 409（前端「解析中…」禁用按钮）；
+      failed/none 允许重跑（重试 = 再次点按钮）；
+    - 触发：Hatchet 事件推送成功 → 异步执行（先置 pending 占坑防并发双跑）；
+      引擎未接线/推送失败 → 进程内同步执行（与 crawl-now 同一哲学，即时出结果）。
+    """
+    paper = await _get_mine(db, user.id, pid)
+    # 自动收藏（幂等；收藏本身持久化，受 P14 清空规则保护）
+    await db.execute(
+        pg_insert(PaperFavorite)
+        .values(paper_id=pid, user_id=user.id)
+        .on_conflict_do_nothing(index_elements=["paper_id", "user_id"])
+    )
+    await db.commit()
+
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == pid))
+    ).scalar_one_or_none()
+    status = paper.parse_status or "none"
+    if status == "done":
+        return await _parse_status_out(db, user.id, pid)
+    if status in ("pending", "running"):
+        raise HTTPException(status_code=409, detail="该文献正在解析中，请稍后再试")
+
+    # 置 pending 占坑（第二个并发请求到此即 409，workflow/进程内执行各自置 running）
+    paper.parse_status = "pending"
+    paper.parse_error = None
+    await db.commit()
+
+    if not pipeline.push_parse_event(pid, user.id):
+        # 引擎未接线：进程内同步执行（下载 → COS → MinerU → 状态机），即时返回终态
+        await paper_parse.run_parse_pipeline(db, pid, user.id)
+    return await _parse_status_out(db, user.id, pid)
+
+
 @router.get("/{pid}", response_model=PaperDetailOut)
 async def paper_detail(
     pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
@@ -516,6 +611,7 @@ async def paper_detail(
         note=note.content if note else "",
         explanation=explanation.content if explanation else None,
         explanation_model=explanation.model if explanation else "",
+        parse_error=paper.parse_error,
     )
 
 

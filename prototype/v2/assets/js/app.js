@@ -1411,7 +1411,7 @@
               '<button class="pp-nav-item active" type="button" data-pp-nav="digest"><i data-ic="inbox"></i>今日推送</button>' +
               '<button class="pp-nav-item" type="button" data-pp-nav="favorites"><i data-ic="star"></i>我的收藏</button>' +
               '<button class="pp-nav-item" type="button" data-pp-nav="all"><i data-ic="book"></i>全部论文</button>' +
-              '<button class="pp-nav-item is-disabled" type="button" disabled title="后续批次开放"><i data-ic="edit"></i>我的笔记</button>' +
+              '<button class="pp-nav-item" type="button" data-pp-nav="notes"><i data-ic="edit"></i>我的笔记</button>' +
             "</nav>" +
             /* 中间卡片流（展示设置工具条 P18 + 卡片列） */
             '<div class="pp-list">' +
@@ -2085,7 +2085,8 @@
   var PP_NAV_EMPTY = {
     digest: "今日暂无命中：点右上角「⚙ 订阅设置」配置关键词与数据源，再「⟳ 立即检索」跑一轮",
     favorites: "还没有收藏文献：点卡片上的 ☆ 即可收藏",
-    all: "暂无文献：先配置订阅，再点「立即检索」抓一轮"
+    all: "暂无文献：先配置订阅，再点「立即检索」抓一轮",
+    notes: "还没有已解析的笔记：打开文献详情，点「★ 收藏并解析」，完成后会出现在这里"
   };
   /* 数据源 key → 徽标名（GET /papers/sources 同集） */
   var PP_SRC_NAMES = { pubmed: "PubMed", arxiv: "arXiv", openalex: "OpenAlex", semantic_scholar: "S2", doaj: "DOAJ" };
@@ -2245,6 +2246,29 @@
       }).catch(function (e) { toast(e.detail || "今日推送加载失败"); });
       return;
     }
+    /* P16 我的笔记：已收藏 ∩ 解析 done 的文献（标题 + 解析时间 + 进入笔记占位） */
+    if (paperState.nav === "notes") {
+      API.get("/papers/parsed").then(function (items) {
+        var box2 = qs("[data-pp-list]");
+        if (!box2) return;
+        if (!items || !items.length) {
+          box2.innerHTML = '<div class="card" style="padding:22px;"><div class="muted" style="font-size:13.5px;">' +
+            PP_NAV_EMPTY.notes + "</div></div>";
+          return;
+        }
+        box2.innerHTML = '<div class="pp-notes">' + items.map(function (p) {
+          var t = p.parsed_at ? String(p.parsed_at).slice(0, 16).replace("T", " ") : "";
+          return '<div class="card pp-note-item">' +
+            '<div class="pp-note-title">' + esc(p.title) + "</div>" +
+            '<div class="pp-note-meta muted">' + esc(_paperAuthors(p.authors) || "") +
+              (t ? (p.authors && p.authors.length ? " · " : "") + "解析于 " + esc(t) : "") + "</div>" +
+            '<div class="pp-note-ops"><button class="btn btn-ghost btn-sm" type="button" data-pp-noteentry="' +
+              p.id + '">进入笔记</button></div>' +
+          "</div>";
+        }).join("") + "</div>";
+      }).catch(function (e) { toast(e.detail || "笔记列表加载失败"); });
+      return;
+    }
     var path = paperState.nav === "favorites" ? "/papers/favorites" : "/papers/daily" + _prefsQuery();
     API.get(path).then(function (items) {
       paperState.items = (items || []).map(_paperCardView);
@@ -2350,7 +2374,57 @@
     });
   }
 
-  /* 右侧详情面板（点卡片展开：摘要全文 + 作者 + DOI/链接 + 命中关键词；本批不接预览） */
+  /* P16 收藏并解析：主按钮四态（未收藏 ★ 收藏并解析 / running·pending 解析中… /
+   * failed ⟳ 重新解析 / done 已解析 ✓ 进我的笔记） */
+  function _parseBtnHtml(p) {
+    var st = p.parse_status || "none";
+    if (st === "running" || st === "pending") {
+      return '<button class="btn btn-primary btn-sm" type="button" disabled data-pp-parsebtn>' +
+        '<span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span> 解析中…</button>';
+    }
+    if (st === "failed") {
+      return '<button class="btn btn-primary btn-sm" type="button" data-pp-collectparse="' + p.id + '">' +
+        '<i data-ic="refresh"></i>⟳ 重新解析</button>';
+    }
+    if (st === "done") {
+      return '<button class="btn btn-primary btn-sm" type="button" data-pp-gonotes="' + p.id + '">' +
+        '<i data-ic="check"></i>已解析 ✓（进我的笔记）</button>';
+    }
+    return '<button class="btn btn-primary btn-sm" type="button" data-pp-collectparse="' + p.id + '">' +
+      '<i data-ic="star"></i>★ 收藏并解析</button>';
+  }
+  /* 解析失败：错误区显示原因 + 手动下载指引（OA 原文链接 + 管理员导入提示） */
+  function _parseErrHtml(p, url) {
+    if (p.parse_status !== "failed") return "";
+    return '<div class="pp-parse-err">' +
+      '<div class="pp-parse-err-title">解析失败</div>' +
+      "<div>" + esc(p.parse_error || "未知原因") + "</div>" +
+      (url
+        ? '<div class="pp-parse-guide">可手动下载 OA 原文：<a href="' + esc(url) +
+          '" target="_blank" rel="noopener">打开原文链接 ↗</a>，下载后可联系管理员导入。</div>'
+        : '<div class="pp-parse-guide">该文献暂无 OA 原文链接，可联系管理员协助获取。</div>') +
+      "</div>";
+  }
+
+  /* P16：解析状态轮询（2s 到 done/failed 停，终态刷新详情面板按钮/错误区） */
+  var _parseTimers = {};
+  function pollParseStatus(pid) {
+    if (_parseTimers[pid]) clearTimeout(_parseTimers[pid]);
+    _parseTimers[pid] = setTimeout(function () {
+      API.get("/papers/" + pid + "/parse-status").then(function (s) {
+        if (s && (s.parse_status === "running" || s.parse_status === "pending")) {
+          pollParseStatus(pid);
+          return;
+        }
+        delete _parseTimers[pid];
+        openPaperDetail(pid);  // 终态：刷新按钮四态 + 失败指引区
+        if (s && s.parse_status === "done") toast("解析完成，可到「我的笔记」查看");
+      }).catch(function () { pollParseStatus(pid); });
+    }, 2000);
+  }
+
+  /* 右侧详情面板（点卡片展开：摘要全文 + 作者 + DOI/链接 + 命中关键词 + 收藏并解析主按钮；
+   * P16：笔记编辑框移除，笔记区只读展示已有笔记） */
   function paperDetailHtml(p, view) {
     var url = (view && view.url) || "";
     if (!url && p.pmid) url = "https://pubmed.ncbi.nlm.nih.gov/" + p.pmid + "/";
@@ -2361,6 +2435,10 @@
       ? '<div class="pp-abstract" data-explain-body>' + esc(p.explanation) + "</div>"
       : '<button class="btn btn-ghost btn-sm" type="button" data-paper-explain="' + p.id + '"><i data-ic="spark"></i>生成 AI 解读</button>' +
         '<div class="pp-abstract hide" data-explain-body></div>';
+    /* P16：笔记区只读（编辑框移除）；无笔记给引导文案 */
+    var noteBlock = p.note
+      ? '<div class="pp-abstract pp-note-readonly">' + esc(p.note) + "</div>"
+      : '<div class="muted" style="font-size:13px;">暂无笔记，解析后可到「我的笔记」记录</div>';
     var citeParts = [];
     if (p.cited_count != null) citeParts.push("被引 " + esc(String(p.cited_count)));
     if (p.if_approx != null) {
@@ -2377,15 +2455,16 @@
         (url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">打开原文链接 ↗</a>' : "") +
       "</div>" +
       (kws ? '<div class="pp-detail-kws">' + kws + "</div>" : "") +
+      /* P16 主操作行：收藏并解析四态 + 失败指引区 */
+      '<div class="pp-detail-ops">' + _parseBtnHtml(p) + "</div>" +
+      _parseErrHtml(p, url) +
       '<div class="pp-detail-sec">摘要</div>' +
       '<div class="pp-abstract">' + esc(p.abstract || "（无摘要）") + "</div>" +
       (p.abstract_zh
         ? '<div class="pp-detail-sec">中文摘要</div><div class="pp-abstract">' + esc(p.abstract_zh) + "</div>"
         : "") +
       '<div class="pp-detail-sec">AI 解读</div>' + explainBlock +
-      '<div class="pp-detail-sec">我的笔记</div>' +
-      '<textarea class="pp-note" data-note-content rows="3" placeholder="记录你的想法，每人每篇一条">' + esc(p.note || "") + "</textarea>" +
-      '<div style="margin-top:8px;text-align:right;"><button class="btn btn-ghost btn-sm" type="button" data-note-save="' + p.id + '">保存笔记</button></div>';
+      '<div class="pp-detail-sec">我的笔记</div>' + noteBlock;
   }
   function openPaperDetail(pid) {
     var view = null;
@@ -3656,18 +3735,31 @@
       });
       return;
     }
-    /* 文献页：保存笔记 */
-    var pNote = el.closest("[data-note-save]");
-    if (pNote) {
-      var pid7 = pNote.getAttribute("data-note-save");
-      var ta = qs("[data-note-content]");
-      var content = ta ? ta.value.trim() : "";
-      if (!content) { toast("先写点内容"); return; }
-      API.post("/papers/" + pid7 + "/note", { content: content }).then(function () {
-        toast("笔记已保存");
-      }).catch(function (e) { toast(e.detail || "保存失败"); });
+    /* 文献页：收藏并解析 / 重新解析（P16：一键收藏 → 后台下载 OA → COS → MinerU，
+     * 返回后 2s 轮询 parse-status 到 done/failed 刷新面板） */
+    var pParse = el.closest("[data-pp-collectparse]");
+    if (pParse) {
+      var pid8 = parseInt(pParse.getAttribute("data-pp-collectparse"), 10);
+      pParse.disabled = true;
+      API.post("/papers/" + pid8 + "/collect-parse", {}).then(function () {
+        toast("已开始解析，完成后会出现在「我的笔记」");
+        openPaperDetail(pid8);
+        pollParseStatus(pid8);
+      }).catch(function (e) {
+        pParse.disabled = false;
+        toast(e.detail || "解析启动失败");
+      });
       return;
     }
+    /* 文献页：已解析 ✓ → 跳到「我的笔记」导航 */
+    var pGoNotes = el.closest("[data-pp-gonotes]");
+    if (pGoNotes) {
+      var notesNav = qs('[data-pp-nav="notes"]');
+      if (notesNav) notesNav.click();
+      return;
+    }
+    /* 我的笔记：进入笔记（批注式笔记下批开放，占位提示） */
+    if (el.closest("[data-pp-noteentry]")) { toast("笔记功能下批开放"); return; }
     /* 应用中心：打开应用 */
     var appRow = el.closest("[data-app-open]");
     if (appRow) {

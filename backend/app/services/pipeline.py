@@ -20,6 +20,11 @@ cron 任务：on_crons 声明式注册（worker 注册即生效），默认 30 7
 幂等同 digest 先例（进程内日期标记）。两 task 共用 _session_task 的
 专用引擎会话样板（worker 跑在 SDK 独占事件循环，连接不可跨循环复用）。
 
+第三条 workflow（论文域增强③ P16）：papers-parse，事件触发（非 cron）——
+「收藏并解析」按钮 → API 置 pending → push_parse_event 推事件到引擎异步执行
+（下载 OA → 存 COS → MinerU 解析 → 状态机 done/failed）。引擎未接线/推送失败
+回落进程内同步执行（与 crawl-now 同一哲学：用户点按钮不承担引擎可用性）。
+
 手动 crawl-now 不走 Hatchet：进程内同步执行、即时返回结果；若绕引擎转发，
 用户点「立即检索」要承担引擎可用性 + gRPC 往返 + 轮询运行状态三重失败面，
 收益为零（无重试/无并发语义需求）。定时与手动共用 _execute_round，口径天然一致。
@@ -41,6 +46,7 @@ logger = logging.getLogger("lumencafe.pipeline")
 
 CRAWL_TASK_NAME = "papers-daily-crawl"
 CLEANUP_TASK_NAME = "papers-daily-cleanup"
+PARSE_TASK_NAME = "papers-parse"
 
 _hatchet: "Hatchet | None" = None
 _worker: Any = None  # hatchet_sdk Worker（ Any：未装 SDK 时不引入类型依赖）
@@ -96,9 +102,52 @@ def _session_task(
     return _task
 
 
+def _event_task(
+    hatchet: "Hatchet",
+    *,
+    name: str,
+    timeout: timedelta,
+    body: Callable[[Any, dict[str, Any]], Awaitable[dict[str, Any]]],
+) -> Any:
+    """声明一个事件触发的任务（on_events，输入为事件 payload 字典）。
+
+    与 _session_task 同样的问题：worker 在 SDK 独占事件循环，任务内自建专用引擎
+    （NullPool，随任务 dispose）。输入模型用 pydantic BaseModel（SDK 1.x 校验），
+    字段全带缺省——payload 缺键不炸，由执行体兜底判空。
+    """
+    from hatchet_sdk import Context
+    from pydantic import BaseModel
+
+    class ParseInput(BaseModel):
+        paper_id: int = 0
+        user_id: int = 0
+
+    @hatchet.task(
+        name=name,
+        on_events=[name],
+        execution_timeout=timeout,
+        retries=1,  # 瞬时失败重试一轮；解析管线自身幂等（done 直返/failed 记状态）
+    )
+    async def _task(input: ParseInput, ctx: Context) -> dict[str, Any]:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        from app.config import settings as app_settings
+
+        logger.info("Hatchet 事件触发 %s：paper_id=%s", name, input.paper_id)
+        engine = create_async_engine(app_settings.database_url, poolclass=NullPool)
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as db:
+                return await body(db, input.model_dump())
+        finally:
+            await engine.dispose()
+
+    return _task
+
+
 def _build_tasks(hatchet: "Hatchet") -> list[Any]:
-    """注册两条论文域 cron workflow：每日抓取 + 每日 7 天滚动清理（P14）。"""
-    from app.services import papers_crawl
+    """注册论文域 workflow：每日抓取 cron + 每日清理 cron（P14）+ 解析事件（P16）。"""
+    from app.services import paper_parse, papers_crawl
 
     async def _crawl_body(db: Any) -> dict[str, Any]:
         added = await papers_crawl.run_daily_crawl(db, trigger="schedule")
@@ -108,6 +157,13 @@ def _build_tasks(hatchet: "Hatchet") -> list[Any]:
     async def _cleanup_body(db: Any) -> dict[str, Any]:
         result = await papers_crawl.run_daily_cleanup(db)
         logger.info("papers-daily-cleanup 完成：%s", result)
+        return result
+
+    async def _parse_body(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        result = await paper_parse.run_parse_pipeline(
+            db, int(payload.get("paper_id") or 0), int(payload.get("user_id") or 0)
+        )
+        logger.info("papers-parse 完成：%s", result)
         return result
 
     crawl_task = _session_task(
@@ -124,7 +180,32 @@ def _build_tasks(hatchet: "Hatchet") -> list[Any]:
         timeout=timedelta(minutes=5),  # 单表单次删除，余量充足
         body=_cleanup_body,
     )
-    return [crawl_task, cleanup_task]
+    parse_task = _event_task(
+        hatchet,
+        name=PARSE_TASK_NAME,
+        timeout=timedelta(minutes=15),  # 下载 + 排队 + MinerU 解析 + 拆存，给足余量
+        body=_parse_body,
+    )
+    return [crawl_task, cleanup_task, parse_task]
+
+
+def push_parse_event(paper_id: int, user_id: int) -> bool:
+    """API 进程内推 Hatchet 事件触发 papers-parse；未接线/推送失败返回 False。
+
+    调用方（papers 路由）拿到 False 即回落进程内同步执行——用户点「收藏并解析」
+    要的是结果可达，不承担引擎可用性（与 crawl-now 不走引擎同一拍板逻辑）。
+    """
+    hatchet = _hatchet
+    if hatchet is None:
+        return False
+    try:
+        hatchet.event.push(PARSE_TASK_NAME, {"paper_id": paper_id, "user_id": user_id})
+        return True
+    except Exception:
+        logger.exception(
+            "Hatchet 事件推送失败（papers-parse 转进程内执行）：paper_id=%s", paper_id
+        )
+        return False
 
 
 def start() -> bool:
@@ -146,15 +227,16 @@ def start() -> bool:
 
     _hatchet = Hatchet()
     tasks = _build_tasks(_hatchet)
-    _worker = _hatchet.worker("lumencafe-papers", slots=1, workflows=tasks)
+    _worker = _hatchet.worker("lumencafe-papers", slots=2, workflows=tasks)
     _worker_thread = threading.Thread(
         target=_worker.start, name="hatchet-worker", daemon=True
     )
     _worker_thread.start()
     logger.info(
-        "Hatchet worker 已启动（tasks=%s/%s crons=%s/%s）",
+        "Hatchet worker 已启动（tasks=%s/%s/%s crons=%s/%s）",
         CRAWL_TASK_NAME,
         CLEANUP_TASK_NAME,
+        PARSE_TASK_NAME,
         settings.papers_crawl_cron,
         settings.papers_cleanup_cron,
     )

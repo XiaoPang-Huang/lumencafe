@@ -43,6 +43,15 @@ class Paper(Base):
     # 影响因子近似（OpenAlex：优先 2yr_mean_citedness，该字段下线后回落 fwci；
     # 非 JCR 官方值，界面标注「≈」）
     if_approx: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    # ── 收藏并解析全链路（P16/P20，Alembic 0009）──
+    url: Mapped[str] = mapped_column(Text, default="")  # 源落地页/OA 直链（PaperItem.url）
+    parse_status: Mapped[str] = mapped_column(
+        String(16), default="none"
+    )  # none|pending|running|done|failed
+    parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)  # 失败原因（可空）
+    parsed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )  # 解析完成时间（可空）
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list)  # AD/PD/ALS/scale
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

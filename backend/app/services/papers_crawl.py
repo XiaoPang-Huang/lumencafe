@@ -287,7 +287,7 @@ async def _find_existing_paper_id(db: AsyncSession, item: PaperItem) -> int | No
 
 # 已存在行允许刷新的元数据列（P15：跨源重复命中时补全/更新题录元数据；
 # title/abstract/abstract_zh/tags/keywords 不在其列——不覆盖既有正文与中译）
-_METADATA_REFRESH_COLS = ("doi", "journal", "authors", "pub_date", "cited_count", "if_approx")
+_METADATA_REFRESH_COLS = ("doi", "journal", "authors", "pub_date", "cited_count", "if_approx", "url")
 
 
 def _metadata_values(item: PaperItem) -> dict:
@@ -299,6 +299,7 @@ def _metadata_values(item: PaperItem) -> dict:
         "pub_date": item.pub_date or (date(item.year, 1, 1) if item.year else None),
         "cited_count": item.cited_count,
         "if_approx": item.if_approx,
+        "url": item.url or "",  # P16：原文落地页/OA 直链（下载优先直链）
     }
 
 

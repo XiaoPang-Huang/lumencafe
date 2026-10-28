@@ -1718,3 +1718,20 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
   transition: border-color .14s;
 }
 .sub-p21-authors:focus { outline: none; border-color: var(--brand); }
+
+/* ── 论文域 P16：收藏并解析（主按钮四态/失败指引）+ 我的笔记列表 ── */
+.pp-detail-ops { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+.pp-parse-err {
+  margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; line-height: 1.65;
+  background: var(--danger-soft); border: 1px solid var(--danger); color: var(--danger);
+}
+.pp-parse-err-title { font-weight: 600; margin-bottom: 2px; }
+.pp-parse-err a { color: var(--danger); text-decoration: underline; }
+.pp-parse-guide { margin-top: 6px; }
+.pp-notes { display: flex; flex-direction: column; gap: 10px; }
+.pp-note-item { padding: 14px 16px; }
+.pp-note-title { font-weight: 600; font-size: 14px; line-height: 1.5; }
+.pp-note-meta { font-size: 12.5px; margin-top: 4px; }
+.pp-note-ops { margin-top: 10px; text-align: right; }
+.pp-note-readonly { white-space: pre-wrap; }

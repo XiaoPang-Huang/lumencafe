@@ -19,12 +19,16 @@ class PaperOut(BaseModel):
     keywords: list[str]
     created_at: dt.datetime
     saved: bool = False  # 当前用户是否已收藏
+    # ── 收藏并解析全链路（P16/P20）──
+    parse_status: str = "none"  # none|pending|running|done|failed
+    parsed_at: dt.datetime | None = None  # 解析完成时间（未完成 null）
 
 
 class PaperDetailOut(PaperOut):
-    note: str = ""  # 本人笔记（无则空串）
+    note: str = ""  # 本人笔记（无则空串；详情面板只读展示）
     explanation: str | None = None  # 全局 AI 解读缓存（无则 null）
     explanation_model: str = ""
+    parse_error: str | None = None  # 解析失败原因（P16：错误区 + 手动下载指引）
 
 
 class SaveResponse(BaseModel):
@@ -89,6 +93,16 @@ class DigestItemOut(BaseModel):
     score: int  # 命中关键词数
     is_high_relevance: bool  # score ≥ HIGH_RELEVANCE_MIN_KEYWORDS（步 B 阈值常量）
     saved: bool = False  # 当前用户是否已收藏（P19 双列表同步的状态源）
+    parse_status: str = "none"  # 解析状态（P16；digest 条目带，前端可按态出徽标）
+
+
+class ParseStatusOut(BaseModel):
+    """解析状态轮询响应（P16：详情面板 2s 轮询到 done/failed 停）。"""
+
+    parse_status: str  # none|pending|running|done|failed
+    parse_error: str | None = None  # 失败原因（failed 时有值）
+    parsed_at: dt.datetime | None = None  # 完成时间（done 时有值）
+    saved: bool = False  # 收藏并解析自动收藏后的回执
 
 
 class DigestOut(BaseModel):
