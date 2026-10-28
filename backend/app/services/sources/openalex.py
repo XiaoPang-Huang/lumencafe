@@ -24,17 +24,35 @@ DOI_PREFIX = "https://doi.org/"
 
 
 @external_retry()
-async def _query(client: httpx.AsyncClient, keyword: str, since: date, per_page: int) -> dict:
-    """单次 OpenAlex works 查询；瞬时错误由 tenacity 重试。"""
+async def _query(
+    client: httpx.AsyncClient,
+    keyword: str,
+    since: date,
+    per_page: int,
+    until: date | None = None,
+    api_key: str | None = None,
+) -> dict:
+    """单次 OpenAlex works 查询；瞬时错误由 tenacity 重试。
+
+    - until（P21 年份上限）经 filter=to_publication_date 走服务端过滤；
+    - api_key（service_keys 取匙注入）：Authorization: Bearer（OpenAlex 官方认证头），
+      无 key 保持匿名基础查询（政策：无 key 仅限基础查询，配 key 额度约 10 倍）。
+    """
+    filters = [f"from_publication_date:{since.isoformat()}"]
+    if until is not None:
+        filters.append(f"to_publication_date:{until.isoformat()}")
     params: dict[str, Any] = {
         "search": keyword,
-        "filter": f"from_publication_date:{since.isoformat()}",
+        "filter": ",".join(filters),
         "per-page": max(min(per_page, 200), 1),
         "page": 1,
     }
     if settings.ncbi_email:  # 复用联系邮箱进 polite 池（OpenAlex 官方建议）
         params["mailto"] = settings.ncbi_email
-    resp = await client.get(OPENALEX_BASE, params=params)
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    resp = await client.get(OPENALEX_BASE, params=params, headers=headers or None)
     resp.raise_for_status()
     return resp.json()
 
@@ -107,11 +125,21 @@ class OpenAlexProvider:
 
     name = "openalex"
     display_name = "OpenAlex（全学科）"
+    key_service = "openalex"  # service_keys 服务名；无匙 = 匿名基础查询
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
         client = get_http_client()
         items: list[PaperItem] = []
         for keyword in keywords:
-            data = await _query(client, keyword, since_date, settings.papers_retmax)
+            data = await _query(
+                client, keyword, since_date, settings.papers_retmax,
+                until=until_date, api_key=api_key,
+            )
             items.extend(_parse_works(data, keyword))
         return dedupe_items(items)

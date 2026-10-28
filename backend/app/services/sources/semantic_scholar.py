@@ -23,11 +23,19 @@ FIELDS = "title,abstract,year,authors,externalIds,url,venue,publicationDate,cita
 
 
 @external_retry()
-async def _query(client: httpx.AsyncClient, keyword: str, limit: int) -> dict:
-    """单次 S2 paper/search 查询；429/5xx 由 tenacity 重试。"""
+async def _query(client: httpx.AsyncClient, keyword: str, limit: int, api_key: str | None = None) -> dict:
+    """单次 S2 paper/search 查询；429/5xx 由 tenacity 重试。
+
+    - api_key（service_keys 取匙注入）：x-api-key 请求头（S2 Graph API 认证头），
+      无 key 走匿名共享池（限流激进，429 由重试收口，行为与升级前一致）。
+    """
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["x-api-key"] = api_key
     resp = await client.get(
         f"{S2_BASE}/paper/search",
         params={"query": keyword, "limit": max(min(limit, 100), 1), "fields": FIELDS},
+        headers=headers or None,
     )
     resp.raise_for_status()
     return resp.json()
@@ -75,19 +83,31 @@ class SemanticScholarProvider:
 
     name = "semantic_scholar"
     display_name = "Semantic Scholar（全学科）"
+    key_service = "semantic_scholar"  # service_keys 服务名；无匙 = 匿名共享池
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
         client = get_http_client()
         items: list[PaperItem] = []
         for keyword in keywords:
-            data = await _query(client, keyword, settings.papers_retmax)
+            data = await _query(client, keyword, settings.papers_retmax, api_key=api_key)
             items.extend(_parse_papers(data, keyword))
 
         def _keep(item: PaperItem) -> bool:
             if item.pub_date is not None:
-                return item.pub_date >= since_date
+                if item.pub_date < since_date:
+                    return False
+                # P21 年份上限：S2 无日期区间参数，客户端后过滤兜底
+                return until_date is None or item.pub_date <= until_date
             if item.year is not None:
-                return item.year >= since_date.year
+                if item.year < since_date.year:
+                    return False
+                return until_date is None or item.year <= until_date.year
             return True  # 无日期条目保守保留
 
         return dedupe_items([i for i in items if _keep(i)])

@@ -43,8 +43,16 @@ class ExplainResponse(BaseModel):
 
 # ── 步 A：数据源清单 + AI 生成订阅关键词 ──────────────────
 class SourceOut(BaseModel):
-    key: str  # 源 key（subscribe_sources 存储值）
-    name: str  # 展示名（勾选框用）
+    """源目录市场条目（P17：全量编目展示；已接 5 源可勾选，未实现源只展示）。"""
+
+    key: str  # 源 key（subscribe_sources 存储值；未实现源为预留 key，不可勾选）
+    name: str  # 展示名
+    category: str  # 分类：综合索引/生物医学/理工/社科人文/中文国内/商业收费/开放期刊
+    cost: str  # free（免费直接用）/ free_key（免费需申请 key）/ paid（收费或订阅）
+    key_service: str | None = None  # key 表服务名（cost=free 为 null）
+    implemented: bool = False  # 是否已接入（注册表内可真实抓取）
+    description: str = ""  # 一句话说明（市场展示）
+    key_configured: bool = False  # key 源：当前是否已配置启用中的 key（引导「去 Key 管理配置」）
 
 
 class SuggestKeywordsRequest(BaseModel):
@@ -53,6 +61,17 @@ class SuggestKeywordsRequest(BaseModel):
 
 class SuggestKeywordsResponse(BaseModel):
     keywords: list[str]  # 8-12 个中英检索关键词（AI 生成，用户勾选确认后自行入库）
+
+
+# ── P13 本期：自然语言检索（大白话 → AI 扩词 → 临时聚合抓取） ──
+class SemanticSearchRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=2000)  # 一句话检索意图
+
+
+class SemanticSearchResponse(BaseModel):
+    keywords: list[str]  # AI 语义扩词结果（不写订阅词，仅本轮检索使用）
+    added: int  # 本轮新入库文献数（已按全局键去重，重复命中不计）
+    runs_id: int | None = None  # papers_crawl_runs 行 id（trigger=semantic）
 
 
 # ── 步 B：页内 digest + 立即检索 ──────────────────────────

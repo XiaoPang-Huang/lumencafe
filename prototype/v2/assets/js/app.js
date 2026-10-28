@@ -1394,6 +1394,13 @@
               '<span class="pp-updated" data-pp-updated></span>' +
             "</div>" +
             '<div class="pp-actions">' +
+              /* P13 本期：自然语言检索（一句话 → AI 扩词 → 临时聚合抓取，防抖 + loading） */
+              '<div class="pp-nl">' +
+                '<input class="pp-nl-input" type="text" data-pp-nlinput autocomplete="off"' +
+                  ' placeholder="语义检索：一句话描述想找的文献，回车检索"' +
+                  ' aria-label="语义检索">' +
+                '<button class="btn btn-ghost btn-sm pp-nl-btn" type="button" data-pp-nlsearch><i data-ic="spark"></i>语义检索</button>' +
+              "</div>" +
               '<button class="btn btn-ghost btn-sm pp-crawl" type="button" data-pp-crawl><i data-ic="refresh"></i>立即检索</button>' +
               '<button class="icon-btn" type="button" data-pp-subscribe aria-label="订阅设置"><i data-ic="gear"></i></button>' +
             "</div>" +
@@ -2059,7 +2066,11 @@
   /* ================= 文献页活数据（步 C 三栏骨架；digest / daily / favorites 三源） ================= */
   var paperState = {
     nav: "digest", items: [], digest: null, crawlBusy: false,
-    prefs: { display_limit: 50, sort: "time", if_min: null },  // P18 展示设置（papers_prefs）
+    /* P18 展示设置 + P21 抓取期过滤参数（同一份 papers_prefs，拍板 P21） */
+    prefs: {
+      display_limit: 50, sort: "time", if_min: null,
+      year_from: null, year_to: null, authors: []
+    },
     saved: {},        // P19：paper_id -> bool，今日推送/我的收藏双列表共享收藏态
     prefsLoaded: false
   };
@@ -2252,6 +2263,14 @@
         if (!isNaN(lim) && lim >= 1 && lim <= 500) paperState.prefs.display_limit = lim;
         var ifm = parseFloat(p.if_min);
         paperState.prefs.if_min = (p.if_min != null && !isNaN(ifm) && ifm >= 0) ? ifm : null;
+        /* P21 抓取期过滤参数（同一份 papers_prefs） */
+        var yf = parseInt(p.year_from, 10);
+        paperState.prefs.year_from = (p.year_from != null && !isNaN(yf)) ? yf : null;
+        var yt = parseInt(p.year_to, 10);
+        paperState.prefs.year_to = (p.year_to != null && !isNaN(yt)) ? yt : null;
+        paperState.prefs.authors = (Array.isArray(p.authors)
+          ? p.authors.map(String).map(function (a) { return a.trim(); }).filter(Boolean)
+          : []);
       }
       paperState.prefsLoaded = true;
       syncPrefsControls();
@@ -2301,6 +2320,33 @@
       paperState.crawlBusy = false;
       if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
       toast(e.detail || "检索失败");
+    });
+  }
+
+  /* P13 本期·语义检索：一句话 → POST /papers/semantic-search（AI 扩词 + 临时聚合抓取）
+   * 与立即检索共用 crawlBusy 防重（后端同一把抓取锁，409 时给出提示）；防抖 300ms。 */
+  var _nlTimer = null;
+  function nlSearch(btn) {
+    var input = qs("[data-pp-nlinput]");
+    var q = input ? input.value.trim() : "";
+    if (!q) { toast("先用一句话描述你想找的文献"); return; }
+    if (paperState.crawlBusy) { toast("已有检索正在进行，请稍后再试"); return; }
+    clearTimeout(_nlTimer);
+    _nlTimer = setTimeout(function () { _doNlSearch(q, btn); }, 300);
+  }
+  function _doNlSearch(q, btn) {
+    paperState.crawlBusy = true;
+    if (btn) { btn.classList.add("is-loading"); btn.disabled = true; }
+    API.post("/papers/semantic-search", { description: q }).then(function (r) {
+      paperState.crawlBusy = false;
+      if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
+      var kws = (r.keywords || []).slice(0, 5);
+      toast("已按语义扩词：" + (kws.join(" / ") || "—") + "，新入库 " + (r.added || 0) + " 篇");
+      loadPapersNav();  // digest 窗口随 semantic run 刷新，列表立即可见新入库
+    }).catch(function (e) {
+      paperState.crawlBusy = false;
+      if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
+      toast((e && e.detail) || "语义检索失败");
     });
   }
 
@@ -2362,12 +2408,15 @@
   }
 
   /* ================= 订阅设置弹窗（步 C；P5 拍板：文献页内齿轮单入口） =================
-   * 三区块：订阅关键词（标签增删）/ AI 生成（大白话 → suggest-keywords → 点选追加）/ 数据源勾选。
-   * 读写通道：GET /me（settings.subscribe_keywords / subscribe_sources）+ PUT /me/settings。 */
-  var subState = { loaded: false, keywords: [], sources: [], allSources: [], baseline: "" };
+   * 区块：订阅关键词 / AI 生成 / 检索条件（P21）/ 数据源市场（P17：含待接入源展示）。
+   * 读写通道：GET /me（subscribe_keywords / subscribe_sources / papers_prefs）+ PUT /me/settings。 */
+  var subState = {
+    loaded: false, keywords: [], sources: [], allSources: [], baseline: "",
+    p21: { year_from: null, year_to: null, authors: [], if_min: null }  // P21 抓取期过滤
+  };
   var SUB_DEFAULT_SOURCES = ["pubmed", "arxiv", "openalex"];
 
-  function subSnapshot() { return JSON.stringify({ k: subState.keywords, s: subState.sources }); }
+  function subSnapshot() { return JSON.stringify({ k: subState.keywords, s: subState.sources, p: subState.p21 }); }
   function subRefreshSaveBtn() {
     var btn = qs("[data-sub-save]");
     if (btn) btn.disabled = subSnapshot() === subState.baseline;
@@ -2385,6 +2434,9 @@
     var ni = qs("[data-sub-kw-input]", box);
     if (ni && input && document.activeElement === input) ni.focus();
   }
+  /* 数据源市场（P17）：已接源可勾选；待接入源灰显禁勾 + 「待接入」徽标；
+   * 需 key/收费源未配 key 时给「去 Key 管理配置」引导链接（链到平台管理 Key 页签） */
+  var SUB_COST_LABELS = { free: "免费", free_key: "免费·需 Key", paid: "收费" };
   function renderSubSources() {
     var box = qs("[data-sub-src-list]");
     if (!box) return;
@@ -2394,9 +2446,34 @@
     }
     box.innerHTML = subState.allSources.map(function (s) {
       var on = subState.sources.indexOf(s.key) !== -1;
-      return '<label class="sub-src-item"><input type="checkbox" data-sub-src="' + esc(s.key) + '"' + (on ? " checked" : "") + "> " +
-        "<span>" + esc(s.name) + '</span><span class="muted" style="font-size:12px;margin-left:auto;">' + esc(s.key) + "</span></label>";
+      var pending = !s.implemented;
+      var needKey = !!(s.key_service && !s.key_configured);
+      var badges = '<span class="sub-src-badge">' + esc(s.category) + "</span>" +
+        '<span class="sub-src-badge' + (s.cost === "paid" ? " is-paid" : "") + '">' +
+          esc(SUB_COST_LABELS[s.cost] || s.cost) + "</span>" +
+        (pending ? '<span class="sub-src-badge is-pending-badge">待接入</span>' : "");
+      var keyRow = needKey
+        ? '<span class="sub-src-keyrow"><a href="#/admin" data-sub-keycfg="' + esc(s.key) +
+          '" class="sub-src-keylink">去 Key 管理配置</a></span>'
+        : "";
+      return '<label class="sub-src-item' + (pending ? " is-pending" : "") + '">' +
+        '<input type="checkbox" data-sub-src="' + esc(s.key) + '"' + (on ? " checked" : "") +
+          (pending ? " disabled" : "") + "> " +
+        '<span class="sub-src-main">' +
+          '<span class="sub-src-name">' + esc(s.name) + badges + "</span>" +
+          '<span class="sub-src-desc muted">' + esc(s.description || "") + "</span>" +
+          keyRow +
+        "</span></label>";
     }).join("");
+  }
+  /* P21 检索条件区回显 */
+  function renderSubP21() {
+    var yf = qs("[data-sub-yfrom]"), yt = qs("[data-sub-yto]");
+    var au = qs("[data-sub-authors]"), ifm = qs("[data-sub-ifmin]");
+    if (yf) yf.value = subState.p21.year_from != null ? String(subState.p21.year_from) : "";
+    if (yt) yt.value = subState.p21.year_to != null ? String(subState.p21.year_to) : "";
+    if (au) au.value = (subState.p21.authors || []).join(", ");
+    if (ifm) ifm.value = subState.p21.if_min != null ? String(subState.p21.if_min) : "";
   }
   function renderSubAiPicked() {
     /* AI 生成区：已加入订阅词的词置灰（is-added），其余可点选追加 */
@@ -2420,19 +2497,39 @@
       subState.keywords = kws.slice();
       subState.sources = (srcs && srcs.length) ? srcs.slice() : SUB_DEFAULT_SOURCES.slice();
       subState.allSources = rs[1] || [];
+      /* P21 检索条件：与论文页同一份 papers_prefs（展示项以论文页已加载值为准） */
+      var pp = settings.papers_prefs;
+      if (pp && typeof pp === "object") {
+        var yf = parseInt(pp.year_from, 10);
+        subState.p21.year_from = (pp.year_from != null && !isNaN(yf)) ? yf : null;
+        var yt = parseInt(pp.year_to, 10);
+        subState.p21.year_to = (pp.year_to != null && !isNaN(yt)) ? yt : null;
+        subState.p21.authors = (Array.isArray(pp.authors)
+          ? pp.authors.map(String).map(function (a) { return a.trim(); }).filter(Boolean)
+          : []);
+        var ifm = parseFloat(pp.if_min);
+        subState.p21.if_min = (pp.if_min != null && !isNaN(ifm) && ifm >= 0) ? ifm : null;
+      } else {
+        subState.p21 = { year_from: null, year_to: null, authors: [], if_min: null };
+      }
       subState.loaded = true;
       subState.baseline = subSnapshot();
       renderSubKeywords();
       renderSubSources();
+      renderSubP21();
       subRefreshSaveBtn();
     }).catch(function (e) { toast(e.detail || "订阅设置加载失败"); });
   }
   function saveSubscribe() {
     var btn = qs("[data-sub-save]");
     if (btn) btn.disabled = true;
+    /* papers_prefs = 论文页展示偏好 + P21 检索条件合并写回（同一份，拍板 P21） */
+    var prefs = Object.assign({}, paperState.prefs, subState.p21);
+    paperState.prefs = prefs;
     Promise.all([
       API.put("/me/settings", { key: "subscribe_keywords", value: { keywords: subState.keywords } }),
-      API.put("/me/settings", { key: "subscribe_sources", value: { sources: subState.sources } })
+      API.put("/me/settings", { key: "subscribe_sources", value: { sources: subState.sources } }),
+      API.put("/me/settings", { key: "papers_prefs", value: prefs })
     ]).then(function () {
       subState.baseline = subSnapshot();
       toast("订阅设置已保存");
@@ -2516,6 +2613,16 @@
       /* P18：偏好先就位再拉列表（未加载过则先 GET /me 读 papers_prefs） */
       if (paperState.prefsLoaded) loadPapersNav();
       else loadPapersPrefs().then(loadPapersNav);
+      /* P13：语义检索框回车即检索（与按钮同一入口，防抖 + loading 在 nlSearch 内） */
+      var nlInput = qs("[data-pp-nlinput]", view);
+      if (nlInput) {
+        nlInput.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            nlSearch(qs("[data-pp-nlsearch]"));
+          }
+        });
+      }
     },
 
 
@@ -3479,6 +3586,24 @@
     /* 文献页：立即检索（loading → crawl-now → 刷新 digest） */
     var pCrawl = el.closest("[data-pp-crawl]");
     if (pCrawl) { crawlNow(pCrawl); return; }
+    /* 文献页：语义检索（P13：一句话 → AI 扩词 → 临时聚合抓取） */
+    var pNl = el.closest("[data-pp-nlsearch]");
+    if (pNl) { nlSearch(pNl); return; }
+    /* 订阅弹窗：需 key/收费源「去 Key 管理配置」→ 关弹窗 → 平台管理·Key 管理页签
+     * （preventDefault 阻止 label 内点击连带切换复选框） */
+    var keyCfg = el.closest("[data-sub-keycfg]");
+    if (keyCfg) {
+      e.preventDefault();
+      var subDlg = keyCfg.closest(".modal-mask");
+      if (subDlg && subDlg.close) { if (subDlg.open) subDlg.close(); }
+      else if (subDlg) subDlg.classList.remove("open");
+      go("admin");
+      afterRender(function () {
+        var tab = qs('[data-admin-tab="#pane-keys"]');
+        if (tab) tab.click();
+      });
+      return;
+    }
     /* 文献页：订阅设置齿轮 → 中央弹窗（P5 拍板单入口） */
     if (el.closest("[data-pp-subscribe]")) { openSubscribeModal(); return; }
     /* 文献页：下载占位（下批开放） */
@@ -3831,12 +3956,32 @@
   /* 订阅设置弹窗：数据源勾选（checkbox 变化 → 脏状态亮起保存按钮） */
   document.addEventListener("change", function (e) {
     var c = e.target.closest ? e.target.closest("[data-sub-src]") : null;
-    if (!c) return;
-    var key = c.getAttribute("data-sub-src");
-    var idx = subState.sources.indexOf(key);
-    if (c.checked && idx === -1) subState.sources.push(key);
-    if (!c.checked && idx !== -1) subState.sources.splice(idx, 1);
-    subRefreshSaveBtn();
+    if (c) {
+      var key = c.getAttribute("data-sub-src");
+      var idx = subState.sources.indexOf(key);
+      if (c.checked && idx === -1) subState.sources.push(key);
+      if (!c.checked && idx !== -1) subState.sources.splice(idx, 1);
+      subRefreshSaveBtn();
+      return;
+    }
+    /* P21 检索条件（订阅弹窗）：年份起/止、作者、IF 下限 → 脏状态亮起保存按钮 */
+    var t = e.target;
+    function _p21Num(sel, attr, minOk) {
+      var el2 = t.closest ? t.closest(sel) : null;
+      if (!el2) return false;
+      var v = parseFloat(el2.value);
+      subState.p21[attr] = (el2.value === "" || isNaN(v) || !minOk(v)) ? null : v;
+      subRefreshSaveBtn();
+      return true;
+    }
+    if (_p21Num("[data-sub-yfrom]", "year_from", function (v) { return v >= 1500 && v <= 2100; })) return;
+    if (_p21Num("[data-sub-yto]", "year_to", function (v) { return v >= 1500 && v <= 2100; })) return;
+    if (_p21Num("[data-sub-ifmin]", "if_min", function (v) { return v >= 0; })) return;
+    var au = t.closest ? t.closest("[data-sub-authors]") : null;
+    if (au) {
+      subState.p21.authors = au.value.split(/[,，]/).map(function (a) { return a.trim(); }).filter(Boolean);
+      subRefreshSaveBtn();
+    }
   });
 
   /* 文献页展示设置（P18）：排序 xselect / IF 下限 / 展示条数——改动即时生效并保存偏好 */

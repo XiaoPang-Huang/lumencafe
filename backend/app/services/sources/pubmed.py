@@ -43,12 +43,18 @@ def build_headers() -> dict[str, str]:
 
 @external_retry()
 async def esearch(
-    client: httpx.AsyncClient, keyword: str, retmax: int, days_back: int
+    client: httpx.AsyncClient,
+    keyword: str,
+    retmax: int,
+    days_back: int,
+    maxdate: date | None = None,
 ) -> list[str]:
     """按关键词检索最近 days_back 天内发表的文献，返回 pmid 列表。
 
     瞬时错误（网络类/5xx/429）由 tenacity 重试（指数退避，最小间隔 ≥0.5s
     对齐 NCBI ≤3 req/s 纪律）；4xx 不重试。
+    maxdate（P21 年份上限折算日期）经 esearch 的 maxdate+datetype=pdat 走服务端过滤；
+    不传 = 截止今天。
     """
     today = date.today()
     mindate = (today - timedelta(days=days_back)).strftime("%Y/%m/%d")
@@ -60,7 +66,7 @@ async def esearch(
         "retmode": "json",
         "datetype": "pdat",
         "mindate": mindate,
-        "maxdate": today.strftime("%Y/%m/%d"),
+        "maxdate": (maxdate or today).strftime("%Y/%m/%d"),
         "sort": "pub date",
     }
     resp = await client.get(
@@ -181,9 +187,20 @@ class PubMedProvider:
 
     name = "pubmed"
     display_name = "PubMed（生物医学）"
+    key_service = None  # 匿名源（可选 NCBI 账号提速，本期不接 key 注入）
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
-        """按关键词逐个 esearch → efetch → 解析；关键词间 NCBI polite 限速。"""
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
+        """按关键词逐个 esearch → efetch → 解析；关键词间 NCBI polite 限速。
+
+        until_date（P21 年份上限）经 esearch maxdate 走 NCBI 服务端过滤；
+        api_key 形参为契约对齐保留（PubMed 本期不接 key 注入，忽略）。
+        """
         today = datetime.now(UTC).date()
         days_back = max((today - since_date).days, 0)
         client = get_http_client()  # 共享总机：复用 TCP/TLS 连接
@@ -191,7 +208,14 @@ class PubMedProvider:
         for idx, keyword in enumerate(keywords):
             if idx > 0:
                 await asyncio.sleep(RATE_LIMIT_SLEEP)
-            pmids = await esearch(client, keyword, settings.papers_retmax, days_back)
+            # maxdate 仅在有年份上限时按关键字传参（无上限调用保持四参形态，
+            # 兼容按旧签名打桩的调用方/测试替身）
+            if until_date is not None:
+                pmids = await esearch(
+                    client, keyword, settings.papers_retmax, days_back, maxdate=until_date
+                )
+            else:
+                pmids = await esearch(client, keyword, settings.papers_retmax, days_back)
             if not pmids:
                 continue
             await asyncio.sleep(RATE_LIMIT_SLEEP)

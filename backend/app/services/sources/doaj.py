@@ -83,12 +83,30 @@ class DoajProvider:
 
     name = "doaj"
     display_name = "DOAJ（开放获取期刊）"
+    key_service = None  # 匿名源
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
+        """客户端年份过滤（DOAJ 仅 year 粒度，无日期区间参数）。
+
+        until_date（P21 年份上限）后过滤兜底；api_key 形参为契约对齐保留（匿名源，忽略）。
+        """
         client = get_http_client()
         items: list[PaperItem] = []
         for keyword in keywords:
             data = await _query(client, keyword, settings.papers_retmax)
             items.extend(_parse_results(data, keyword))
-        filtered = [i for i in items if i.year is None or i.year >= since_date.year]
-        return dedupe_items(filtered)
+
+        def _keep(item: PaperItem) -> bool:
+            if item.year is None:
+                return True  # 无年份条目保守保留
+            if item.year < since_date.year:
+                return False
+            return until_date is None or item.year <= until_date.year
+
+        return dedupe_items([i for i in items if _keep(i)])

@@ -382,14 +382,17 @@ async def test_explain_no_route_503(client, monkeypatch):
 
 # ── 步 A：源清单 + AI 生成订阅关键词 ──────────────────────
 async def test_list_paper_sources(client):
+    """市场清单（P17 升级）：前 5 为已接入可勾选源，其后为待接入展示源。"""
     headers = await login(client)
     resp = await client.get("/papers/sources", headers=headers)
     assert resp.status_code == 200
     sources = resp.json()
-    assert [s["key"] for s in sources] == [
+    assert [s["key"] for s in sources[:5]] == [
         "pubmed", "arxiv", "openalex", "semantic_scholar", "doaj",
     ]
     assert all(s["name"] for s in sources)
+    assert all(s["implemented"] for s in sources[:5])
+    assert not any(s["implemented"] for s in sources[5:])
 
 
 async def test_suggest_keywords_ok(client, monkeypatch):

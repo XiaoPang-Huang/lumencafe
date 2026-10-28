@@ -10,16 +10,26 @@ papers_crawl 聚合、/papers/sources 清单、前端勾选框全部自动生效
 """
 from app.services.sources.arxiv import ArxivProvider
 from app.services.sources.base import PaperItem, SourceProvider, dedupe_items
+from app.services.sources.catalog import (
+    SOURCE_CATALOG,
+    SourceCatalogEntry,
+    catalog_index,
+)
 from app.services.sources.doaj import DoajProvider
+from app.services.sources.keys import fetch_service_api_key
 from app.services.sources.openalex import OpenAlexProvider
 from app.services.sources.pubmed import PubMedProvider
 from app.services.sources.semantic_scholar import SemanticScholarProvider
 
 __all__ = [
     "DEFAULT_SOURCES",
+    "SOURCE_CATALOG",
     "PaperItem",
+    "SourceCatalogEntry",
     "SourceProvider",
+    "catalog_index",
     "dedupe_items",
+    "fetch_service_api_key",
     "get_provider",
     "list_providers",
     "resolve_sources",

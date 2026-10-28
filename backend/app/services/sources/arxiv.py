@@ -102,13 +102,30 @@ class ArxivProvider:
 
     name = "arxiv"
     display_name = "arXiv（预印本）"
+    key_service = None  # 匿名源
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
+        """客户端日期过滤（arXiv 接口的日期区间语法对词组检索不稳定，不用服务端过滤）。
+
+        until_date（P21 年份上限）后过滤兜底；api_key 形参为契约对齐保留（匿名源，忽略）。
+        """
         client = get_http_client()
         items: list[PaperItem] = []
         for keyword in keywords:
             xml_text = await _query(client, keyword, settings.papers_retmax)
             items.extend(_parse_atom(xml_text, keyword))
-        # 客户端日期过滤（published >= since_date；无日期条目保守保留）
-        filtered = [i for i in items if i.pub_date is None or i.pub_date >= since_date]
-        return dedupe_items(filtered)
+
+        def _keep(item: PaperItem) -> bool:
+            if item.pub_date is None:
+                return True  # 无日期条目保守保留
+            if item.pub_date < since_date:
+                return False
+            return until_date is None or item.pub_date <= until_date
+
+        return dedupe_items([i for i in items if _keep(i)])

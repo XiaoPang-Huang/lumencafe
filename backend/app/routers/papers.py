@@ -45,12 +45,15 @@ from app.schemas.papers import (
     PaperDetailOut,
     PaperOut,
     SaveResponse,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
     SourceOut,
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
 )
 from app.services import llm_gateway, papers_crawl, route_service
-from app.services.sources import list_providers
+from app.services.sources import SOURCE_CATALOG, SourceCatalogEntry, list_providers
+from app.services.sources.keys import fetch_service_api_key
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 
@@ -76,8 +79,10 @@ SUGGEST_KEYWORDS_SYSTEM = (
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
 # P18：展示设置缺省（用户未存 papers_prefs 时的口径）
-DEFAULT_PAPERS_PREFS: dict = {"display_limit": 50, "sort": "time", "if_min": None}
-SORT_MODES: tuple[str, ...] = ("time", "if", "score")  # 时间 / 影响因子 / 相关度
+# P21 扩展：同一份 papers_prefs 兼存抓取期过滤参数（year_from/year_to/authors），
+# 解析口径与抓取管线共用 papers_crawl.parse_papers_prefs（单一事实源）。
+DEFAULT_PAPERS_PREFS: dict = dict(papers_crawl.PAPERS_PREFS_DEFAULTS)
+SORT_MODES: tuple[str, ...] = papers_crawl.SORT_MODES  # 时间 / 影响因子 / 相关度
 
 
 async def _reader(user: User = Depends(require_permission("app:papers"))) -> User:
@@ -87,8 +92,9 @@ async def _reader(user: User = Depends(require_permission("app:papers"))) -> Use
 async def _papers_prefs(db: AsyncSession, user_id: int) -> dict:
     """读取用户展示偏好（user_settings.papers_prefs），缺省回落 DEFAULT_PAPERS_PREFS。
 
-    value 形如 {display_limit: 50, sort: "time", if_min: null}；非法/越界字段逐项
-    回落缺省，不整单丢弃（偏好是体验项，容错优先）。
+    value 形如 {display_limit: 50, sort: "time", if_min: null, year_from: null,
+    year_to: null, authors: []}；非法/越界字段逐项回落缺省，不整单丢弃
+    （偏好是体验项，容错优先）。解析逻辑与抓取管线共用 parse_papers_prefs。
     """
     row = (
         await db.execute(
@@ -97,23 +103,7 @@ async def _papers_prefs(db: AsyncSession, user_id: int) -> dict:
             )
         )
     ).scalar_one_or_none()
-    prefs = dict(DEFAULT_PAPERS_PREFS)
-    value = (row.value if row is not None else None) or {}
-    if not isinstance(value, dict):
-        return prefs
-    try:
-        limit = int(value.get("display_limit") or prefs["display_limit"])
-        prefs["display_limit"] = min(max(limit, 1), 500)
-    except (TypeError, ValueError):
-        pass
-    if value.get("sort") in SORT_MODES:
-        prefs["sort"] = value["sort"]
-    try:
-        if_min = value.get("if_min")
-        prefs["if_min"] = float(if_min) if if_min is not None else None
-    except (TypeError, ValueError):
-        prefs["if_min"] = None
-    return prefs
+    return papers_crawl.parse_papers_prefs(row.value if row is not None else None)
 
 
 def _out(p: Paper, saved: bool = False) -> PaperOut:
@@ -177,9 +167,46 @@ async def _get_mine(db: AsyncSession, user_id: int, pid: int) -> Paper:
 
 
 @router.get("/sources", response_model=list[SourceOut])
-async def list_paper_sources(user: User = Depends(_reader)):
-    """已注册文献源清单（key + 展示名），订阅设置弹窗的勾选框数据源（步 A）。"""
-    return [SourceOut(key=p.name, name=p.display_name) for p in list_providers()]
+async def list_paper_sources(user: User = Depends(_reader), db: AsyncSession = Depends(get_db)):
+    """源目录市场清单（P17）：编目（含未实现源）× 注册表合并，订阅设置弹窗数据源。
+
+    - implemented=True 的源可勾选（注册表内真实可抓取）；未实现源只展示、不可勾选
+      （前端徽标「待接入」）；
+    - cost=free_key / paid 且带 key_service 的源，key_configured 反映当前是否存在
+      启用中的 key：未配置时前端引导「去 Key 管理配置」（不泄露 key 本体，
+      仅存在性，与 admin 掩码口径一致的安全水位）。
+    """
+    implemented_keys = {p.name for p in list_providers()}
+    entries = list(SOURCE_CATALOG)
+    # 注册表内但不在编目里的实现（防御：未来加源忘编目）按注册表信息补位
+    known = {e.key for e in entries}
+    for p in list_providers():
+        if p.name not in known:
+            entries.append(
+                SourceCatalogEntry(
+                    key=p.name, name=p.display_name, category="综合索引",
+                    cost="free", key_service=getattr(p, "key_service", None),
+                    description="已接入数据源",
+                )
+            )
+    out: list[SourceOut] = []
+    for e in entries:
+        key_configured = False
+        if e.key_service:
+            key_configured = await fetch_service_api_key(db, e.key_service) is not None
+        out.append(
+            SourceOut(
+                key=e.key,
+                name=e.name,
+                category=e.category,
+                cost=e.cost,
+                key_service=e.key_service,
+                implemented=e.key in implemented_keys,
+                description=e.description,
+                key_configured=key_configured,
+            )
+        )
+    return out
 
 
 def _parse_keyword_array(content: str) -> list[str]:
@@ -201,16 +228,11 @@ def _parse_keyword_array(content: str) -> list[str]:
     return out
 
 
-@router.post("/suggest-keywords", response_model=SuggestKeywordsResponse)
-async def suggest_keywords(
-    body: SuggestKeywordsRequest,
-    user: User = Depends(_reader),
-    db: AsyncSession = Depends(get_db),
-):
-    """大白话 → AI 生成 8-12 个中英检索关键词（步 A 拍板 P4）。
+async def _suggest_keywords(db: AsyncSession, description: str) -> list[str]:
+    """大白话 → AI 生成检索关键词（步 A 拍板 P4 核心逻辑，路由与 P13 语义检索共用）。
 
     走网关按消费者路由（app_key=papers_config，未配置指派回落默认路由）；
-    不写库——用户勾选确认后由前端调 /me/settings 保存 subscribe_keywords。
+    不写库。解析失败/上游失败抛 HTTPException（路由层直接外透语义）。
     """
     plan = await route_service.resolve_for(db, SUGGEST_KEYWORDS_APP_KEY)
     if plan is None:
@@ -222,7 +244,7 @@ async def suggest_keywords(
             plan.candidates[0].cfg,
             [
                 {"role": "system", "content": SUGGEST_KEYWORDS_SYSTEM},
-                {"role": "user", "content": body.description.strip()},
+                {"role": "user", "content": description.strip()},
             ],
             timeout=60.0,
         )
@@ -230,13 +252,48 @@ async def suggest_keywords(
         logger.warning("生成订阅关键词失败：%s", exc)
         raise HTTPException(status_code=502, detail="AI 生成失败，请稍后再试") from exc
     try:
-        keywords = _parse_keyword_array(content)
+        return _parse_keyword_array(content)
     except (ValueError, TypeError) as exc:
         logger.warning("订阅关键词解析失败：%s（原文：%.200s）", exc, content)
         raise HTTPException(
             status_code=502, detail="AI 返回内容无法解析为关键词数组，请重试"
         ) from exc
-    return SuggestKeywordsResponse(keywords=keywords)
+
+
+@router.post("/suggest-keywords", response_model=SuggestKeywordsResponse)
+async def suggest_keywords(
+    body: SuggestKeywordsRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """大白话 → AI 生成 8-12 个中英检索关键词（步 A 拍板 P4）。
+
+    不写库——用户勾选确认后由前端调 /me/settings 保存 subscribe_keywords。
+    """
+    return SuggestKeywordsResponse(keywords=await _suggest_keywords(db, body.description))
+
+
+@router.post("/semantic-search", response_model=SemanticSearchResponse)
+async def semantic_search(
+    body: SemanticSearchRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """P13 本期·自然语言检索：一句话 → AI 语义扩词 → 临时聚合抓取一轮。
+
+    - 扩词走与 /papers/suggest-keywords 同一通道（不写订阅词，仅本轮使用）；
+    - 抓取复用按用户聚合管线（勾选源 + P21 参数同口径），结果照常全局去重入库；
+    - 写 runs(trigger=semantic)：digest「最近一轮成功检索」窗口刷新，页内立即可见；
+    - 与每日/手动轮共用抓取锁：409 = 已有轮次进行中（前端防抖 + loading 防重）。
+    """
+    keywords = await _suggest_keywords(db, body.description)
+    try:
+        result = await papers_crawl.run_semantic_search(db, user.id, keywords)
+    except papers_crawl.CrawlAlreadyRunning as exc:
+        raise HTTPException(
+            status_code=409, detail="已有检索正在进行，请稍后再试"
+        ) from exc
+    return SemanticSearchResponse(keywords=keywords, **result)
 
 
 # ── 步 B：页内 digest + 立即检索 ──────────────────────────

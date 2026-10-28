@@ -1679,3 +1679,42 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
   }
   @keyframes pp-sheet-in { from { transform: translateY(40px); opacity: .5; } to { transform: none; opacity: 1; } }
 }
+
+/* ── 论文域增强②：语义检索框（P13） ── */
+.pp-nl { display: flex; align-items: center; gap: 8px; }
+.pp-nl-input {
+  width: 320px; max-width: 40vw; padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font-size: 13px; background: var(--bg); color: var(--ink);
+  transition: border-color .14s;
+}
+.pp-nl-input:focus { outline: none; border-color: var(--brand); }
+@media (max-width: 1100px) { .pp-nl-input { width: 200px; } }
+
+/* ── 论文域增强②：数据源市场（P17） ── */
+.sub-src-item { align-items: flex-start; }
+.sub-src-item.is-pending { opacity: .62; background: var(--bg-soft); cursor: not-allowed; }
+.sub-src-item.is-pending:hover { border-color: var(--line); }
+.sub-src-item input { margin-top: 2px; }
+.sub-src-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sub-src-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 500; }
+.sub-src-badge {
+  padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 400;
+  background: var(--bg); border: 1px solid var(--line); color: var(--ink-2); line-height: 1.6;
+}
+.sub-src-badge.is-paid { color: #b45309; border-color: rgba(180, 83, 9, .35); background: rgba(180, 83, 9, .07); }
+.sub-src-badge.is-pending-badge { color: var(--ink-2); border-style: dashed; }
+.sub-src-desc { font-size: 12px; line-height: 1.5; }
+.sub-src-keyrow { margin-top: 2px; }
+.sub-src-keylink { font-size: 12px; color: var(--brand); text-decoration: none; }
+.sub-src-keylink:hover { text-decoration: underline; }
+
+/* ── 论文域增强②：订阅弹窗检索条件区（P21） ── */
+.sub-p21 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.sub-p21 .pp-tb-input { width: 96px; }
+.sub-p21-authors {
+  width: 100%; padding: 7px 12px; border: 1px solid var(--line);
+  border-radius: var(--radius-sm); font-size: 13px; background: var(--bg); color: var(--ink);
+  transition: border-color .14s;
+}
+.sub-p21-authors:focus { outline: none; border-color: var(--brand); }

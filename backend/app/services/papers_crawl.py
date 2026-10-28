@@ -24,6 +24,7 @@ provider 内部取）；瞬时错误由各源 tenacity 重试收口（retry.py�
 同日去重双保险（Q11）：进程内日期标记 + papers 表当日已有记录。
 """
 import asyncio
+import inspect
 import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -39,6 +40,7 @@ from app.models.user import Permission, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 from app.services import llm_gateway, route_service
 from app.services.sources import DEFAULT_SOURCES, PaperItem, get_provider
+from app.services.sources.keys import fetch_service_api_key
 from app.services.sources.pubmed import RATE_LIMIT_SLEEP  # NCBI polite 限速复用为源间隔
 
 logger = logging.getLogger("lumencafe.papers")
@@ -46,6 +48,50 @@ logger = logging.getLogger("lumencafe.papers")
 TRANSLATE_MAX_PER_ROUND = 20  # 中译单轮 ≤20 篇（PRD 4.8）
 TRANSLATE_INTERVAL = 1.0  # 中译篇间 ≥1s（PRD 4.8）
 HIGH_RELEVANCE_MIN_KEYWORDS = 2  # digest 高相关阈值：命中订阅关键词数 ≥2（先简单后精细）
+
+# ── papers_prefs 展示/抓取偏好缺省（P18 展示项 + P21 抓取期过滤参数） ──
+PAPERS_PREFS_DEFAULTS: dict = {
+    "display_limit": 50,
+    "sort": "time",
+    "if_min": None,  # 影响因子下限（null = 不限；展示过滤与抓取过滤共用）
+    "year_from": None,  # P21：抓取起始年（null = 不限，回落 papers_days_back 窗口）
+    "year_to": None,  # P21：抓取截止年（null = 不限）
+    "authors": [],  # P21：作者限定（逗号分隔多值存数组；任一作者命中即过）
+}
+SORT_MODES: tuple[str, ...] = ("time", "if", "score")
+
+
+def parse_papers_prefs(value: object) -> dict:
+    """解析 user_settings.papers_prefs 的 value：逐项容错回落缺省，不整单丢弃。
+
+    展示项（display_limit/sort）与 P21 抓取期过滤项（year_from/year_to/authors/if_min）
+    同存一份 papers_prefs（拍板 P21：参数随订阅配置管理，存取走现有 prefs 通道）。
+    """
+    prefs = dict(PAPERS_PREFS_DEFAULTS)
+    if not isinstance(value, dict):
+        return prefs
+    try:
+        limit = int(value.get("display_limit") or prefs["display_limit"])
+        prefs["display_limit"] = min(max(limit, 1), 500)
+    except (TypeError, ValueError):
+        pass
+    if value.get("sort") in SORT_MODES:
+        prefs["sort"] = value["sort"]
+    try:
+        if_min = value.get("if_min")
+        prefs["if_min"] = float(if_min) if if_min is not None else None
+    except (TypeError, ValueError):
+        prefs["if_min"] = None
+    for key in ("year_from", "year_to"):
+        try:
+            raw = value.get(key)
+            prefs[key] = int(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            prefs[key] = None
+    authors = value.get("authors")
+    if isinstance(authors, (list, tuple)):
+        prefs["authors"] = [str(a).strip() for a in authors if str(a).strip()]
+    return prefs
 
 # 打标规则：标签 -> 命中词列表（大小写不敏感，可多命中；沿用旧版）
 TAG_RULES: dict[str, list[str]] = {
@@ -112,11 +158,15 @@ class CrawlAlreadyRunning(Exception):
 # ── 按用户订阅聚合 ────────────────────────────────────────
 @dataclass(frozen=True)
 class UserSubscription:
-    """一个用户的抓取计划：勾选源 × 订阅关键词。"""
+    """一个用户的抓取计划：勾选源 × 订阅关键词 × P21 抓取期过滤参数。"""
 
     user_id: int
     keywords: tuple[str, ...]
     sources: tuple[str, ...]
+    year_from: int | None = None  # P21：起始年（None = 不限）
+    year_to: int | None = None  # P21：截止年（None = 不限）
+    authors: tuple[str, ...] = ()  # P21：作者限定（任一命中即过）
+    if_min: float | None = None  # P21：影响因子下限（None = 不限）
 
 
 async def _papers_permission_user_ids(db: AsyncSession) -> list[int]:
@@ -137,12 +187,14 @@ async def _papers_permission_user_ids(db: AsyncSession) -> list[int]:
 
 
 async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
-    """每个有文献权限用户的 (关键词, 源) 计划。
+    """每个有文献权限用户的 (关键词, 源, P21 过滤参数) 计划。
 
     关键词：user_settings.subscribe_keywords.value.keywords，未配置回落 env 默认
     （papers_default_keywords）；关键词为空的用户本轮跳过（与旧版语义一致）。
     源：user_settings.subscribe_sources.value.sources，未配置回落默认三源
     （sources.DEFAULT_SOURCES，见注册表 docstring）。
+    P21 过滤参数：user_settings.papers_prefs（与展示偏好同一份，拍板 P21），
+    逐项容错解析（parse_papers_prefs），未配置/非法 = 全不限。
     """
     user_ids = await _papers_permission_user_ids(db)
     if not user_ids:
@@ -150,11 +202,12 @@ async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
 
     rows = (
         await db.execute(select(UserSetting).where(UserSetting.key.in_(
-            ["subscribe_keywords", "subscribe_sources"]
+            ["subscribe_keywords", "subscribe_sources", "papers_prefs"]
         )))
     ).scalars().all()
     keywords_by_user: dict[int, list[str]] = {}
     sources_by_user: dict[int, list[str]] = {}
+    prefs_by_user: dict[int, dict] = {}
     for row in rows:
         if row.key == "subscribe_keywords":
             kws = [str(k).strip() for k in (row.value or {}).get("keywords", []) if str(k).strip()]
@@ -164,6 +217,8 @@ async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
             srcs = [str(s).strip() for s in (row.value or {}).get("sources", []) if str(s).strip()]
             if srcs:
                 sources_by_user[row.user_id] = srcs
+        elif row.key == "papers_prefs":
+            prefs_by_user[row.user_id] = parse_papers_prefs(row.value)
 
     defaults = [k.strip() for k in (settings.papers_default_keywords or "").split(",") if k.strip()]
 
@@ -173,7 +228,18 @@ async def collect_subscriptions(db: AsyncSession) -> list[UserSubscription]:
         if not kws:
             continue  # 无有效关键词：本轮不为其抓取（不回落别人配置的源）
         srcs = sources_by_user.get(uid) or list(DEFAULT_SOURCES)
-        subs.append(UserSubscription(user_id=uid, keywords=tuple(kws), sources=tuple(srcs)))
+        prefs = prefs_by_user.get(uid) or PAPERS_PREFS_DEFAULTS
+        subs.append(
+            UserSubscription(
+                user_id=uid,
+                keywords=tuple(kws),
+                sources=tuple(srcs),
+                year_from=prefs["year_from"],
+                year_to=prefs["year_to"],
+                authors=tuple(prefs["authors"]),
+                if_min=prefs["if_min"],
+            )
+        )
     return subs
 
 
@@ -348,8 +414,104 @@ async def _backfill_translations(db: AsyncSession) -> int:
     return done
 
 
+# ── P21 抓取期过滤 ──────────────────────────────────────
+def _sub_since_date(sub: UserSubscription, base_since: date) -> date:
+    """起始口径：P21 year_from 与全局回溯窗口取更晚者（年份起点折算 1 月 1 日）。"""
+    if sub.year_from is None:
+        return base_since
+    return max(base_since, date(sub.year_from, 1, 1))
+
+
+def _sub_until_date(sub: UserSubscription) -> date | None:
+    """截止口径：year_to 折算 12 月 31 日；未配置返回 None（源端不过滤，管线也不后过滤）。"""
+    return date(sub.year_to, 12, 31) if sub.year_to is not None else None
+
+
+def _apply_crawl_filters(items: list[PaperItem], sub: UserSubscription) -> list[PaperItem]:
+    """P21 抓取期后过滤：作者限定 + IF 下限（年份区间由 since/until 与各源过滤兜住）。
+
+    - authors：条目作者字段（大小写不敏感子串）命中任一限定作者即过；空 = 不过滤；
+    - if_min：近似 IF 非空且 ≥ 下限才过；if_approx 为 null 的条目在下限有值时排除；
+    - 日期条目缺失（pub_date/year 皆空）时年份后过滤保守保留（与源端过滤口径一致）。
+    """
+    out: list[PaperItem] = []
+    needles = [a.lower() for a in sub.authors if a.strip()]
+    for item in items:
+        if needles:
+            haystack = [a.lower() for a in item.authors]
+            if not any(any(n in a for a in haystack) for n in needles):
+                continue
+        if sub.if_min is not None and (
+            item.if_approx is None or item.if_approx < sub.if_min
+        ):
+            continue
+        if sub.year_to is not None:
+            item_year = item.pub_date.year if item.pub_date else item.year
+            if item_year is not None and item_year > sub.year_to:
+                continue
+        out.append(item)
+    return out
+
+
+async def _crawl_subscription(
+    db: AsyncSession, sub: UserSubscription, stats: dict, base_since: date
+) -> int:
+    """按单用户订阅计划逐源抓取并入库；返回本轮新入库篇数。
+
+    key 认证升级：provider.key_service 非空时从 service_keys 取匙注入（取不到 =
+    匿名态）；P21：since/until 按用户年份参数折算传源，authors/if_min 后过滤。
+    供 _execute_round（每日/手动轮）与 run_semantic_search（P13 语义检索）共用。
+    """
+    added = 0
+    since = _sub_since_date(sub, base_since)
+    until = _sub_until_date(sub)
+    for source_name in sub.sources:
+        provider = get_provider(source_name)
+        if provider is None:
+            logger.warning("用户 %d 勾选了未注册源 %s，跳过", sub.user_id, source_name)
+            continue
+        api_key = None
+        key_service = getattr(provider, "key_service", None)
+        if key_service:
+            api_key = await fetch_service_api_key(db, key_service)
+        try:
+            # 契约可选参数按实现签名探测注入：老版两参实现（含测试替身）零改动兼容，
+            # 新实现接收 until_date（P21）与 api_key（key 认证升级）
+            params = inspect.signature(provider.search).parameters
+            call_kwargs: dict = {}
+            if "until_date" in params:
+                call_kwargs["until_date"] = until
+            if "api_key" in params:
+                call_kwargs["api_key"] = api_key
+            items = await provider.search(list(sub.keywords), since, **call_kwargs)
+        except httpx.HTTPError as exc:
+            logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
+            continue
+        await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
+        items = _apply_crawl_filters(items, sub)
+        src_stats = stats["per_source"].setdefault(source_name, {"fetched": 0, "added": 0})
+        src_stats["fetched"] += len(items)
+        stats["fetched"] += len(items)
+        seen_keys: set[str] = set()
+        for item in items:
+            keys = [k for k in item.dedupe_keys if k]
+            if any(k in seen_keys for k in keys):
+                continue  # 轮内跨源去重：doi > arxiv_id > external_id
+            seen_keys.update(keys)
+            tags, hits = tag_paper(item.title, item.abstract)
+            paper_id, is_new = await _upsert_item(db, item, tags, hits)
+            await _attribute_paper(db, paper_id, [sub.user_id])
+            if is_new:
+                added += 1
+                src_stats["added"] += 1
+        await db.commit()
+        logger.info("用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added)
+    return added
+
+
 # ── 轮次执行与 runs 记录（步 B） ──────────────────────────
-# 「立即检索」并发护栏：进程内 asyncio 锁，同一时刻只允许一轮抓取。
+# 「立即检索」并发护栏：进程内 asyncio 锁，同一时刻只允许一轮抓取
+# （每日轮 / 手动轮 / P13 语义检索共用同一把锁）。
 _crawl_lock = asyncio.Lock()
 
 
@@ -402,36 +564,7 @@ async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCr
     added = 0
     try:
         for sub in subs:
-            for source_name in sub.sources:
-                provider = get_provider(source_name)
-                if provider is None:
-                    logger.warning("用户 %d 勾选了未注册源 %s，跳过", sub.user_id, source_name)
-                    continue
-                try:
-                    items = await provider.search(list(sub.keywords), since_date)
-                except httpx.HTTPError as exc:
-                    logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
-                    continue
-                await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
-                src_stats = stats["per_source"].setdefault(source_name, {"fetched": 0, "added": 0})
-                src_stats["fetched"] += len(items)
-                stats["fetched"] += len(items)
-                seen_keys: set[str] = set()
-                for item in items:
-                    keys = [k for k in item.dedupe_keys if k]
-                    if any(k in seen_keys for k in keys):
-                        continue  # 轮内跨源去重：doi > arxiv_id > external_id
-                    seen_keys.update(keys)
-                    tags, hits = tag_paper(item.title, item.abstract)
-                    paper_id, is_new = await _upsert_item(db, item, tags, hits)
-                    await _attribute_paper(db, paper_id, [sub.user_id])
-                    if is_new:
-                        added += 1
-                        src_stats["added"] += 1
-                await db.commit()
-                logger.info(
-                    "用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added
-                )
+            added += await _crawl_subscription(db, sub, stats, since_date)
         if not force:
             mark_ran_today()
         translated = await _backfill_translations(db)
@@ -473,6 +606,78 @@ async def run_manual_crawl(db: AsyncSession) -> dict:
         "runs_id": run.id,
         "per_source": {
             source: counts["fetched"] for source, counts in run.stats["per_source"].items()
+        },
+    }
+
+
+# ── P13 本期：自然语言检索（大白话 → AI 扩词 → 临时聚合抓取） ──
+async def _user_subscription_for(db: AsyncSession, user_id: int, keywords: list[str]) -> UserSubscription | None:
+    """组装单用户临时抓取计划：语义扩词替换订阅词，源/P21 参数沿用该用户配置。"""
+    row = (
+        await db.execute(
+            select(UserSetting).where(
+                UserSetting.user_id == user_id, UserSetting.key == "subscribe_sources"
+            )
+        )
+    ).scalar_one_or_none()
+    srcs = [str(s).strip() for s in (row.value or {}).get("sources", []) if str(s).strip()] if row else []
+    prefs_row = (
+        await db.execute(
+            select(UserSetting).where(
+                UserSetting.user_id == user_id, UserSetting.key == "papers_prefs"
+            )
+        )
+    ).scalar_one_or_none()
+    prefs = parse_papers_prefs(prefs_row.value) if prefs_row is not None else PAPERS_PREFS_DEFAULTS
+    return UserSubscription(
+        user_id=user_id,
+        keywords=tuple(keywords),
+        sources=tuple(srcs) if srcs else tuple(DEFAULT_SOURCES),
+        year_from=prefs["year_from"],
+        year_to=prefs["year_to"],
+        authors=tuple(prefs["authors"]),
+        if_min=prefs["if_min"],
+    )
+
+
+async def run_semantic_search(db: AsyncSession, user_id: int, keywords: list[str]) -> dict:
+    """P13 本期：按语义扩词结果临时跑一轮单用户聚合抓取。
+
+    - 复用 _crawl_subscription（与每日/手动轮同一入库管线：去重、打标、幂等 upsert、
+      归属），但**不写订阅词**——keywords 仅本轮使用，subscribe_keywords 保持原样；
+    - 源勾选与 P21 抓取参数沿用该用户配置（papers_prefs），与订阅抓取同口径；
+    - 写 runs(trigger=semantic)：digest「最近一轮成功检索」窗口随之刷新，页内立即可见；
+    - 与每日/手动轮共用 _crawl_lock：并发冲突抛 CrawlAlreadyRunning（路由转 409）。
+    """
+    if not keywords:
+        return {"added": 0, "runs_id": None, "per_source": {}}
+    if _crawl_lock.locked():
+        raise CrawlAlreadyRunning()
+    async with _crawl_lock:
+        sub = await _user_subscription_for(db, user_id, keywords)
+        started_at = datetime.now(UTC)
+        stats: dict = {"per_source": {}, "users": 1, "fetched": 0, "added": 0}
+        base_since = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
+        try:
+            added = await _crawl_subscription(db, sub, stats, base_since)
+            stats["added"] = added
+            run = await _write_run(db, "semantic", stats, "success", run_at=started_at)
+        except Exception as exc:
+            await db.rollback()
+            logger.exception("语义检索轮次失败（用户 %d）", user_id)
+            run = await _write_run(
+                db, "semantic", stats, "failed", error=str(exc)[:1000], run_at=started_at
+            )
+            return {
+                "added": 0,
+                "runs_id": run.id,
+                "per_source": {},
+            }
+    return {
+        "added": stats["added"],
+        "runs_id": run.id,
+        "per_source": {
+            source: counts["fetched"] for source, counts in stats["per_source"].items()
         },
     }
 

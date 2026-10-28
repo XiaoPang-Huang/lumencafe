@@ -62,12 +62,28 @@ class SourceProvider(Protocol):
     - HTTP 层一律走 get_http_client() 并用 @external_retry() 装饰内部请求函数；
     - 任一关键词失败应向外抛 httpx.HTTPError（由调用方记日志跳过），
       不得静默吞掉整轮结果。
+
+    key 认证升级（本期）与 P21 抓取期参数：
+    - key_service：非 None 时抓取管线按该服务名从 service_keys 取匙，以 api_key
+      参数注入（无匙/取不到 = None，保持匿名态，行为与升级前一致）；
+    - until_date：P21 年份上限折算的日期，源 API 支持的走服务端过滤
+      （如 OpenAlex to_publication_date、PubMed maxdate），不支持的忽略，
+      由管线统一后过滤兜底；不传 = 不限上限；
+    - api_key 与 until_date 均为可选关键字参数：不配 key / 不限年份的存量调用
+      （search(keywords, since_date)）完全不受影响。
     """
 
     name: str
     display_name: str
+    key_service: str | None = None  # service_keys 服务名（None = 匿名源，无需 key）
 
-    async def search(self, keywords: list[str], since_date: date) -> list[PaperItem]:
+    async def search(
+        self,
+        keywords: list[str],
+        since_date: date,
+        until_date: date | None = None,
+        api_key: str | None = None,
+    ) -> list[PaperItem]:
         """按关键词列表检索 since_date 以来的文献，合并去重后返回。"""
         ...
 
