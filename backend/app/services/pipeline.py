@@ -15,6 +15,11 @@ cron 任务：on_crons 声明式注册（worker 注册即生效），默认 30 7
 容器 TZ=Asia/Shanghai 解释为本地早 7:30；执行体 = papers_crawl.run_daily_crawl
 同一函数（trigger=schedule），runs 表落库与手动/内部触发完全一致。
 
+第二条 workflow（论文域增强 P14）：papers-daily-cleanup，默认 30 8 * * *（抓取后
+1 小时，本地 8:30），执行 7 天滚动清理（未收藏且无笔记且入库 ≥7 天的论文），
+幂等同 digest 先例（进程内日期标记）。两 task 共用 _session_task 的
+专用引擎会话样板（worker 跑在 SDK 独占事件循环，连接不可跨循环复用）。
+
 手动 crawl-now 不走 Hatchet：进程内同步执行、即时返回结果；若绕引擎转发，
 用户点「立即检索」要承担引擎可用性 + gRPC 往返 + 轮询运行状态三重失败面，
 收益为零（无重试/无并发语义需求）。定时与手动共用 _execute_round，口径天然一致。
@@ -23,6 +28,7 @@ import asyncio
 import logging
 import os
 import threading
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -34,6 +40,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("lumencafe.pipeline")
 
 CRAWL_TASK_NAME = "papers-daily-crawl"
+CLEANUP_TASK_NAME = "papers-daily-cleanup"
 
 _hatchet: "Hatchet | None" = None
 _worker: Any = None  # hatchet_sdk Worker（ Any：未装 SDK 时不引入类型依赖）
@@ -49,39 +56,75 @@ def is_configured() -> bool:
     return bool(settings.hatchet_client_token or os.environ.get("HATCHET_CLIENT_TOKEN"))
 
 
-def _build_task(hatchet: "Hatchet") -> Any:
-    """声明每日抓取任务：on_crons 声明式 cron，执行体与手动触发共用同一函数。"""
+def _session_task(
+    hatchet: "Hatchet",
+    *,
+    name: str,
+    cron: str,
+    timeout: timedelta,
+    body: Callable[[Any], Awaitable[dict[str, Any]]],
+) -> Any:
+    """声明一个带专用引擎会话的 cron 任务（执行体注入，会话样板共用）。
+
+    worker 跑在 SDK 独占事件循环（守护线程），与主应用引擎不同循环——
+    SQLAlchemy/asyncpg 连接不可跨循环复用，故任务内自建专用引擎（NullPool，
+    随任务 dispose）；http_client 本身感知循环切换，provider 网络层不受影响。
+    expire_on_commit=False 与 app.db.SessionLocal 同口径。
+    """
     from hatchet_sdk import Context, EmptyModel
 
     @hatchet.task(
-        name=CRAWL_TASK_NAME,
-        on_crons=[settings.papers_crawl_cron],
-        execution_timeout=timedelta(minutes=10),  # 多用户 × 多源 + 中译回填，给足余量
-        retries=1,  # 瞬时失败重试一轮；runs 表记录每次轮次，重复轮幂等
+        name=name,
+        on_crons=[cron],
+        execution_timeout=timeout,
+        retries=1,  # 瞬时失败重试一轮；抓取轮有 runs 表/清理有日期标记，重复执行幂等
     )
-    async def papers_daily_crawl(input: EmptyModel, ctx: Context) -> dict[str, Any]:
-        # worker 跑在 SDK 独占事件循环（守护线程），与主应用引擎不同循环——
-        # SQLAlchemy/asyncpg 连接不可跨循环复用，故任务内自建专用引擎（NullPool，
-        # 随任务 dispose）；http_client 本身感知循环切换，provider 网络层不受影响。
+    async def _task(input: EmptyModel, ctx: Context) -> dict[str, Any]:
         from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
         from sqlalchemy.pool import NullPool
 
         from app.config import settings as app_settings
-        from app.services import papers_crawl
 
-        logger.info("Hatchet cron 触发 papers-daily-crawl，开始执行抓取轮次")
+        logger.info("Hatchet cron 触发 %s", name)
         engine = create_async_engine(app_settings.database_url, poolclass=NullPool)
         try:
-            # expire_on_commit=False 与 app.db.SessionLocal 同口径（_write_run 提交后
-            # 调用方还要读 run.id/run.stats，避免过期刷新触发隐式 IO）
             async with AsyncSession(engine, expire_on_commit=False) as db:
-                added = await papers_crawl.run_daily_crawl(db, trigger="schedule")
+                return await body(db)
         finally:
             await engine.dispose()
+
+    return _task
+
+
+def _build_tasks(hatchet: "Hatchet") -> list[Any]:
+    """注册两条论文域 cron workflow：每日抓取 + 每日 7 天滚动清理（P14）。"""
+    from app.services import papers_crawl
+
+    async def _crawl_body(db: Any) -> dict[str, Any]:
+        added = await papers_crawl.run_daily_crawl(db, trigger="schedule")
         logger.info("papers-daily-crawl 轮次完成：added=%d", added)
         return {"added": added}
 
-    return papers_daily_crawl
+    async def _cleanup_body(db: Any) -> dict[str, Any]:
+        result = await papers_crawl.run_daily_cleanup(db)
+        logger.info("papers-daily-cleanup 完成：%s", result)
+        return result
+
+    crawl_task = _session_task(
+        hatchet,
+        name=CRAWL_TASK_NAME,
+        cron=settings.papers_crawl_cron,
+        timeout=timedelta(minutes=10),  # 多用户 × 多源 + 中译回填，给足余量
+        body=_crawl_body,
+    )
+    cleanup_task = _session_task(
+        hatchet,
+        name=CLEANUP_TASK_NAME,
+        cron=settings.papers_cleanup_cron,
+        timeout=timedelta(minutes=5),  # 单表单次删除，余量充足
+        body=_cleanup_body,
+    )
+    return [crawl_task, cleanup_task]
 
 
 def start() -> bool:
@@ -102,14 +145,18 @@ def start() -> bool:
         return False
 
     _hatchet = Hatchet()
-    task = _build_task(_hatchet)
-    _worker = _hatchet.worker("lumencafe-papers", slots=1, workflows=[task])
+    tasks = _build_tasks(_hatchet)
+    _worker = _hatchet.worker("lumencafe-papers", slots=1, workflows=tasks)
     _worker_thread = threading.Thread(
         target=_worker.start, name="hatchet-worker", daemon=True
     )
     _worker_thread.start()
     logger.info(
-        "Hatchet worker 已启动（task=%s cron=%s）", CRAWL_TASK_NAME, settings.papers_crawl_cron
+        "Hatchet worker 已启动（tasks=%s/%s crons=%s/%s）",
+        CRAWL_TASK_NAME,
+        CLEANUP_TASK_NAME,
+        settings.papers_crawl_cron,
+        settings.papers_cleanup_cron,
     )
     return True
 

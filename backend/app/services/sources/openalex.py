@@ -73,6 +73,13 @@ def _parse_works(data: dict, keyword: str) -> list[PaperItem]:
         except ValueError:
             pass
         year = work.get("publication_year")
+        # 元数据增强（P15）：被引数 + 影响因子近似（非 JCR 官方值）。
+        # OpenAlex 已下线 works 的 summary_stats.2yr_mean_citedness 字段（2026-10 实测），
+        # 回落取 fwci（字段加权引用影响，单篇引文影响指标）；两者皆空则留 None 不编造。
+        cited_by = work.get("cited_by_count")
+        stats = work.get("summary_stats") or {}
+        mean_cited = stats.get("2yr_mean_citedness")
+        fwci = work.get("fwci")
         items.append(
             PaperItem(
                 title=str(work.get("display_name") or ""),
@@ -85,6 +92,11 @@ def _parse_works(data: dict, keyword: str) -> list[PaperItem]:
                 external_id=openalex_id,
                 journal=str(source.get("display_name") or ""),
                 pub_date=pub_date,
+                cited_count=int(cited_by) if cited_by is not None else None,
+                if_approx=(
+                    float(mean_cited) if mean_cited is not None
+                    else (float(fwci) if fwci is not None else None)
+                ),
             )
         )
     return items

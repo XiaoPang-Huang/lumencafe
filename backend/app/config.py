@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # token 留空 = 后端不接线 Hatchet（定时抓取退化到 /internal/jobs 触发），不报错。
     hatchet_client_token: str = ""  # 镜像 settings.hatchet_client_token 仅作「是否接线」开关
     papers_crawl_cron: str = "30 7 * * *"  # 每日抓取 cron；引擎容器 TZ=Asia/Shanghai → 本地 7:30
+    papers_cleanup_cron: str = "30 8 * * *"  # 每日 7 天滚动清理 cron（抓取后 1 小时，本地 8:30）
+    papers_retention_days: int = 7  # P14：未收藏且无笔记的论文入库保留天数
 
     # 系统状态（底座步 5）：/api/status 返回值；发版时手动 bump
     app_version: str = "1.0.0"

@@ -146,10 +146,14 @@
     } catch (err) {}
     document.documentElement.setAttribute("data-theme", themeResolved());
   })();
-  /* 用户设置里的主题档（无记录 = 跟随系统） */
+  /* 用户设置里的主题档（无记录 = 跟随系统）。
+   * /auth/me 的 MeOut 不含 settings 字段：此时不得覆盖启动兜底（localStorage 上次
+   * 模式），否则整页刷新后用户选择会被重置回「跟随系统」（步 C 暗色模式的存量 bug，
+   * 论文域增强批顺带修复——仅当 user_settings 里确有 theme.mode 时才以其为准。 */
   function loadThemeFromSettings(settings) {
-    var m = ((settings || {}).theme || {}).mode;
-    themeState.mode = (m === "light" || m === "dark" || m === "system") ? m : "system";
+    var m = (((settings || {}).theme) || {}).mode;
+    if (m !== "light" && m !== "dark" && m !== "system") return;
+    themeState.mode = m;
     applyTheme();
   }
 
@@ -1402,8 +1406,31 @@
               '<button class="pp-nav-item" type="button" data-pp-nav="all"><i data-ic="book"></i>全部论文</button>' +
               '<button class="pp-nav-item is-disabled" type="button" disabled title="后续批次开放"><i data-ic="edit"></i>我的笔记</button>' +
             "</nav>" +
-            /* 中间卡片流 */
-            '<div class="pp-list" data-pp-list><div class="muted" style="padding:14px 4px;font-size:13px;">加载中…</div></div>' +
+            /* 中间卡片流（展示设置工具条 P18 + 卡片列） */
+            '<div class="pp-list">' +
+              '<div class="card pp-toolbar">' +
+                '<span class="pp-tb-label">排序</span>' +
+                xselectHtml({
+                  value: paperState.prefs.sort,
+                  placeholder: "时间",
+                  options: [
+                    { value: "time", label: "时间" },
+                    { value: "if", label: "影响因子" },
+                    { value: "score", label: "相关度" }
+                  ],
+                  attrs: 'data-pp-sort',
+                  cls: "pp-tb-xsel"
+                }) +
+                '<span class="pp-tb-label">IF 下限</span>' +
+                '<input class="pp-tb-input" type="number" min="0" step="0.1" data-pp-ifmin placeholder="不限"' +
+                  ' value="' + (paperState.prefs.if_min != null ? esc(String(paperState.prefs.if_min)) : "") + '" aria-label="影响因子下限">' +
+                '<span class="pp-tb-label">展示</span>' +
+                '<input class="pp-tb-input pp-tb-num" type="number" min="1" max="500" step="1" data-pp-limit aria-label="展示条数"' +
+                  ' value="' + esc(String(paperState.prefs.display_limit)) + '">' +
+                '<span class="pp-tb-hint muted">改动即时生效并保存为我的展示偏好</span>' +
+              "</div>" +
+              '<div class="pp-cards" data-pp-list><div class="muted" style="padding:14px 4px;font-size:13px;">加载中…</div></div>' +
+            "</div>" +
             /* 右侧详情面板（点卡片展开；本批不接预览） */
             '<aside class="card pp-detail hide" data-pp-detail></aside>' +
           "</div>" +
@@ -2030,7 +2057,14 @@
   }
 
   /* ================= 文献页活数据（步 C 三栏骨架；digest / daily / favorites 三源） ================= */
-  var paperState = { nav: "digest", items: [], digest: null, crawlBusy: false };
+  var paperState = {
+    nav: "digest", items: [], digest: null, crawlBusy: false,
+    prefs: { display_limit: 50, sort: "time", if_min: null },  // P18 展示设置（papers_prefs）
+    saved: {},        // P19：paper_id -> bool，今日推送/我的收藏双列表共享收藏态
+    prefsLoaded: false
+  };
+
+  var PP_IF_TIP = "影响因子近似口径：OpenAlex 引文影响指标 FWCI（字段加权引用影响，非 JCR 官方值）";
 
   var PP_NAV_EMPTY = {
     digest: "今日暂无命中：点右上角「⚙ 订阅设置」配置关键词与数据源，再「⟳ 立即检索」跑一轮",
@@ -2040,27 +2074,51 @@
   /* 数据源 key → 徽标名（GET /papers/sources 同集） */
   var PP_SRC_NAMES = { pubmed: "PubMed", arxiv: "arXiv", openalex: "OpenAlex", semantic_scholar: "S2", doaj: "DOAJ" };
   function _srcName(key) { return PP_SRC_NAMES[key] || key || ""; }
+  /* PaperOut 无 source 字段：从全局去重键前缀推导（pmid 列 = source:external_id） */
+  function _srcFromPmid(pmid) {
+    var i = String(pmid || "").indexOf(":");
+    return i > 0 ? String(pmid).slice(0, i) : (String(pmid || "").match(/^\d+$/) ? "pubmed" : "");
+  }
 
   function _paperAuthors(authors) {
     if (!authors || !authors.length) return "";
     var s = authors.slice(0, 3).join(", ");
     return authors.length > 3 ? s + " 等" : s;
   }
+  /* 卡片/详情元数据行（P15）：作者(前2+等) · 期刊 · 年份 · 被引 N · IF≈x.x（近似带 tooltip） */
+  function _paperMetaLine(v) {
+    var parts = [];
+    var auth = v.authors || [];
+    if (auth.length) parts.push(esc(auth.slice(0, 2).join(", ")) + (auth.length > 2 ? " 等" : ""));
+    if (v.journal) parts.push(esc(v.journal));
+    if (v.year) parts.push(esc(String(v.year)));
+    if (v.cited_count != null) parts.push("被引 " + esc(String(v.cited_count)));
+    if (v.if_approx != null) {
+      parts.push('<span class="pp-if" title="' + esc(PP_IF_TIP) + '">IF≈' + esc(String(v.if_approx)) + "</span>");
+    }
+    return parts.join(" · ");
+  }
   /* digest 条目（DigestItemOut，无摘要字段）→ 卡片统一视图 */
   function _digestCardView(it) {
     return {
       id: it.paper_id, title: it.title, source: it.source,
       year: it.year, url: it.url || "", matched: it.matched_keywords || [],
-      hi: !!it.is_high_relevance, abstract: "", saved: false
+      hi: !!it.is_high_relevance, abstract: "", saved: !!it.saved,
+      authors: it.authors || [], journal: it.journal || "",
+      cited_count: it.cited_count == null ? null : it.cited_count,
+      if_approx: it.if_approx == null ? null : it.if_approx
     };
   }
   /* 列表接口条目（PaperOut）→ 卡片统一视图 */
   function _paperCardView(p) {
     return {
-      id: p.id, title: p.title, source: "",
+      id: p.id, title: p.title, source: _srcFromPmid(p.pmid),
       year: p.pub_date ? String(p.pub_date).slice(0, 4) : null,
-      url: "", matched: p.tags || [], hi: false,
-      abstract: p.abstract || "", saved: !!p.saved
+      url: p.doi ? ("https://doi.org/" + p.doi) : "", matched: p.tags || [], hi: false,
+      abstract: p.abstract || "", saved: !!p.saved,
+      authors: p.authors || [], journal: p.journal || "",
+      cited_count: p.cited_count == null ? null : p.cited_count,
+      if_approx: p.if_approx == null ? null : p.if_approx
     };
   }
 
@@ -2085,22 +2143,26 @@
     API.get("/papers/digest").then(function (d) { paperState.digest = d; renderDigestBar(); }).catch(function () {});
   }
 
-  /* 中间卡片流：标题 + 来源徽标 + 高相关红标 + 年份 + 两行摘要 + 操作行（收藏/下载占位/解读） */
+  /* 中间卡片流：标题 + 来源徽标 + 高相关红标 + 年份 + 元数据行 + 两行摘要 + 操作行（收藏/下载占位/解读） */
   function paperCardHtml(v) {
     var kws = v.matched.slice(0, 4).map(function (k) { return '<span class="pill pill-mute">' + esc(k) + "</span>"; }).join("");
     if (v.matched.length > 4) kws += '<span class="pill pill-mute">+' + (v.matched.length - 4) + "</span>";
     var src = v.source ? '<span class="pp-src">' + esc(_srcName(v.source)) + "</span>" : "";
     var hi = v.hi ? '<span class="pill pp-hi">高相关</span>' : "";
     var year = v.year ? '<span class="pp-year">' + esc(String(v.year)) + "</span>" : '<span class="pp-year"></span>';
+    var metaLine = _paperMetaLine(v);
+    /* P19 双列表共享收藏态：savedMap 优先于卡片自带快照 */
+    var isSaved = paperState.saved[v.id] !== undefined ? !!paperState.saved[v.id] : !!v.saved;
     return '<article class="pp-card" data-pp-card="' + v.id + '" role="button" tabindex="0">' +
       '<div class="pp-card-head">' + src + hi + year + "</div>" +
       '<h3 class="pp-card-title">' + esc(v.title) + "</h3>" +
+      (metaLine ? '<div class="pp-card-meta">' + metaLine + "</div>" : "") +
       '<p class="pp-card-abs' + (v.abstract ? "" : " is-loading") + '" data-pp-abs="' + v.id + '">' +
         (v.abstract ? esc(v.abstract) : "摘要加载中…") + "</p>" +
       (kws ? '<div class="pp-card-kws">' + kws + "</div>" : "") +
       '<div class="pp-card-ops">' +
-        '<button class="pp-op' + (v.saved ? " is-on" : "") + '" type="button" data-paper-save="' + v.id + '">' +
-          '<i data-ic="star"></i>' + (v.saved ? "已收藏" : "收藏") + "</button>" +
+        '<button class="pp-op' + (isSaved ? " is-on" : "") + '" type="button" data-paper-save="' + v.id + '">' +
+          '<i data-ic="star"></i>' + (isSaved ? "已收藏" : "收藏") + "</button>" +
         '<button class="pp-op is-disabled" type="button" data-pp-dl="' + v.id + '" title="下批开放">' +
           '<i data-ic="dl"></i>下载</button>' +
         '<button class="pp-op" type="button" data-paper-explain="' + v.id + '">' +
@@ -2133,24 +2195,84 @@
       });
     }
   }
+  /* 展示偏好 → 查询串（P18：sort/limit 恒带；if_min 仅设置时带，空=不限） */
+  function _prefsQuery() {
+    var p = paperState.prefs;
+    var s = "?sort=" + encodeURIComponent(p.sort) +
+            "&limit=" + encodeURIComponent(String(p.display_limit));
+    if (p.if_min != null && p.if_min !== "") s += "&if_min=" + encodeURIComponent(String(p.if_min));
+    return s;
+  }
+  /* P19：把当前列表条目的收藏快照并入共享 savedMap（详情/操作行以 map 为准） */
+  function _syncSavedFromItems() {
+    paperState.items.forEach(function (v) { paperState.saved[v.id] = !!v.saved; });
+  }
+
   function loadPapersNav() {
     var box = qs("[data-pp-list]");
     if (box) box.innerHTML = '<div class="card" style="padding:22px;"><span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span></div>';
     closePaperDetail();
     if (paperState.nav === "digest") {
-      API.get("/papers/digest").then(function (d) {
+      API.get("/papers/digest" + _prefsQuery()).then(function (d) {
         paperState.digest = d;
         renderDigestBar();
         paperState.items = (d.items || []).map(_digestCardView);
+        _syncSavedFromItems();
         renderPaperCards();
       }).catch(function (e) { toast(e.detail || "今日推送加载失败"); });
       return;
     }
-    var path = paperState.nav === "favorites" ? "/papers/favorites" : "/papers/daily?limit=100";
+    var path = paperState.nav === "favorites" ? "/papers/favorites" : "/papers/daily" + _prefsQuery();
     API.get(path).then(function (items) {
       paperState.items = (items || []).map(_paperCardView);
+      _syncSavedFromItems();
       renderPaperCards();
     }).catch(function (e) { toast(e.detail || "文献加载失败"); });
+  }
+
+  /* 展示偏好：GET /me 读取 → 控件回显；改动即时生效并 PUT /me/settings 保存（P18） */
+  function loadPapersPrefs() {
+    return API.get("/me").then(function (me) {
+      var p = (((me || {}).settings) || {}).papers_prefs;
+      if (p && typeof p === "object") {
+        if (["time", "if", "score"].indexOf(p.sort) !== -1) paperState.prefs.sort = p.sort;
+        var lim = parseInt(p.display_limit, 10);
+        if (!isNaN(lim) && lim >= 1 && lim <= 500) paperState.prefs.display_limit = lim;
+        var ifm = parseFloat(p.if_min);
+        paperState.prefs.if_min = (p.if_min != null && !isNaN(ifm) && ifm >= 0) ? ifm : null;
+      }
+      paperState.prefsLoaded = true;
+      syncPrefsControls();
+    }).catch(function () { paperState.prefsLoaded = true; });
+  }
+  /* 不派发 xselect:change 的静默回显（避免触发 loadPapersNav 双加载） */
+  function _xselectSetSilent(root, value, label) {
+    if (!root) return;
+    root.setAttribute("data-value", value);
+    root.classList.remove("is-placeholder");
+    var lbl = qs(".xselect-label", root);
+    if (lbl) lbl.textContent = label;
+    qsa("[data-xselect-opt]", root).forEach(function (o) {
+      var on = o.getAttribute("data-xselect-opt") === value;
+      o.classList.toggle("selected", on);
+      o.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+  function syncPrefsControls() {
+    var sortLabels = { time: "时间", if: "影响因子", score: "相关度" };
+    var xs = qs("[data-pp-sort]");
+    _xselectSetSilent(xs, paperState.prefs.sort, sortLabels[paperState.prefs.sort] || "时间");
+    var ifmin = qs("[data-pp-ifmin]");
+    if (ifmin) ifmin.value = paperState.prefs.if_min != null ? String(paperState.prefs.if_min) : "";
+    var lim = qs("[data-pp-limit]");
+    if (lim) lim.value = String(paperState.prefs.display_limit);
+  }
+  var _prefsSaveTimer = null;
+  function savePapersPrefs() {
+    clearTimeout(_prefsSaveTimer);
+    _prefsSaveTimer = setTimeout(function () {
+      API.put("/me/settings", { key: "papers_prefs", value: paperState.prefs }).catch(function () {});
+    }, 300);
   }
 
   /* 立即检索：按钮 loading → POST /papers/crawl-now → 刷新 digest（防并发） */
@@ -2181,6 +2303,11 @@
       ? '<div class="pp-abstract" data-explain-body>' + esc(p.explanation) + "</div>"
       : '<button class="btn btn-ghost btn-sm" type="button" data-paper-explain="' + p.id + '"><i data-ic="spark"></i>生成 AI 解读</button>' +
         '<div class="pp-abstract hide" data-explain-body></div>';
+    var citeParts = [];
+    if (p.cited_count != null) citeParts.push("被引 " + esc(String(p.cited_count)));
+    if (p.if_approx != null) {
+      citeParts.push('<span class="pp-if" title="' + esc(PP_IF_TIP) + '">IF≈' + esc(String(p.if_approx)) + "</span>");
+    }
     return '' +
       '<div class="pp-detail-head">' +
         '<div class="pp-detail-title">' + esc(p.title) + "</div>" +
@@ -2188,6 +2315,7 @@
       '<div class="pp-detail-meta">' +
         esc(_paperAuthors(p.authors) || "（作者不详）") + "<br>" +
         esc(p.journal || "—") + (p.pub_date ? " · " + esc(String(p.pub_date)) : "") +
+        (citeParts.length ? "<br>" + citeParts.join(" · ") : "") +
         (url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">打开原文链接 ↗</a>' : "") +
       "</div>" +
       (kws ? '<div class="pp-detail-kws">' + kws + "</div>" : "") +
@@ -2373,7 +2501,9 @@
       paperState.nav = "digest";
       paperState.items = [];
       paperState.digest = null;
-      loadPapersNav();
+      /* P18：偏好先就位再拉列表（未加载过则先 GET /me 读 papers_prefs） */
+      if (paperState.prefsLoaded) loadPapersNav();
+      else loadPapersPrefs().then(loadPapersNav);
     },
 
 
@@ -3349,11 +3479,12 @@
       openPaperDetail(parseInt(pCard.getAttribute("data-pp-card"), 10));
       return;
     }
-    /* 文献页：收藏 toggle */
+    /* 文献页：收藏 toggle（P19：状态提升 savedMap，今日推送/我的收藏双列表即时同步） */
     var pSave = el.closest("[data-paper-save]");
     if (pSave) {
       var pid5 = parseInt(pSave.getAttribute("data-paper-save"), 10);
       API.post("/papers/" + pid5 + "/save", {}).then(function (r) {
+        paperState.saved[pid5] = r.saved;  // 双列表共享态：切 nav 不重拉也一致
         paperState.items.forEach(function (it) { if (it.id === pid5) it.saved = r.saved; });
         /* 卡片操作行与详情面板内可能各有一个收藏按钮，同步刷新 */
         qsa('[data-paper-save="' + pid5 + '"]').forEach(function (b) {
@@ -3361,7 +3492,11 @@
           var lbl = b.childNodes[b.childNodes.length - 1];
           if (lbl && lbl.nodeType === 3) lbl.textContent = r.saved ? "已收藏" : "收藏";
         });
-        if (paperState.nav === "favorites") loadPapersNav();
+        /* 收藏列表里取消收藏 → 卡片即时移除（无需刷新）；其余列表原地更新状态 */
+        if (paperState.nav === "favorites" && !r.saved) {
+          paperState.items = paperState.items.filter(function (it) { return it.id !== pid5; });
+          renderPaperCards();
+        }
         toast(r.saved ? "已收藏" : "已取消收藏");
       }).catch(function (e) { toast(e.detail || "操作失败"); });
       return;
@@ -3690,6 +3825,33 @@
     if (c.checked && idx === -1) subState.sources.push(key);
     if (!c.checked && idx !== -1) subState.sources.splice(idx, 1);
     subRefreshSaveBtn();
+  });
+
+  /* 文献页展示设置（P18）：排序 xselect / IF 下限 / 展示条数——改动即时生效并保存偏好 */
+  document.addEventListener("xselect:change", function (e) {
+    var root = e.target.closest ? e.target.closest("[data-pp-sort]") : null;
+    if (!root || !e.detail) return;
+    paperState.prefs.sort = e.detail.value;
+    savePapersPrefs();
+    loadPapersNav();
+  });
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.closest && t.closest("[data-pp-ifmin]")) {
+      var v = parseFloat(t.value);
+      paperState.prefs.if_min = (t.value === "" || isNaN(v) || v < 0) ? null : v;
+      savePapersPrefs();
+      loadPapersNav();
+      return;
+    }
+    if (t.closest && t.closest("[data-pp-limit]")) {
+      var n = parseInt(t.value, 10);
+      if (!isNaN(n) && n >= 1) {
+        paperState.prefs.display_limit = Math.min(n, 500);
+        savePapersPrefs();
+        loadPapersNav();
+      }
+    }
   });
 
   /* 对话发送：POST /chat SSE 双流渲染（reasoning_delta → 思维面板「思考中…」计时态；

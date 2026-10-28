@@ -29,12 +29,12 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 import httpx
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.papers import Paper, PaperCrawlRun, PaperUser
+from app.models.papers import Paper, PaperCrawlRun, PaperFavorite, PaperNote, PaperUser
 from app.models.user import Permission, RolePermission, User, UserRole
 from app.models.user_settings import UserSetting
 from app.services import llm_gateway, route_service
@@ -219,35 +219,59 @@ async def _find_existing_paper_id(db: AsyncSession, item: PaperItem) -> int | No
     return None
 
 
+# 已存在行允许刷新的元数据列（P15：跨源重复命中时补全/更新题录元数据；
+# title/abstract/abstract_zh/tags/keywords 不在其列——不覆盖既有正文与中译）
+_METADATA_REFRESH_COLS = ("doi", "journal", "authors", "pub_date", "cited_count", "if_approx")
+
+
+def _metadata_values(item: PaperItem) -> dict:
+    """PaperItem → 可刷新元数据列的值字典（pub_date 由 year 兜底）。"""
+    return {
+        "doi": item.doi.lower() if item.doi else None,
+        "journal": item.journal,
+        "authors": list(item.authors),
+        "pub_date": item.pub_date or (date(item.year, 1, 1) if item.year else None),
+        "cited_count": item.cited_count,
+        "if_approx": item.if_approx,
+    }
+
+
+async def _refresh_metadata(db: AsyncSession, paper_id: int, item: PaperItem) -> None:
+    """对已存在行刷新元数据列（P15，空值不回填：源没有就不覆盖已有值）。"""
+    values = {k: v for k, v in _metadata_values(item).items() if v not in (None, "", [])}
+    if values:
+        await db.execute(update(Paper).where(Paper.id == paper_id).values(**values))
+
+
 async def _upsert_item(
     db: AsyncSession, item: PaperItem, tags: list[str], hits: list[str]
 ) -> tuple[int, bool]:
     """单篇入库：跨源去重后 papers 幂等 upsert；返回 (paper_id, 是否新插入)。
 
-    同一篇被多源命中时（doi/arxiv 相同），第二轮起只补归属不重复建行的前提是
-    _find_existing_paper_id 命中；真正并发撞车由 pmid 唯一约束 +
-    ON CONFLICT DO NOTHING 兜底（与旧版同构）。
+    同一篇被多源命中时（doi/arxiv 相同），第二轮起只补归属不重复建行；命中已存在
+    行时刷新元数据列（P15，空值不回填）。真正并发撞车由 pmid 唯一约束 +
+    ON CONFLICT DO UPDATE（仅元数据列，语义同上）兜底。
     """
     key = external_key(item)
     existing = await _find_existing_paper_id(db, item)
     if existing is not None:
+        await _refresh_metadata(db, existing, item)
         return existing, False
-    pub_date = item.pub_date or (date(item.year, 1, 1) if item.year else None)
     stmt = (
         pg_insert(Paper)
         .values(
             pmid=key,
             source=item.source or "unknown",
-            doi=item.doi.lower() if item.doi else None,
             title=item.title,
             abstract=item.abstract,
-            journal=item.journal,
-            authors=list(item.authors),
-            pub_date=pub_date,
             tags=tags,
             keywords=hits,
+            **_metadata_values(item),
         )
-        .on_conflict_do_nothing(index_elements=["pmid"])
+        .on_conflict_do_update(
+            index_elements=["pmid"],
+            set_={col: getattr(pg_insert(Paper).excluded, col) for col in _METADATA_REFRESH_COLS},
+        )
     )
     await db.execute(stmt)
     paper_id = (
@@ -436,3 +460,61 @@ async def run_manual_crawl(db: AsyncSession) -> dict:
             source: counts["fetched"] for source, counts in run.stats["per_source"].items()
         },
     }
+
+
+# ── 7 天滚动清理（P14）：每日检索后清「未收藏且无笔记且入库 ≥7 天」的论文 ──
+# 幂等口径同 digest 先例：进程内日期标记（Hatchet cron 每日一次，重启不重复清理）。
+_last_cleanup_date: str | None = None
+
+
+def cleanup_already_ran_today() -> bool:
+    return _last_cleanup_date == _today_str()
+
+
+def mark_cleanup_ran_today() -> None:
+    global _last_cleanup_date
+    _last_cleanup_date = _today_str()
+
+
+async def cleanup_stale_papers(db: AsyncSession, now: datetime | None = None) -> dict:
+    """删除「未收藏、无笔记、入库 ≥ settings.papers_retention_days 天」的论文。
+
+    - 保护口径（P14）：paper_favorites / paper_notes 任一表有行即永久保留（跨用户：
+      任何一人收藏/笔记都保护该篇）；今日 digest 展示的论文入库不足 7 天天然不在
+      清理窗口内；
+    - 连带删除 paper_users 归属（显式删 + FK ondelete CASCADE 双保险；COS 产物
+      本批未落地，只清表）；
+    - 返回 {"deleted": n, "cutoff": iso}；now 可注入便于测试时间边界。
+    """
+    ref = now or datetime.now(UTC)
+    cutoff = ref - timedelta(days=settings.papers_retention_days)
+    stale_ids = (
+        await db.execute(
+            select(Paper.id)
+            .where(Paper.created_at <= cutoff)
+            .where(Paper.id.not_in(select(PaperFavorite.paper_id)))
+            .where(Paper.id.not_in(select(PaperNote.paper_id)))
+        )
+    ).scalars().all()
+    deleted = 0
+    if stale_ids:
+        await db.execute(delete(PaperUser).where(PaperUser.paper_id.in_(stale_ids)))
+        result = await db.execute(delete(Paper).where(Paper.id.in_(stale_ids)))
+        deleted = result.rowcount or 0
+        await db.commit()
+        logger.info(
+            "7 天滚动清理：删除 %d 篇（入库早于 %s，未收藏且无笔记）", deleted, cutoff.date()
+        )
+    else:
+        await db.commit()  # 无删除也复位事务，保持会话可用
+    return {"deleted": deleted, "cutoff": cutoff.date().isoformat()}
+
+
+async def run_daily_cleanup(db: AsyncSession) -> dict:
+    """Hatchet cron / internal 触发的每日清理：幂等（同日跳过）后执行并写日志。"""
+    if cleanup_already_ran_today():
+        logger.info("papers-daily-cleanup 今日已执行，跳过（幂等）")
+        return {"deleted": 0, "skipped": True}
+    result = await cleanup_stale_papers(db)
+    mark_cleanup_ran_today()
+    return {**result, "skipped": False}

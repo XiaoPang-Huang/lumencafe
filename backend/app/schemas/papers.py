@@ -13,6 +13,8 @@ class PaperOut(BaseModel):
     journal: str
     authors: list[str]
     pub_date: dt.date | None
+    cited_count: int | None = None  # 被引次数（P15；源未提供为 null）
+    if_approx: float | None = None  # 影响因子近似（OpenAlex 两年篇均引用，非 JCR 官方）
     tags: list[str]
     keywords: list[str]
     created_at: dt.datetime
@@ -60,9 +62,14 @@ class DigestItemOut(BaseModel):
     source: str  # 数据源 key（pubmed/arxiv/...）
     year: int | None  # 发表年（pub_date 缺失时 null）
     url: str  # 落地页（doi 优先；否则按源构造；拿不到为空串）
+    authors: list[str] = []  # 作者列表（P15）
+    journal: str = ""  # 期刊/venue（P15）
+    cited_count: int | None = None  # 被引次数（P15）
+    if_approx: float | None = None  # 影响因子近似（P15）
     matched_keywords: list[str]  # 命中的本人订阅关键词（保序去重）
     score: int  # 命中关键词数
     is_high_relevance: bool  # score ≥ HIGH_RELEVANCE_MIN_KEYWORDS（步 B 阈值常量）
+    saved: bool = False  # 当前用户是否已收藏（P19 双列表同步的状态源）
 
 
 class DigestOut(BaseModel):

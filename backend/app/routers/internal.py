@@ -23,3 +23,11 @@ async def run_papers_crawl(
     added = await papers_crawl.run_daily_crawl(db)
     papers_crawl.mark_ran_today()  # Q11 第一重：进程内日期标记
     return {"added": added}
+
+
+@router.post("/jobs/papers-cleanup")
+async def run_papers_cleanup(
+    _=Depends(internal_token_guard), db: AsyncSession = Depends(get_db)
+):
+    """7 天滚动清理（P14）：Hatchet 未接线时的内部触发兜底，幂等同 cron 口径。"""
+    return await papers_crawl.run_daily_cleanup(db)

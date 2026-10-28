@@ -19,7 +19,7 @@ from app.services.sources.base import PaperItem, dedupe_items
 logger = logging.getLogger("lumencafe.papers")
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
-FIELDS = "title,abstract,year,authors,externalIds,url,venue,publicationDate"
+FIELDS = "title,abstract,year,authors,externalIds,url,venue,publicationDate,citationCount"
 
 
 @external_retry()
@@ -48,6 +48,7 @@ def _parse_papers(data: dict, keyword: str) -> list[PaperItem]:
         except ValueError:
             pass
         year = paper.get("year")
+        citation = paper.get("citationCount")  # 元数据增强（P15）：被引数
         items.append(
             PaperItem(
                 title=str(paper.get("title") or ""),
@@ -63,6 +64,7 @@ def _parse_papers(data: dict, keyword: str) -> list[PaperItem]:
                 external_id=paper_id,
                 journal=str(paper.get("venue") or ""),
                 pub_date=pub_date,
+                cited_count=int(citation) if citation is not None else None,
             )
         )
     return items

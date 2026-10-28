@@ -1,6 +1,7 @@
 """个人页与用户设置（PRD §4.5）：本人信息 + 设置键值 upsert。
 
-已知 key：subscribe_keywords（文献订阅关键词，批次 2 启用）。
+已知 key：subscribe_keywords（文献订阅关键词）、subscribe_sources（订阅数据源）、
+papers_prefs（论文展示偏好 {display_limit, sort, if_min}，P18）。
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select

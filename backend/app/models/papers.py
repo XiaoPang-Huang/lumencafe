@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -36,7 +37,12 @@ class Paper(Base):
     abstract_zh: Mapped[str] = mapped_column(Text, default="")  # LLM 中译（空串 = 未译）
     journal: Mapped[str] = mapped_column(String(256), default="")
     authors: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    pub_date: Mapped[date | None] = mapped_column(Date)
+    pub_date: Mapped[date | None] = mapped_column(Date)  # 发表日期（= 展示设置口径的 published_date）
+    # ── 论文域元数据增强（P15，Alembic 0008）──
+    cited_count: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 被引次数
+    # 影响因子近似（OpenAlex：优先 2yr_mean_citedness，该字段下线后回落 fwci；
+    # 非 JCR 官方值，界面标注「≈」）
+    if_approx: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list)  # AD/PD/ALS/scale
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

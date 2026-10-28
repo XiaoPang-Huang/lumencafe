@@ -7,6 +7,9 @@
   /papers/suggest-keywords 大白话 → AI 生成订阅关键词（不写库，保存走 /me/settings）；
 - 步 B：/papers/digest 今日命中 + 高相关（按本人订阅关键词重算命中）+ 最近抓取轮次；
   /papers/crawl-now 立即检索（进程内锁防并发，force 跳过同日幂等）。
+- 论文域增强（P15/P18）：digest 与 /papers/daily 支持 sort(time|if|score)、
+  if_min（影响因子下限，null 值被过滤）、limit；未显式传的参数回落用户 papers_prefs
+  （user_settings JSONB：{display_limit, sort, if_min}），响应条目带齐元数据字段。
 """
 import json
 import logging
@@ -14,7 +17,7 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +32,7 @@ from app.models.papers import (
     PaperUser,
 )
 from app.models.user import User
+from app.models.user_settings import UserSetting
 from app.schemas.papers import (
     CrawlNowResponse,
     DigestItemOut,
@@ -68,9 +72,45 @@ SUGGEST_KEYWORDS_SYSTEM = (
 )
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE)
 
+# P18：展示设置缺省（用户未存 papers_prefs 时的口径）
+DEFAULT_PAPERS_PREFS: dict = {"display_limit": 50, "sort": "time", "if_min": None}
+SORT_MODES: tuple[str, ...] = ("time", "if", "score")  # 时间 / 影响因子 / 相关度
+
 
 async def _reader(user: User = Depends(require_permission("app:papers"))) -> User:
     return user
+
+
+async def _papers_prefs(db: AsyncSession, user_id: int) -> dict:
+    """读取用户展示偏好（user_settings.papers_prefs），缺省回落 DEFAULT_PAPERS_PREFS。
+
+    value 形如 {display_limit: 50, sort: "time", if_min: null}；非法/越界字段逐项
+    回落缺省，不整单丢弃（偏好是体验项，容错优先）。
+    """
+    row = (
+        await db.execute(
+            select(UserSetting).where(
+                UserSetting.user_id == user_id, UserSetting.key == "papers_prefs"
+            )
+        )
+    ).scalar_one_or_none()
+    prefs = dict(DEFAULT_PAPERS_PREFS)
+    value = (row.value if row is not None else None) or {}
+    if not isinstance(value, dict):
+        return prefs
+    try:
+        limit = int(value.get("display_limit") or prefs["display_limit"])
+        prefs["display_limit"] = min(max(limit, 1), 500)
+    except (TypeError, ValueError):
+        pass
+    if value.get("sort") in SORT_MODES:
+        prefs["sort"] = value["sort"]
+    try:
+        if_min = value.get("if_min")
+        prefs["if_min"] = float(if_min) if if_min is not None else None
+    except (TypeError, ValueError):
+        prefs["if_min"] = None
+    return prefs
 
 
 def _out(p: Paper, saved: bool = False) -> PaperOut:
@@ -83,6 +123,8 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
         journal=p.journal,
         authors=list(p.authors or []),
         pub_date=p.pub_date,
+        cited_count=p.cited_count,
+        if_approx=float(p.if_approx) if p.if_approx is not None else None,
         tags=list(p.tags or []),
         keywords=list(p.keywords or []),
         created_at=p.created_at,
@@ -201,6 +243,9 @@ def _paper_url(p: Paper) -> str:
 
 @router.get("/digest", response_model=DigestOut)
 async def digest(
+    sort: str | None = Query(default=None, pattern="^(time|if|score)$"),
+    if_min: float | None = Query(default=None, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
 ):
     """页内 digest（拍板 P1）：今日抓取入库且命中本人订阅关键词的文献 + 高相关标记。
@@ -209,17 +254,30 @@ async def digest(
     本人归属；命中 = 用与抓取打标同一套 match_keywords 按本人当前订阅关键词
     （resolve_user_keywords，与抓取回落口径一致）重算；高相关 = 命中数 ≥
     HIGH_RELEVANCE_MIN_KEYWORDS（步 B 常量，先简单后精细）。
+
+    排序过滤（P18）：sort=time|if|score（默认 time=入库时间倒序；if=影响因子近似
+    倒序 nulls last；score=命中词数倒序）；if_min=影响因子下限（设置了则近似值
+    为 null 的条目被过滤）；limit 截断展示条数。未显式传的参数回落 papers_prefs。
+    在已抓数据上筛排，不触发重检索；total_today/high_relevance_count 为过滤后、
+    截断前的口径（页头数字与筛选项所见一致）。
     """
+    prefs = await _papers_prefs(db, user.id)
+    sort = sort or prefs["sort"]
+    if_min = if_min if if_min is not None else prefs["if_min"]
+    limit = limit or prefs["display_limit"]
+
     keywords = await papers_crawl.resolve_user_keywords(db, user.id)
     today_start = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
-    rows = (
-        await db.execute(
-            select(Paper)
-            .join(PaperUser, PaperUser.paper_id == Paper.id)
-            .where(PaperUser.user_id == user.id, Paper.created_at >= today_start)
-            .order_by(Paper.created_at.desc(), Paper.id.desc())
-        )
-    ).scalars().all()
+    stmt = (
+        select(Paper)
+        .join(PaperUser, PaperUser.paper_id == Paper.id)
+        .where(PaperUser.user_id == user.id, Paper.created_at >= today_start)
+        .order_by(Paper.created_at.desc(), Paper.id.desc())
+    )
+    if if_min is not None:
+        stmt = stmt.where(Paper.if_approx >= if_min)  # null 近似值被下限过滤
+    rows = (await db.execute(stmt)).scalars().all()
+    saved_ids = await _saved_ids(db, user.id, [p.id for p in rows])
 
     items: list[DigestItemOut] = []
     for p in rows:
@@ -234,11 +292,26 @@ async def digest(
                 source=p.source,
                 year=p.pub_date.year if p.pub_date else None,
                 url=_paper_url(p),
+                authors=list(p.authors or []),
+                journal=p.journal,
+                cited_count=p.cited_count,
+                if_approx=float(p.if_approx) if p.if_approx is not None else None,
                 matched_keywords=matched,
                 score=score,
                 is_high_relevance=score >= papers_crawl.HIGH_RELEVANCE_MIN_KEYWORDS,
+                saved=p.id in saved_ids,
             )
         )
+
+    # 稳定排序：行已按 created_at 倒序，同分并列保持时间倒序
+    if sort == "score":
+        items.sort(key=lambda i: -i.score)
+    elif sort == "if":
+        items.sort(key=lambda i: (i.if_approx is None, -(i.if_approx or 0.0)))
+
+    total = len(items)
+    high = sum(1 for i in items if i.is_high_relevance)
+    items = items[:limit]
 
     last_run = (
         await db.execute(
@@ -248,8 +321,8 @@ async def digest(
     return DigestOut(
         last_run_at=last_run.run_at if last_run else None,
         last_run_status=last_run.status if last_run else "",
-        total_today=len(items),
-        high_relevance_count=sum(1 for i in items if i.is_high_relevance),
+        total_today=total,
+        high_relevance_count=high,
         items=items,
     )
 
@@ -275,20 +348,44 @@ async def crawl_now(
 @router.get("/daily", response_model=list[PaperOut])
 async def daily_papers(
     tag: str | None = None,
-    limit: int = Query(default=50, ge=1, le=200),
+    sort: str | None = Query(default=None, pattern="^(time|if|score)$"),
+    if_min: float | None = Query(default=None, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=500),
     user: User = Depends(_reader),
     db: AsyncSession = Depends(get_db),
 ):
-    """每日推送：本人订阅抓到的文献，created_at 倒序；tag 为 JSONB 包含筛选。"""
-    stmt = (
-        select(Paper)
-        .join(PaperUser, PaperUser.paper_id == Paper.id)
-        .where(PaperUser.user_id == user.id)
-        .order_by(Paper.created_at.desc(), Paper.id.desc())
-        .limit(limit)
+    """每日推送：本人订阅抓到的文献；tag 为 JSONB 包含筛选。
+
+    排序过滤（P18）同 /papers/digest：sort=time|if|score（score=抓取打标命中词数），
+    if_min 影响因子下限（null 被过滤），limit 截断；未显式传的参数回落 papers_prefs。
+    在已抓数据上筛排，不触发重检索。
+    """
+    prefs = await _papers_prefs(db, user.id)
+    sort = sort or prefs["sort"]
+    if_min = if_min if if_min is not None else prefs["if_min"]
+    limit = limit or prefs["display_limit"]
+
+    stmt = select(Paper).join(PaperUser, PaperUser.paper_id == Paper.id).where(
+        PaperUser.user_id == user.id
     )
     if tag:
         stmt = stmt.where(Paper.tags.contains([tag]))
+    if if_min is not None:
+        stmt = stmt.where(Paper.if_approx >= if_min)  # null 近似值被下限过滤
+    if sort == "if":
+        stmt = stmt.order_by(
+            Paper.if_approx.desc().nullslast(), Paper.created_at.desc(), Paper.id.desc()
+        )
+    elif sort == "score":
+        # 相关度=抓取打标命中词数（keywords JSONB 长度），数据库内排序
+        stmt = stmt.order_by(
+            func.jsonb_array_length(Paper.keywords).desc(),
+            Paper.created_at.desc(),
+            Paper.id.desc(),
+        )
+    else:
+        stmt = stmt.order_by(Paper.created_at.desc(), Paper.id.desc())
+    stmt = stmt.limit(limit)
     papers = list((await db.execute(stmt)).scalars().all())
     saved = await _saved_ids(db, user.id, [p.id for p in papers])
     return [_out(p, p.id in saved) for p in papers]

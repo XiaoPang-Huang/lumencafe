@@ -20,7 +20,8 @@ class PaperItem:
     - external_id：源内唯一 ID（pmid / arXiv 编号 / OpenAlex W... / S2 paperId / DOAJ id），
       与 source 组合成 papers.pmid 列的全局去重键；
     - doi / arxiv_id：跨源去重键（小写归一后比较）；
-    - year / pub_date：至少有一个非空（pub_date 优先，year 兜底建 date）。
+    - year / pub_date：至少有一个非空（pub_date 优先，year 兜底建 date）；
+    - cited_count / if_approx：可选元数据（P15），源不提供时为 None。
     """
 
     title: str
@@ -34,6 +35,9 @@ class PaperItem:
     external_id: str = ""
     journal: str = ""
     pub_date: date | None = None
+    # ── 元数据增强（P15；源没有对应字段就留空 None，不编造）──
+    cited_count: int | None = None  # 被引次数（OpenAlex / S2）
+    if_approx: float | None = None  # 影响因子近似（OpenAlex 两年篇均引用）
 
     @property
     def dedupe_keys(self) -> tuple[str, ...]:
