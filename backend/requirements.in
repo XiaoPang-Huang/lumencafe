@@ -50,6 +50,14 @@ hatchet-sdk==1.43.1            # 官方 Python SDK；与引擎 v0.114.2 同周�
 # 重依赖（grpcio/aiohttp/protobuf 等）由编译器按本文件钉版解析入 requirements.txt。
 # 升级须走 D13 影响面评估，见 docs/依赖锁定清单-v1.md §步 B。
 
+# ---- COS 对象存储（论文域步 D，拍板 P9/P11 存储抽象层） ----
+cos-python-sdk-v5==1.9.44       # 腾讯云 COS 官方 Python SDK；storage.py 的 COS 后端
+# 选型（D14）：厂商官方 SDK 唯一维护线 1.9.x，取当前最新稳定版 1.9.44（2026-05）；
+# OSV/PyPI 无该包 CVE 记录（复核见 docs/依赖锁定清单-v1.md §3.5）。
+# 注意：其打包元数据带 2021 年遗留陈旧上限（certifi<=2021.10.8 / requests<=2.27.1），
+# 与项目 D6 钉版冲突，经 requirements-overrides.txt 按实际兼容面覆写（同 §3.5）。
+# 重依赖（pycryptodome / crcmod / requests / xmltodict / six 等）由编译器钉版入 requirements.txt。
+
 # ---- 传递依赖显式钉版（D14：无未修高危 CVE 才可入锁） ----
 # starlette：fastapi 的传递依赖（约束 >=0.46.0，无上限，元数据兼容）。
 # 0.46.2 存在 3 条未修 HIGH CVE（CVE-2025-62727 / CVE-2026-48818 / CVE-2026-54283，
