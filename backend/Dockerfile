@@ -6,6 +6,8 @@ COPY requirements.txt .
 # PIP_INDEX_URL 由 compose 构建参数注入（国内走镜像加速），默认官方 PyPI
 ARG PIP_INDEX_URL=https://pypi.org/simple
 # --require-hashes：lockfile 纪律（D6），逐包校验 requirements.txt 里的 sha256
+# 注意：改 requirements.txt 后若服务器构建缓存未失效（镜像里仍缺新包），
+# 给本注释加一行版本号强制 bust 该层缓存（2026-10-28 踩中：cache-bust=1）
 RUN pip install --no-cache-dir --prefix=/install --index-url=${PIP_INDEX_URL} --require-hashes -r requirements.txt
 
 
