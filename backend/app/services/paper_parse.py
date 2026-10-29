@@ -273,17 +273,24 @@ def _unwrap(payload: object) -> dict:
 @external_retry()
 async def _mineru_batch_upload_url(
     client: httpx.AsyncClient, base: str, headers: dict, filename: str
-) -> str:
-    """第 1 步：POST /file-urls/batch 取签名直传地址。"""
+) -> tuple[str, str]:
+    """第 1 步：POST /file-urls/batch 取签名直传地址，返回 (batch_id, upload_url)。
+
+    官方流程（2026-10-29 核实文档）：本地上传链路 = 申请直传 → PUT 上传 →
+    **系统自动提交解析任务（无需再调 extract/task）** → 按 batch_id 轮询。
+    """
     resp = await client.post(
-        f"{base}/file-urls/batch", json={"files": [{"name": filename}]}, headers=headers
+        f"{base}/file-urls/batch",
+        json={"files": [{"name": filename}], "model_version": MINERU_MODEL_VERSION},
+        headers=headers,
     )
     resp.raise_for_status()
     data = _unwrap(resp.json())
     urls = data.get("file_urls")
-    if not isinstance(urls, list) or not urls or not urls[0]:
-        raise MinerUError(f"file-urls/batch 未返回 file_urls：{str(resp.text)[:200]}")
-    return str(urls[0])
+    batch_id = data.get("batch_id")
+    if not batch_id or not isinstance(urls, list) or not urls or not urls[0]:
+        raise MinerUError(f"file-urls/batch 响应缺 batch_id/file_urls：{str(resp.text)[:200]}")
+    return str(batch_id), str(urls[0])
 
 
 @external_retry()
@@ -301,31 +308,24 @@ async def _mineru_put_upload(
 
 
 @external_retry()
-async def _mineru_create_task(
-    client: httpx.AsyncClient, base: str, headers: dict, file_url: str
-) -> str:
-    """第 3 步：POST /extract/task 建解析任务，返回 task_id。"""
-    resp = await client.post(
-        f"{base}/extract/task",
-        json={"url": file_url, "model_version": MINERU_MODEL_VERSION},
-        headers=headers,
-    )
+async def _mineru_batch_state(
+    client: httpx.AsyncClient, base: str, headers: dict, batch_id: str
+) -> dict:
+    """第 3 步：GET /extract-results/batch/{batch_id} 轮询批量任务状态。
+
+    返回首个文件条目 dict（含 state/full_zip_url/err_msg）；状态含
+    waiting-file（等上传）/pending/running/done/failed。
+    """
+    resp = await client.get(f"{base}/extract-results/batch/{batch_id}", headers=headers)
     resp.raise_for_status()
     data = _unwrap(resp.json())
-    task_id = data.get("task_id")
-    if not task_id:
-        raise MinerUError(f"extract/task 未返回 task_id：{str(resp.text)[:200]}")
-    return str(task_id)
-
-
-@external_retry()
-async def _mineru_task_state(
-    client: httpx.AsyncClient, base: str, headers: dict, task_id: str
-) -> dict:
-    """第 4 步：GET /extract/task/{task_id} 轮询任务状态。"""
-    resp = await client.get(f"{base}/extract/task/{task_id}", headers=headers)
-    resp.raise_for_status()
-    return _unwrap(resp.json())
+    results = data.get("extract_result") or []
+    if not results:
+        raise MinerUError(f"extract-results/batch 无 extract_result：{str(resp.text)[:200]}")
+    first = results[0]
+    if not isinstance(first, dict):
+        raise MinerUError(f"extract_result 条目异常：{str(first)[:200]}")
+    return first
 
 
 @external_retry()
@@ -346,15 +346,14 @@ async def mineru_parse(db: AsyncSession, pdf_bytes: bytes, filename: str) -> tup
     headers = {"Authorization": f"Bearer {token}"}
     client = get_http_client()
 
-    upload_url = await _mineru_batch_upload_url(client, base, headers, filename)
+    batch_id, upload_url = await _mineru_batch_upload_url(client, base, headers, filename)
     await _mineru_put_upload(client, upload_url, pdf_bytes)
-    task_id = await _mineru_create_task(client, base, headers, upload_url)
-    logger.info("MinerU 任务已创建：task_id=%s（file=%s）", task_id, filename)
+    logger.info("MinerU 已上传，batch_id=%s（file=%s，任务由系统自动提交）", batch_id, filename)
 
     loop = asyncio.get_running_loop()
     deadline = loop.time() + MINERU_POLL_TIMEOUT
     while True:
-        state = await _mineru_task_state(client, base, headers, task_id)
+        state = await _mineru_batch_state(client, base, headers, batch_id)
         status = str(state.get("state") or "").lower()
         if status == "done":
             zip_url = state.get("full_zip_url")
@@ -366,7 +365,7 @@ async def mineru_parse(db: AsyncSession, pdf_bytes: bytes, filename: str) -> tup
             raise MinerUError(f"MinerU 解析失败：{reason}")
         if loop.time() > deadline:
             raise MinerUError(
-                f"MinerU 解析超时（>{int(MINERU_POLL_TIMEOUT)}s，task_id={task_id}）"
+                f"MinerU 解析超时（>{int(MINERU_POLL_TIMEOUT)}s，batch_id={batch_id}）"
             )
         await asyncio.sleep(MINERU_POLL_INTERVAL)
 

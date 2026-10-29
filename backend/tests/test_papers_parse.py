@@ -146,14 +146,28 @@ def _mineru_routes(extra: dict | None = None) -> dict:
     """MinerU 三端点 + 签名上传 + zip 下载的 mock 路由（extra 覆盖/追加）。"""
     routes: dict = {
         ("POST", f"{MINERU_BASE}/file-urls/batch"): _FakeResp(
-            json_data={"code": 0, "data": {"file_urls": ["https://upload.example/signed/1"]}}
+            json_data={
+                "code": 0,
+                "data": {
+                    "batch_id": "batch-1",
+                    "file_urls": ["https://upload.example/signed/1"],
+                },
+            }
         ),
         ("PUT", "https://upload.example/signed/1"): _FakeResp(),
-        ("POST", f"{MINERU_BASE}/extract/task"): _FakeResp(
-            json_data={"code": 0, "data": {"task_id": "task-1"}}
-        ),
-        ("GET", f"{MINERU_BASE}/extract/task/task-1"): _FakeResp(
-            json_data={"code": 0, "data": {"state": "done", "full_zip_url": "https://zip.example/out.zip"}}
+        ("GET", f"{MINERU_BASE}/extract-results/batch/batch-1"): _FakeResp(
+            json_data={
+                "code": 0,
+                "data": {
+                    "extract_result": [
+                        {
+                            "file_name": "1.pdf",
+                            "state": "done",
+                            "full_zip_url": "https://zip.example/out.zip",
+                        }
+                    ]
+                },
+            }
         ),
         ("GET", "https://zip.example/out.zip"): _FakeResp(content=_FAKE_ZIP),
     }
@@ -232,8 +246,7 @@ async def test_download_direct_and_full_pipeline_keys(client, monkeypatch):
     called = [f"{m} {u}" for m, u in fake.calls]
     assert any("file-urls/batch" in c for c in called)
     assert any(c.startswith("PUT https://upload.example") for c in called)
-    assert any("extract/task" in c and c.startswith("POST") for c in called)
-    assert any(c == f"GET {MINERU_BASE}/extract/task/task-1" for c in called)
+    assert any(c == f"GET {MINERU_BASE}/extract-results/batch/batch-1" for c in called)
     assert any("zip.example/out.zip" in c for c in called)
 
 
