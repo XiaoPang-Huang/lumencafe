@@ -226,6 +226,19 @@ class FakeCosClient:
             raise CosServiceError("HEAD", {"code": "NoSuchKey"}, 404)
         return {}
 
+    def list_objects(
+        self, Bucket: str, Prefix: str, Marker: str = "", MaxKeys: int = 1000
+    ) -> dict:
+        self.calls.append(("list", Bucket, Prefix))
+        keys = sorted(k for k in self.objects if k.startswith(Prefix))
+        if Marker:
+            keys = [k for k in keys if k > Marker]
+        page = keys[:MaxKeys]
+        return {
+            "Contents": [{"Key": k} for k in page],
+            "IsTruncated": "true" if len(keys) > MaxKeys else "false",
+        }
+
 
 def _make_cos(monkeypatch, fake: FakeCosClient) -> CosStorage:
     monkeypatch.setattr(storage_module, "CosS3Client", lambda config: fake)
@@ -247,6 +260,27 @@ async def test_cos_roundtrip_fake_client(monkeypatch):
 
     await store.delete("papers", "2026/a.pdf")
     assert await store.exists("papers", "2026/a.pdf") is False
+
+
+async def test_cos_list_directory_prefix_and_app_isolation(monkeypatch):
+    """list（轮①级联删新增）：目录型前缀（尾随 /）合法；只列本应用目录；
+    返回 key 不含 app 前缀；P11 违规照旧拒绝。"""
+    fake = FakeCosClient()
+    store = _make_cos(monkeypatch, fake)
+    await store.put("papers", "pdfs/2026/11/7.pdf", b"x")
+    await store.put("papers", "pdfs/2026/10/8.pdf", b"x")
+    await store.put("papers", "parsed/7/full.md", b"x")
+    await store.put("chat", "pdfs/9.pdf", b"x")  # 他应用同前缀，不得串目录
+
+    keys = await store.list("papers", "pdfs/")
+    assert keys == ["pdfs/2026/10/8.pdf", "pdfs/2026/11/7.pdf"]
+    assert ("list", "b", "papers/pdfs/") in fake.calls  # COS Prefix 带尾随 /
+
+    all_keys = await store.list("papers", "")
+    assert all_keys == ["parsed/7/full.md", "pdfs/2026/10/8.pdf", "pdfs/2026/11/7.pdf"]
+
+    with pytest.raises(ValueError):  # P11：路径逃逸照旧拒绝
+        await store.list("papers", "../x")
 
 
 async def test_cos_not_found_semantics(monkeypatch):

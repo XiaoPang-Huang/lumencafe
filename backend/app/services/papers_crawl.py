@@ -4,8 +4,12 @@
 按其勾选的订阅源（user_settings.subscribe_sources，未配置回落默认三源）×
 其订阅关键词（subscribe_keywords，未配置回落 env 默认）逐源抓取（SourceProvider
 契约，sources/ 目录）→ 轮内按 doi/arxiv_id/external_id 去重 →
-打标（tag_paper 不动，TAG_RULES 沿用）→ papers 幂等 upsert（pmid 列 = 全局
-去重键；doi 命中既有行则只补归属，跨源同一篇不重复入库）→ paper_users 归属。
+打标（tag_paper 不动，TAG_RULES 沿用）→ papers 幂等 upsert → paper_users 归属。
+
+轮①（拍板 P23 用户世界隔离，Alembic 0011）：papers 行级归属 user_id，
+去重键 = (user_id, pmid)（同用户内去重；同一篇两人抓各存一份，删除互不影响）；
+doi 补查同样限同用户内。存量行回填口径 = 最早 paper_users 归属人，无归属归
+admin（见迁移 0011 docstring）。
 
 步 B 增量：
 - 每轮结束写 papers_crawl_runs 一行（成功/失败都写；trigger=schedule|manual），
@@ -268,17 +272,25 @@ def external_key(item: PaperItem) -> str:
     return item.external_id if item.source == "pubmed" else f"{item.source}:{item.external_id}"
 
 
-async def _find_existing_paper_id(db: AsyncSession, item: PaperItem) -> int | None:
-    """跨源去重查找：先按全局键（pmid 列），再按 doi（部分唯一索引列）。"""
+async def _find_existing_paper_id(
+    db: AsyncSession, item: PaperItem, user_id: int
+) -> int | None:
+    """跨源去重查找（限同用户内，拍板 P23）：先按去重键（pmid 列），再按 doi。"""
     key = external_key(item)
     pid = (
-        await db.execute(select(Paper.id).where(Paper.pmid == key))
+        await db.execute(
+            select(Paper.id).where(Paper.user_id == user_id, Paper.pmid == key)
+        )
     ).scalar_one_or_none()
     if pid is not None:
         return pid
     if item.doi:
         pid = (
-            await db.execute(select(Paper.id).where(Paper.doi == item.doi.lower()))
+            await db.execute(
+                select(Paper.id).where(
+                    Paper.user_id == user_id, Paper.doi == item.doi.lower()
+                )
+            )
         ).scalar_one_or_none()
         if pid is not None:
             return pid
@@ -311,16 +323,17 @@ async def _refresh_metadata(db: AsyncSession, paper_id: int, item: PaperItem) ->
 
 
 async def _upsert_item(
-    db: AsyncSession, item: PaperItem, tags: list[str], hits: list[str]
+    db: AsyncSession, item: PaperItem, tags: list[str], hits: list[str], user_id: int
 ) -> tuple[int, bool]:
-    """单篇入库：跨源去重后 papers 幂等 upsert；返回 (paper_id, 是否新插入)。
+    """单篇入库：同用户内跨源去重后 papers 幂等 upsert；返回 (paper_id, 是否新插入)。
 
     同一篇被多源命中时（doi/arxiv 相同），第二轮起只补归属不重复建行；命中已存在
-    行时刷新元数据列（P15，空值不回填）。真正并发撞车由 pmid 唯一约束 +
-    ON CONFLICT DO UPDATE（仅元数据列，语义同上）兜底。
+    行时刷新元数据列（P15，空值不回填）。真正并发撞车由 (user_id, pmid) 唯一
+    索引 + ON CONFLICT DO UPDATE（仅元数据列，语义同上）兜底。拍板 P23：去重与
+    upsert 全部限同 user 内，他人世界里的同键行不参与。
     """
     key = external_key(item)
-    existing = await _find_existing_paper_id(db, item)
+    existing = await _find_existing_paper_id(db, item, user_id)
     if existing is not None:
         await _refresh_metadata(db, existing, item)
         return existing, False
@@ -328,6 +341,8 @@ async def _upsert_item(
         pg_insert(Paper)
         .values(
             pmid=key,
+            user_id=user_id,
+            origin="crawl",
             source=item.source or "unknown",
             title=item.title,
             abstract=item.abstract,
@@ -336,13 +351,15 @@ async def _upsert_item(
             **_metadata_values(item),
         )
         .on_conflict_do_update(
-            index_elements=["pmid"],
+            index_elements=["user_id", "pmid"],
             set_={col: getattr(pg_insert(Paper).excluded, col) for col in _METADATA_REFRESH_COLS},
         )
     )
     await db.execute(stmt)
     paper_id = (
-        await db.execute(select(Paper.id).where(Paper.pmid == key))
+        await db.execute(
+            select(Paper.id).where(Paper.user_id == user_id, Paper.pmid == key)
+        )
     ).scalar_one()
     return paper_id, True
 
@@ -500,7 +517,7 @@ async def _crawl_subscription(
                 continue  # 轮内跨源去重：doi > arxiv_id > external_id
             seen_keys.update(keys)
             tags, hits = tag_paper(item.title, item.abstract)
-            paper_id, is_new = await _upsert_item(db, item, tags, hits)
+            paper_id, is_new = await _upsert_item(db, item, tags, hits, sub.user_id)
             await _attribute_paper(db, paper_id, [sub.user_id])
             if is_new:
                 added += 1

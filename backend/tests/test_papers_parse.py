@@ -192,7 +192,7 @@ async def _make_paper(url: str = "", doi: str = "", source: str = "pubmed") -> i
         paper = Paper(
             pmid=f"parse-test:{source}:{url or doi or 'na'}",
             source=source, title="Parse target paper", abstract="abstract text",
-            journal="J Parse", url=url, doi=doi,
+            journal="J Parse", url=url, doi=doi, user_id=uid,
         )
         db.add(paper)
         await db.commit()

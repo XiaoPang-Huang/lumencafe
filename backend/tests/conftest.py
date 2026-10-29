@@ -80,7 +80,7 @@ async def clean(client):
         "providers, llm_models, gateway_tokens, service_keys, "
         "model_assignments, model_circuit_states, llm_call_logs, "
         "money_categories, money_transactions, "
-        "papers, paper_users, paper_favorites, paper_notes, paper_explanations, "
+        "papers, paper_users, paper_library, paper_favorites, paper_notes, paper_explanations, "
         "papers_crawl_runs, "
         "user_skills"
     )

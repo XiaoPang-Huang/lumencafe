@@ -229,13 +229,14 @@
   }
 
   /* ================= 路由 ================= */
-  var ROUTES = ["workspace", "chat", "money", "papers", "apps", "admin", "me", "login"];
+  var ROUTES = ["workspace", "chat", "money", "papers", "library", "apps", "admin", "me", "login"];
   var NAV = [
     { group: "主面板", items: [
       { route: "workspace", icon: "home", label: "工作台" },
       { route: "chat", icon: "chat", label: "对话" },
       { route: "money", icon: "money", label: "记账" },
-      { route: "papers", icon: "book", label: "文献" }
+      { route: "papers", icon: "book", label: "文献" },
+      { route: "library", icon: "edit", label: "我的文献" }
     ] },
     { group: "系统", items: [
       { route: "apps", icon: "grid", label: "应用中心" },
@@ -243,7 +244,7 @@
       { route: "me", icon: "user", label: "我的" }
     ] }
   ];
-  var TITLES = { workspace: "工作台", chat: "AI 对话", money: "记账本", papers: "文献", apps: "应用中心", admin: "平台管理", me: "我的", login: "登录" };
+  var TITLES = { workspace: "工作台", chat: "AI 对话", money: "记账本", papers: "文献", library: "我的文献", apps: "应用中心", admin: "平台管理", me: "我的", login: "登录" };
 
   function currentRoute() {
     var h = location.hash.replace(/^#\/?/, "").split("?")[0];
@@ -1412,7 +1413,8 @@
               '<button class="pp-nav-item active" type="button" data-pp-nav="digest"><i data-ic="inbox"></i>今日推送</button>' +
               '<button class="pp-nav-item" type="button" data-pp-nav="favorites"><i data-ic="star"></i>我的收藏</button>' +
               '<button class="pp-nav-item" type="button" data-pp-nav="all"><i data-ic="book"></i>全部论文</button>' +
-              '<button class="pp-nav-item" type="button" data-pp-nav="notes"><i data-ic="edit"></i>我的笔记</button>' +
+              /* 轮① P22：「我的笔记」改名「我的文献」，指向一级页 #/library（阅读/批注唯一入口） */
+              '<button class="pp-nav-item" type="button" data-pp-libnav><i data-ic="edit"></i>我的文献</button>' +
             "</nav>" +
             /* 中间卡片流（展示设置工具条 P18 + 卡片列） */
             '<div class="pp-list">' +
@@ -1441,6 +1443,31 @@
             "</div>" +
             /* 右侧详情面板（点卡片展开；本批不接预览） */
             '<aside class="card pp-detail hide" data-pp-detail></aside>' +
+          "</div>" +
+        "</div>";
+    },
+
+    /* ---------- 我的文献（轮① P22 一级页：阅读/批注/翻译唯一入口）
+       三栏 = 左文献列表（元数据/解析状态/批注数）/ 中阅读器（P8 批注阅读器挂载态）
+       / 右批注栏（阅读器内建）；「解析中」tab 轮②填阶段条，本轮先给列表占位 ---------- */
+    library: function () {
+      return '' +
+        '<div class="pp-page lib-page">' +
+          '<div class="card pp-topbar">' +
+            '<div class="pp-digest">' +
+              '<span class="pp-count">我的文献 <b data-lib-count>—</b> 篇</span>' +
+              '<span class="pp-updated muted" data-lib-tabhint></span>' +
+            "</div>" +
+            '<div class="pp-actions">' +
+              '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="all">全部</button>' +
+              '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="parsing">解析中</button>' +
+            "</div>" +
+          "</div>" +
+          '<div class="lib-body">' +
+            '<div class="card lib-list" data-lib-list><div class="muted" style="padding:14px 4px;font-size:13px;">加载中…</div></div>' +
+            '<div class="lib-reader-host" data-lib-reader>' +
+              '<div class="card lib-empty muted">从左侧选择文献开始阅读；<br>到文献页点卡片/详情上的「＋ 我的文献」把论文加进来。</div>' +
+            "</div>" +
           "</div>" +
         "</div>";
     },
@@ -2073,7 +2100,19 @@
       year_from: null, year_to: null, authors: []
     },
     saved: {},        // P19：paper_id -> bool，今日推送/我的收藏双列表共享收藏态
+    lib: {},          // 轮① P22：paper_id -> bool，「我的文献」在库态（卡片/详情按钮 ✓ 已在库）
+    libLoaded: false, // 在库态是否已拉取（GET /papers/library 一次，之后本地增量维护）
     prefsLoaded: false
+  };
+
+  /* ================= 轮①：我的文献工作区（P22 一级页 #/library） =================
+   * 阅读/批注/翻译的唯一入口（拍板 P22）；三栏 = 左文献列表 / 中阅读器（复用 P8
+   * 批注阅读器，挂载态）/ 右批注栏（阅读器内建）。删除 = 级联删（拍板 P24）。 */
+  var libraryState = {
+    items: [],          // GET /papers/library 条目（LibraryItemOut）
+    tab: "all",         // all | parsing（解析中 tab 轮②填阶段条，本轮先给列表占位）
+    currentId: 0,       // 当前在阅读器中打开的文献
+    pendingOpen: 0      // 从详情面板「到我的文献中阅读与批注」跳入时要自动打开的篇
   };
 
   var PP_IF_TIP = "影响因子近似口径：OpenAlex 引文影响指标 FWCI（字段加权引用影响，非 JCR 官方值）";
@@ -2171,6 +2210,8 @@
     var metaLine = _paperMetaLine(v);
     /* P19 双列表共享收藏态：savedMap 优先于卡片自带快照 */
     var isSaved = paperState.saved[v.id] !== undefined ? !!paperState.saved[v.id] : !!v.saved;
+    /* 轮① P22：我的文献在库态（libMap 底账，加入后即时 ✓） */
+    var inLib = !!paperState.lib[v.id];
     return '<article class="pp-card" data-pp-card="' + v.id + '" role="button" tabindex="0">' +
       '<div class="pp-card-head">' + src + hi + year + "</div>" +
       '<h3 class="pp-card-title">' + esc(v.title) + "</h3>" +
@@ -2181,6 +2222,8 @@
       '<div class="pp-card-ops">' +
         '<button class="pp-op' + (isSaved ? " is-on" : "") + '" type="button" data-paper-save="' + v.id + '">' +
           '<i data-ic="star"></i>' + (isSaved ? "已收藏" : "收藏") + "</button>" +
+        '<button class="pp-op' + (inLib ? " is-on" : "") + '" type="button" data-paper-lib="' + v.id + '">' +
+          '<i data-ic="book"></i>' + (inLib ? "✓ 已在库" : "＋ 我的文献") + "</button>" +
         '<button class="pp-op is-disabled" type="button" data-pp-dl="' + v.id + '" title="下批开放">' +
           '<i data-ic="dl"></i>下载</button>' +
         '<button class="pp-op" type="button" data-paper-explain="' + v.id + '">' +
@@ -2443,10 +2486,13 @@
       ? '<div class="pp-abstract" data-explain-body>' + esc(p.explanation) + "</div>"
       : '<button class="btn btn-ghost btn-sm" type="button" data-paper-explain="' + p.id + '"><i data-ic="spark"></i>生成 AI 解读</button>' +
         '<div class="pp-abstract hide" data-explain-body></div>';
-    /* P16：笔记区只读（编辑框移除）；无笔记给引导文案 */
-    var noteBlock = p.note
+    /* P16 只读 + 轮① P22：详情笔记区纯只读，其他界面不再提供记笔记入口；
+     * 引导语「到我的文献中阅读与批注」跳 #/library 并自动打开该篇 */
+    var noteBlock = (p.note
       ? '<div class="pp-abstract pp-note-readonly">' + esc(p.note) + "</div>"
-      : '<div class="muted" style="font-size:13px;">暂无笔记，解析后可到「我的笔记」记录</div>';
+      : '<div class="muted" style="font-size:13px;">暂无笔记</div>') +
+      '<button class="btn btn-ghost btn-sm pp-golib" type="button" data-pp-golib="' + p.id + '">' +
+        '<i data-ic="edit"></i>到我的文献中阅读与批注</button>';
     var citeParts = [];
     if (p.cited_count != null) citeParts.push("被引 " + esc(String(p.cited_count)));
     if (p.if_approx != null) {
@@ -2463,8 +2509,11 @@
         (url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">打开原文链接 ↗</a>' : "") +
       "</div>" +
       (kws ? '<div class="pp-detail-kws">' + kws + "</div>" : "") +
-      /* P16 主操作行：收藏并解析四态 + 失败指引区 */
-      '<div class="pp-detail-ops">' + _parseBtnHtml(p) + "</div>" +
+      /* P16 主操作行：收藏并解析四态 + 轮①「＋ 我的文献」（与收藏并存，P22） */
+      '<div class="pp-detail-ops">' + _parseBtnHtml(p) +
+        '<button class="btn btn-ghost btn-sm' + (paperState.lib[p.id] ? " is-on" : "") +
+          '" type="button" data-paper-lib="' + p.id + '">' +
+          '<i data-ic="book"></i>' + (paperState.lib[p.id] ? "✓ 已在库" : "＋ 我的文献") + "</button></div>" +
       _parseErrHtml(p, url) +
       '<div class="pp-detail-sec">摘要</div>' +
       '<div class="pp-abstract">' + esc(p.abstract || "（无摘要）") + "</div>" +
@@ -2494,6 +2543,161 @@
     qsa("[data-pp-card]").forEach(function (c) { c.classList.remove("is-active"); });
   }
 
+  /* ================= 轮①：我的文献工作区逻辑（P22/P24） ================= */
+  var LIB_ST_TEXT = {
+    none: "未解析", pending: "排队中", running: "解析中", done: "已解析", failed: "解析失败"
+  };
+  function _libStText(st) { return LIB_ST_TEXT[st] || st || "未解析"; }
+
+  /* 在库态底账：GET /papers/library 一次，之后加/删本地增量维护（按钮态不闪烁） */
+  function ensureLibMap(force) {
+    if (paperState.libLoaded && !force) return Promise.resolve(paperState.lib);
+    return API.get("/papers/library").then(function (items) {
+      paperState.lib = {};
+      (items || []).forEach(function (p) { paperState.lib[p.id] = true; });
+      paperState.libLoaded = true;
+      return paperState.lib;
+    }).catch(function () { return {}; });
+  }
+
+  /* 左列表数据源：同步在库态底账（papers 页按钮立即可见 ✓ 已在库） */
+  function loadLibrary() {
+    return API.get("/papers/library").then(function (items) {
+      libraryState.items = items || [];
+      paperState.lib = {};
+      (items || []).forEach(function (p) { paperState.lib[p.id] = true; });
+      paperState.libLoaded = true;
+      renderLibraryList();
+      var cnt = qs("[data-lib-count]");
+      if (cnt) cnt.textContent = String(libraryState.items.length);
+      /* 详情面板「到我的文献中阅读与批注」跳入：自动打开该篇 */
+      if (libraryState.pendingOpen) {
+        var pid = libraryState.pendingOpen;
+        libraryState.pendingOpen = 0;
+        libOpenReader(pid);
+      }
+    }).catch(function (e) { toast(e.detail || "我的文献加载失败"); });
+  }
+
+  function _libVisibleItems() {
+    if (libraryState.tab !== "parsing") return libraryState.items;
+    return libraryState.items.filter(function (p) {
+      var st = p.parse_status || "none";
+      return st === "pending" || st === "running" || st === "failed";
+    });
+  }
+
+  function renderLibraryList() {
+    var box = qs("[data-lib-list]");
+    if (!box) return;
+    var items = _libVisibleItems();
+    var hint = qs("[data-lib-tabhint]");
+    if (hint) hint.textContent = libraryState.tab === "parsing" ? "阶段式进度条下批提供" : "";
+    if (!items.length) {
+      box.innerHTML = '<div class="muted" style="padding:18px 6px;font-size:13px;">' +
+        (libraryState.tab === "parsing"
+          ? "没有解析中的文献"
+          : (libraryState.items.length
+              ? "全部文献都已解析完成 ✓"
+              : "还没有文献：到文献页点卡片/详情上的「＋ 我的文献」把论文加进来")) +
+        "</div>";
+      return;
+    }
+    box.innerHTML = items.map(function (p) {
+      var st = p.parse_status || "none";
+      var meta = [];
+      if (p.journal) meta.push(esc(p.journal));
+      if (p.pub_date) meta.push(esc(String(p.pub_date).slice(0, 4)));
+      var cnt = p.annotations_count || 0;
+      return '<div class="lib-item' + (libraryState.currentId === p.id ? " is-active" : "") +
+          '" data-lib-open="' + p.id + '" role="button" tabindex="0">' +
+        '<div class="lib-item-title">' + esc(p.title) + "</div>" +
+        (meta.length ? '<div class="lib-item-meta muted">' + meta.join(" · ") + "</div>" : "") +
+        '<div class="lib-item-foot">' +
+          '<span class="lib-st lib-st-' + esc(st) + '">' + _libStText(st) + "</span>" +
+          '<span class="muted">' + (cnt > 0 ? cnt + " 条批注" : "无批注") + "</span>" +
+          '<button class="icon-btn lib-del" type="button" data-lib-del="' + p.id +
+            '" title="删除" aria-label="删除"><i data-ic="trash"></i></button>' +
+        "</div>" +
+      "</div>";
+    }).join("");
+    injectIcons(box);
+  }
+
+  /* 中栏打开阅读器：P8 批注阅读器挂载态（不遮罩，路由切换随页面销毁） */
+  function libOpenReader(pid) {
+    var host = qs("[data-lib-reader]");
+    if (!host) return;
+    libraryState.currentId = pid;
+    qsa("[data-lib-open]").forEach(function (el) {
+      el.classList.toggle("is-active", parseInt(el.getAttribute("data-lib-open"), 10) === pid);
+    });
+    openReader(pid, null, host);
+  }
+
+  /* 删除确认弹窗（拍板 P24：红字原句，不可恢复语义） */
+  function openLibDeleteConfirm(pid, title) {
+    closeLibDeleteConfirm();
+    var mask = document.createElement("div");
+    mask.className = "modal-mask lib-del-mask";
+    mask.setAttribute("data-lib-delmask", "");
+    mask.innerHTML = '' +
+      '<div class="card lib-del-dialog" role="alertdialog" aria-label="删除文献">' +
+        '<div class="lib-del-title">删除文献</div>' +
+        '<div class="lib-del-quote">' + esc(title || ("文献 #" + pid)) + "</div>" +
+        '<div class="lib-del-warn">删除后该文献及其相关笔记会一并删除，且不可恢复</div>' +
+        '<div class="lib-del-ops">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-lib-delcancel>取消</button>' +
+          '<button class="btn btn-danger-ghost btn-sm lib-del-confirm" type="button" data-lib-delconfirm="' +
+            pid + '">确认删除</button>' +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(mask);
+  }
+  function closeLibDeleteConfirm() {
+    qsa("[data-lib-delmask]").forEach(function (m) { m.remove(); });
+  }
+  function libConfirmDelete(pid) {
+    API.del("/papers/" + pid + "/library").then(function (r) {
+      closeLibDeleteConfirm();
+      delete paperState.lib[pid];
+      libraryState.items = libraryState.items.filter(function (p) { return p.id !== pid; });
+      if (libraryState.currentId === pid) {
+        libraryState.currentId = 0;
+        var host = qs("[data-lib-reader]");
+        if (host) {
+          closeReader();
+          host.innerHTML = '<div class="card lib-empty muted">已删除。从左侧选择其他文献继续阅读。</div>';
+        }
+      }
+      renderLibraryList();
+      var cnt = qs("[data-lib-count]");
+      if (cnt) cnt.textContent = String(libraryState.items.length);
+      toast("已删除" + (r && r.deleted_paper ? "" : "（已解除你的归属）"));
+    }).catch(function (e) {
+      closeLibDeleteConfirm();
+      toast(e.detail || "删除失败");
+    });
+  }
+  /* 卡片/详情「＋ 我的文献」按钮 → 幂等加入（P22：与收藏并存的工作台手势） */
+  function addToLibrary(btn) {
+    var pid = parseInt(btn.getAttribute("data-paper-lib"), 10);
+    if (paperState.lib[pid]) { toast("已在「我的文献」中"); go("library"); return; }
+    btn.disabled = true;
+    API.post("/papers/" + pid + "/library", {}).then(function () {
+      paperState.lib[pid] = true;
+      qsa('[data-paper-lib="' + pid + '"]').forEach(function (b) {
+        b.classList.add("is-on");
+        var lbl = b.childNodes[b.childNodes.length - 1];
+        if (lbl && lbl.nodeType === 3) lbl.textContent = "✓ 已在库";
+      });
+      toast("已加入我的文献");
+    }).catch(function (e) {
+      btn.disabled = false;
+      toast(e.detail || "加入失败");
+    });
+  }
+
   /* ================= P8 批注式笔记阅读器（论文域后批①）
    * 参考案例（AGENTS.md §一 设计强制规则，动手前已检索）：
    * - Zotero Reader（zotero.org/support/pdf_reader）：选中文字 → 弹出高亮/批注
@@ -2508,7 +2712,7 @@
    * 手机端单栏、批注栏变浮层可切换。 */
   var readerState = {
     open: false, paperId: 0, title: "", blocks: [], annotations: [],
-    legacyNote: "", sel: null, meta: {}, flashAid: null, editingId: null
+    legacyNote: "", sel: null, meta: {}, flashAid: null, editingId: null, inline: false
   };
 
   function _fmtAnnoTime(t) {
@@ -2516,11 +2720,14 @@
   }
 
   /* 打开阅读器：正文（/content）+ 批注（/annotations）+ 旧全文笔记（详情）+
-   * 互链选择器候选（/annotations/recent，建 id→meta 索引供跨篇跳转与 chips 展示） */
-  function openReader(pid, flashAid) {
+   * 互链选择器候选（/annotations/recent，建 id→meta 索引供跨篇跳转与 chips 展示）。
+   * 轮① P22 起支持挂载态：传 mount 容器（我的文献页中栏）则不遮罩、不锁 body 滚动，
+   * 批注交互与遮罩态完全一致（同一组件两种挂载，详情面板抽成可挂载）。 */
+  function openReader(pid, flashAid, mount) {
     closeReader();
+    var host = mount || null;
     var overlay = document.createElement("div");
-    overlay.className = "pp-reader";
+    overlay.className = "pp-reader" + (host ? " pp-reader-inline" : "");
     overlay.setAttribute("data-pp-reader", "");
     overlay.innerHTML = '' +
       '<div class="pp-reader-head">' +
@@ -2536,12 +2743,17 @@
         '<aside class="pp-reader-rail" data-pp-rail></aside>' +
       "</div>" +
       '<div class="pp-selpop hide" data-pp-selpop></div>';
-    document.body.appendChild(overlay);
-    document.body.classList.add("pp-reading");
+    if (host) {
+      host.appendChild(overlay);
+    } else {
+      document.body.appendChild(overlay);
+      document.body.classList.add("pp-reading");
+    }
     injectIcons(overlay);
     readerState = {
       open: true, paperId: pid, title: "", blocks: [], annotations: [],
-      legacyNote: "", sel: null, meta: {}, flashAid: flashAid || null, editingId: null
+      legacyNote: "", sel: null, meta: {}, flashAid: flashAid || null, editingId: null,
+      inline: !!host
     };
 
     API.get("/papers/" + pid + "/content").then(function (c) {
@@ -2554,6 +2766,12 @@
     }).catch(function (e) {
       toast((e && e.detail) || "正文加载失败");
       closeReader();
+      /* 挂载态（我的文献页）：中栏给可行动的提示，不留空白 */
+      if (host) {
+        host.innerHTML = '<div class="card lib-empty muted">' +
+          esc((e && e.detail) || "正文加载失败") +
+          "<br>该文献还没有解析产物：在文献页详情点「★ 收藏并解析」，完成后回到这里阅读与批注。</div>";
+      }
     });
 
     API.get("/papers/" + pid + "/annotations").then(function (list) {
@@ -3169,6 +3387,8 @@
       /* P18：偏好先就位再拉列表（未加载过则先 GET /me 读 papers_prefs） */
       if (paperState.prefsLoaded) loadPapersNav();
       else loadPapersPrefs().then(loadPapersNav);
+      /* 轮①：拉一次我的文献在库态（卡片/详情「＋ 我的文献」按钮 ✓ 已在库） */
+      ensureLibMap();
       /* P13：语义检索框回车即检索（与按钮同一入口，防抖 + loading 在 nlSearch 内） */
       var nlInput = qs("[data-pp-nlinput]", view);
       if (nlInput) {
@@ -3179,6 +3399,11 @@
           }
         });
       }
+    },
+
+    /* 轮① P22：我的文献一级页（三栏；阅读器挂载态，批注交互与 P8 完全一致） */
+    library: function () {
+      loadLibrary();
     },
 
 
@@ -3223,6 +3448,7 @@
     { icon: "home", label: "工作台", hint: "页面", run: function () { go("workspace"); } },
     { icon: "chat", label: "AI 对话", hint: "页面", run: function () { go("chat"); } },
     { icon: "money", label: "记账本", hint: "页面", run: function () { go("money"); } },
+    { icon: "edit", label: "我的文献", hint: "页面", run: function () { go("library"); } },
     { icon: "grid", label: "应用中心", hint: "页面", run: function () { go("apps"); } },
     { icon: "gear", label: "平台管理", hint: "页面", run: function () { go("admin"); } },
     { icon: "user", label: "我的", hint: "页面", run: function () { go("me"); } },
@@ -4154,6 +4380,48 @@
     }
     /* 订阅设置统一走文献页齿轮入口（P5 拍板）：「我的 → 应用设置」不再重复放编辑入口 */
     if (el.closest("[data-kw-edit]")) { toast("请前往文献页，点右上角 ⚙ 订阅设置"); return; }
+    /* 轮① P22：文献页左导航「我的文献」→ 一级页 #/library */
+    if (el.closest("[data-pp-libnav]")) { go("library"); return; }
+    /* 轮① P22：详情笔记区引导「到我的文献中阅读与批注」→ 跳入并自动打开该篇 */
+    var pGoLib = el.closest("[data-pp-golib]");
+    if (pGoLib) {
+      libraryState.pendingOpen = parseInt(pGoLib.getAttribute("data-pp-golib"), 10);
+      go("library");
+      return;
+    }
+    /* 轮① P22：卡片/详情「＋ 我的文献」→ 幂等加入（已在库点击跳 #/library） */
+    var pLibBtn = el.closest("[data-paper-lib]");
+    if (pLibBtn) { addToLibrary(pLibBtn); return; }
+    /* ── 轮① P22：我的文献页（# /library）交互 ── */
+    var libTab = el.closest("[data-lib-tab]");
+    if (libTab) {
+      libraryState.tab = libTab.getAttribute("data-lib-tab");
+      qsa("[data-lib-tab]").forEach(function (b) { b.classList.toggle("active", b === libTab); });
+      renderLibraryList();
+      return;
+    }
+    var libDelBtn = el.closest("[data-lib-del]");
+    if (libDelBtn) {
+      var delPid = parseInt(libDelBtn.getAttribute("data-lib-del"), 10);
+      var delItem = null;
+      libraryState.items.forEach(function (p) { if (p.id === delPid) delItem = p; });
+      openLibDeleteConfirm(delPid, delItem ? delItem.title : "");
+      return;
+    }
+    if (el.closest("[data-lib-delcancel]")) { closeLibDeleteConfirm(); return; }
+    var libDelConfirm = el.closest("[data-lib-delconfirm]");
+    if (libDelConfirm) {
+      libConfirmDelete(parseInt(libDelConfirm.getAttribute("data-lib-delconfirm"), 10));
+      return;
+    }
+    /* 我的文献：点列表项打开阅读器（点在删除钮上时不触发） */
+    var libOpen = el.closest("[data-lib-open]");
+    if (libOpen && !el.closest(".lib-del")) {
+      libOpenReader(parseInt(libOpen.getAttribute("data-lib-open"), 10));
+      return;
+    }
+    /* 我的文献：删除弹窗点遮罩空白处 = 取消 */
+    if (el.hasAttribute && el.hasAttribute("data-lib-delmask")) { closeLibDeleteConfirm(); return; }
     /* 文献页：左导航切换（今日推送 / 我的收藏 / 全部论文） */
     var pNav = el.closest("[data-pp-nav]");
     if (pNav && !pNav.classList.contains("is-disabled")) {
@@ -4597,7 +4865,7 @@
     }
     if (e.key === "Escape") {
       /* 原生 <dialog> 的 Esc 由浏览器自行处理（cancel → close），这里兜底非 dialog 弹层 */
-      if (readerState.open) { closeReader(); return; } /* P8：先收批注阅读器 */
+      if (readerState.open && !readerState.inline) { closeReader(); return; } /* P8：先收批注阅读器（挂载态不收：中栏是页面主体） */
       qsa("dialog.modal-mask[open]").forEach(function (m) { m.close(); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       rolePopCloseAll();

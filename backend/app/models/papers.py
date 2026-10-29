@@ -1,8 +1,11 @@
-"""文献模型（批次 2，架构设计 §3.8/PRD §4.8，五表）。
+"""文献模型（批次 2，架构设计 §3.8/PRD §4.8；轮①起六表 + runs 进度列）。
 
-- papers：题录全局表，pmid 全局唯一；tags/keywords 为 JSONB（`@>` 查询）；
-- paper_users：归属表（哪篇推送给哪个用户，隔离依据）；
-- paper_favorites / paper_notes：收藏（幂等 toggle）与笔记（每人每篇一条 upsert）；
+- papers：题录表（轮① 起行级归属 user_id，去重键 (user_id, pmid)）；
+  tags/keywords 为 JSONB（`@>` 查询）；
+- paper_users：归属表（哪篇推送给哪个用户，可见性隔离依据）；
+- paper_library：我的文献工作台（轮① P22，阅读/批注/翻译唯一入口）；
+- paper_favorites / paper_notes：收藏（幂等 toggle）与笔记（全文笔记 upsert +
+  P8 批注双形态）；
 - paper_explanations：AI 解读全局缓存（一篇一条，成功才入库，全局共享）。
 """
 from datetime import date, datetime
@@ -30,8 +33,17 @@ class Paper(Base):
     __tablename__ = "papers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # 全局去重键：PubMed 为纯数字 pmid；其余源为 "{source}:{external_id}"（步 A 多源扩展）
-    pmid: Mapped[str] = mapped_column(String(64), unique=True)
+    # 去重键（轮①起加 user 维度，唯一索引 uq_papers_user_pmid）：
+    # PubMed 为纯数字 pmid；其余源为 "{source}:{external_id}"（步 A 多源扩展）。
+    # 同一篇两人抓各存一份（拍板 P23：多几 MB 换语义干净 + 删除互不影响）
+    pmid: Mapped[str] = mapped_column(String(64))
+    # 行级归属（轮①，Alembic 0011）：抓取按人入库；存量行回填 = 最早 paper_users
+    # 归属人，无归属归 admin；用户删除行级联带走其文献
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE")
+    )
+    # 来源：crawl（订阅/语义检索抓取）| import（轮② PDF/arXiv/DOI 导入）
+    origin: Mapped[str] = mapped_column(String(16), default="crawl")
     source: Mapped[str] = mapped_column(String(32), default="pubmed")  # 数据源 key（步 A）
     doi: Mapped[str | None] = mapped_column(String(512), nullable=True)  # 跨源去重键（步 A）
     title: Mapped[str] = mapped_column(Text, default="")
@@ -58,6 +70,11 @@ class Paper(Base):
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    __table_args__ = (
+        # 轮①（Alembic 0011）：去重键 = (user_id, pmid)，同用户内唯一
+        Index("uq_papers_user_pmid", "user_id", "pmid", unique=True),
+    )
+
 
 class PaperCrawlRun(Base):
     """抓取轮次记录（论文域步 B）：每轮抓取结束写一行，成功/失败都写。
@@ -77,6 +94,10 @@ class PaperCrawlRun(Base):
     stats: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(16))  # success | failed
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 轮①（Alembic 0011）：轮内实时进度（轮②检索进度条数据源；JSONB 可空）
+    # 形如 {"phase": "fetching|translating|done", "keyword": 当前关键词,
+    #       "per_source": {源: {"fetched": n, "added": n}}}
+    progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class PaperUser(Base):
@@ -88,6 +109,28 @@ class PaperUser(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     paper_id: Mapped[int] = mapped_column(Integer, ForeignKey("papers.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PaperLibrary(Base):
+    """我的文献工作台（轮①，P22/P24；Alembic 0011）。
+
+    阅读/批注/翻译的唯一入口载体（拍板 P22）；删除 = 级联本人 papers 行 +
+    本人批注 + COS 产物 + 收藏/归属/库关联（拍板 P24，删除逻辑见
+    services/paper_library.py）。added_via 记加入途径：crawl（抓取/收藏并
+    解析）| import（轮②导入）。
+    """
+
+    __tablename__ = "paper_library"
+    __table_args__ = (
+        UniqueConstraint("user_id", "paper_id", name="uq_paper_library_user_paper"),
+        Index("ix_paper_library_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    paper_id: Mapped[int] = mapped_column(Integer, ForeignKey("papers.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    added_via: Mapped[str] = mapped_column(String(16), default="crawl")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

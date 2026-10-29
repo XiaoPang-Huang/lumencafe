@@ -124,6 +124,15 @@ class Storage(ABC):
     async def exists(self, app: str, key: str) -> bool:
         """对象是否存在；app/key 违规抛 ValueError（P11）。"""
 
+    async def list(self, app: str, prefix: str) -> list[str]:
+        """列出 app 内 key 以 prefix 开头的全部对象 key（不含 app 前缀）。
+
+        轮①（P24 级联删除）新增：PDF 按年月分层存储，删除时需按前缀回收
+        （``pdfs/`` 前缀过滤 paper_id 结尾）。非抽象默认实现保持旧测试替身
+        零改动兼容；未实现抛 NotImplementedError。
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} 未实现 list")
+
 
 class LocalStorage(Storage):
     """本地磁盘兜底实现：root/<app>/<key> 落盘（开发环境用）。
@@ -158,6 +167,20 @@ class LocalStorage(Storage):
 
     async def exists(self, app: str, key: str) -> bool:
         return self._path(app, key).is_file()
+
+    async def list(self, app: str, prefix: str) -> list[str]:
+        _validate_app(app)
+        base = self._root / app
+        if not base.is_dir():
+            return []
+        needle = prefix or ""
+        out: list[str] = []
+        for path in base.rglob("*"):
+            if path.is_file():
+                key = path.relative_to(base).as_posix()
+                if key.startswith(needle):
+                    out.append(key)
+        return sorted(out)
 
 
 class CosStorage(Storage):
@@ -233,6 +256,33 @@ class CosStorage(Storage):
             if exc.get_status_code() == 404:
                 return False
             raise
+
+    async def list(self, app: str, prefix: str) -> list[str]:
+        _validate_app(app)
+        app_prefix = f"{app}/"
+        # prefix 校验沿用 key 规则（空 prefix = 列整个应用目录）；目录型前缀允许
+        # 尾随 /（COS Prefix 语义），校验时剥掉——"pdfs/" 是合法前缀不是 key
+        if prefix:
+            _validate_key(prefix.rstrip("/"))
+        marker = ""
+        out: list[str] = []
+        while True:
+            response = self._client.list_objects(
+                Bucket=self._bucket,
+                Prefix=app_prefix + (prefix or ""),
+                Marker=marker,
+                MaxKeys=1000,
+            )
+            contents = response.get("Contents") or []
+            for item in contents:
+                key = str(item.get("Key") or "")
+                if key.startswith(app_prefix):
+                    out.append(key[len(app_prefix):])
+            if response.get("IsTruncated") in ("true", "True", True) and contents:
+                marker = str(contents[-1].get("Key") or "")
+                continue
+            break
+        return sorted(out)
 
 
 async def get_storage(db: AsyncSession) -> Storage:

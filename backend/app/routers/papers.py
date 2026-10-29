@@ -18,6 +18,13 @@
   running 409/failed·none 可重跑）；GET /papers/{id}/parse-status 轮询；GET
   /papers/parsed = 我的笔记列表；digest/daily 条目与详情带 parse_status（详情另带
   parse_error 供失败指引区）。
+- 轮①（P22/P23/P24 用户世界隔离 + 我的文献工作台，Alembic 0011）：papers 行级
+  归属 user_id（抓取去重/upsert 限同 user 内，同一篇两人抓各存一份）；新表
+  paper_library（我的文献，阅读/批注/翻译唯一入口）；POST /papers/{id}/library
+  幂等加入；DELETE /papers/{id}/library 级联删（本人 papers 行 + 本人批注 +
+  COS 产物四件 + 收藏/归属/库关联；非行主只解除本人归属）；GET /papers/library
+  本人列表（元数据 + parse_status + annotations_count）；/library 注册在
+  /{pid} 之前（单段路径匹配顺序）。
 - 论文域后批①（P8 批注式笔记 + 知识网，Alembic 0010 改造 paper_notes 双形态）：
   GET /papers/{id}/content 阅读器正文（content_list → 稳定 block_id `p{页}_b{序}`，
   无产物 404）；POST/GET /papers/{id}/annotations 建批注（body 可空=纯划线）/
@@ -58,6 +65,8 @@ from app.schemas.papers import (
     DigestItemOut,
     DigestOut,
     ExplainResponse,
+    LibraryActionOut,
+    LibraryItemOut,
     NoteRequest,
     PaperContentOut,
     PaperDetailOut,
@@ -74,6 +83,7 @@ from app.schemas.papers import (
 from app.services import (
     llm_gateway,
     paper_content,
+    paper_library,
     paper_parse,
     papers_crawl,
     pipeline,
@@ -584,6 +594,76 @@ async def parsed_papers(
             item.annotations_count = cnt
             item.last_annotation_at = latest
     return out
+
+
+# ── 轮①：我的文献工作台（P22 一级页；加入幂等 / 删除级联 P24；隔离 P23）──
+# 注意：/library 为单段路径，必须注册在 /{pid} 之前（FastAPI 按注册顺序匹配）。
+@router.get("/library", response_model=list[LibraryItemOut])
+async def list_library(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """我的文献列表：题录元数据 + parse_status + 本人批注数（annotations_count）。
+
+    只含本人库内行（paper_library.user_id 过滤，P23 行级隔离）；
+    批注统计与 /papers/parsed 同口径（仅 annotation 形态，不含旧全文笔记）。
+    """
+    rows = await paper_library.list_library(db, user.id)
+    papers_list = [p for _, p in rows]
+    out = []
+    stat_map: dict[int, tuple[int, object]] = {}
+    if papers_list:
+        stats = (
+            await db.execute(
+                select(
+                    PaperNote.paper_id,
+                    func.count(PaperNote.id),
+                )
+                .where(
+                    PaperNote.user_id == user.id,
+                    PaperNote.note_kind == "annotation",
+                    PaperNote.paper_id.in_([p.id for p in papers_list]),
+                )
+                .group_by(PaperNote.paper_id)
+            )
+        ).all()
+        stat_map = {pid: (cnt, None) for pid, cnt in stats}
+    for lib, p in rows:
+        cnt, _ = stat_map.get(p.id, (0, None))
+        item = LibraryItemOut(
+            **_out(p, True).model_dump(),
+            added_via=lib.added_via,
+            added_at=lib.created_at,
+        )
+        item.annotations_count = cnt
+        out.append(item)
+    return out
+
+
+@router.post("/{pid}/library", response_model=LibraryActionOut)
+async def add_to_library(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """加入我的文献（幂等）：归属校验（paper_users 本人）后 ON CONFLICT DO NOTHING。
+
+    已加入再调一次无副作用（不刷新加入时间/途径），返回 in_library=True。
+    """
+    await _get_mine(db, user.id, pid)
+    await paper_library.add_to_library(db, pid, user.id, added_via="crawl")
+    return LibraryActionOut(in_library=True)
+
+
+@router.delete("/{pid}/library")
+async def remove_from_library(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """从我的文献删除（拍板 P24 级联）：本人 papers 行 + 本人批注/笔记 +
+    COS 产物四件（parsed/{id} 三件 + pdfs 分层 PDF）+ 收藏/归属/库关联全清。
+
+    非行主的历史共享行只解除本人归属（P23：删自己的不影响对方）。
+    """
+    await _get_mine(db, user.id, pid)
+    result = await paper_library.delete_from_library(db, pid, user.id)
+    return {"ok": True, **result}
 
 
 @router.get("/{pid}/parse-status", response_model=ParseStatusOut)

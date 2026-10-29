@@ -94,6 +94,7 @@ async def _make_parsed_paper(username: str = "admin") -> int:
             journal="J Anno",
             parse_status="done",
             parsed_at=None,
+            user_id=uid,
         )
         db.add(paper)
         await db.commit()
@@ -346,7 +347,7 @@ async def test_recent_annotations_across_papers(client, monkeypatch):
     async with SessionLocal() as db:
         uid = (await db.execute(select(User.id).where(User.username == "admin"))).scalar_one()
         p2 = Paper(pmid="anno-test:admin:2", source="pubmed", title="Second paper",
-                   abstract="", journal="J2", parse_status="done")
+                   abstract="", journal="J2", parse_status="done", user_id=uid)
         db.add(p2)
         await db.commit()
         await db.refresh(p2)

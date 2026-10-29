@@ -38,6 +38,18 @@ class SaveResponse(BaseModel):
     saved: bool
 
 
+# ── 轮①：我的文献工作台（P22/P24，用户世界隔离 P23）─────────
+class LibraryItemOut(PaperOut):
+    """我的文献列表条目：题录元数据 + 解析状态 + 本人批注统计 + 加入信息。"""
+
+    added_via: str = "crawl"  # crawl | import（轮②导入）
+    added_at: dt.datetime | None = None  # 加入我的文献时间
+
+
+class LibraryActionOut(BaseModel):
+    in_library: bool  # 操作后是否在库（POST 恒 True；幂等重复加入也 True）
+
+
 class NoteRequest(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
 

@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models.papers import Paper, PaperCrawlRun, PaperFavorite, PaperNote, PaperUser
+from app.models.user import User
 from app.services import papers_crawl
 from app.services.sources.arxiv import _parse_atom as arxiv_parse
 from app.services.sources.doaj import _parse_results as doaj_parse
@@ -162,11 +163,14 @@ def test_pubmed_metadata_mapping():
 async def test_upsert_refreshes_metadata_on_existing_row():
     """已存在行允许元数据刷新：新抓取带来引用数/IF 时更新；源侧空值不回填。"""
     async with SessionLocal() as db:
+        admin_id = (
+            await db.execute(select(User.id).where(User.username == "admin"))
+        ).scalar_one()
         first = papers_crawl.PaperItem(
             title="Refresh me", source="openalex", external_id="W-refresh-1",
             journal="Old J",
         )
-        pid, is_new = await papers_crawl._upsert_item(db, first, [], [])
+        pid, is_new = await papers_crawl._upsert_item(db, first, [], [], admin_id)
         assert is_new is True
         await db.commit()
 
@@ -175,7 +179,7 @@ async def test_upsert_refreshes_metadata_on_existing_row():
             title="Refresh me", source="openalex", external_id="W-refresh-1",
             journal="New J", cited_count=77, if_approx=5.5,
         )
-        pid2, is_new2 = await papers_crawl._upsert_item(db, second, [], [])
+        pid2, is_new2 = await papers_crawl._upsert_item(db, second, [], [], admin_id)
         assert (pid2, is_new2) == (pid, False)
         await db.commit()
 
@@ -188,7 +192,7 @@ async def test_upsert_refreshes_metadata_on_existing_row():
         third = papers_crawl.PaperItem(
             title="Refresh me", source="openalex", external_id="W-refresh-1",
         )
-        await papers_crawl._upsert_item(db, third, [], [])
+        await papers_crawl._upsert_item(db, third, [], [], admin_id)
         await db.commit()
         row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
         assert row.cited_count == 77  # 未被 None 覆盖
@@ -215,6 +219,7 @@ async def _seed_papers_for_sorting(client, headers):
                 abstract=f"A study about {' '.join(kws)}.",  # digest 命中按 title+abstract 重算
                 if_approx=ifa, cited_count=cited, keywords=kws,
                 created_at=base + timedelta(hours=off_h),
+                user_id=1,
             )
             db.add(paper)
             await db.flush()
@@ -334,6 +339,17 @@ async def test_sort_if_nulls_last_digest_and_daily(client):
 
 
 # ── digest 时间窗口径：最近一轮成功检索以来入库（无 runs 回落本地今日零点） ──
+def _yesterday_local_midnight() -> datetime:
+    """昨天本地零点（UTC 时刻）：窗口测试的确定性锚点。
+
+    直接 ``now(UTC) - 1day`` 在傍晚跑测试时 ±1h 会翻过本地今日零点，
+    「昨天」论文实际落在今天本地 → 断言随时刻 flaky；锚到本地零点消除。
+    """
+    return datetime.now().astimezone().replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(UTC) - timedelta(days=1)
+
+
 async def _seed_window_papers(run_at: datetime):
     """造 3 篇归属文献：run_at 之前 / run_at 之后（昨天）/ 今天，均命中订阅关键词。"""
     specs = [
@@ -346,6 +362,7 @@ async def _seed_window_papers(run_at: datetime):
             paper = Paper(
                 pmid=pmid, source="openalex", title=title,
                 abstract="A study about alzheimer.", created_at=created,
+                user_id=1,
             )
             db.add(paper)
             await db.flush()
@@ -362,7 +379,7 @@ async def test_digest_window_since_last_successful_run(client):
         json={"key": "subscribe_keywords", "value": {"keywords": ["alzheimer"]}},
         headers=headers,
     )
-    run_at = datetime.now(UTC) - timedelta(days=1)  # 最近一轮成功检索在昨天
+    run_at = _yesterday_local_midnight()  # 最近一轮成功检索在昨天（本地零点锚定，时刻无关）
     await _seed_window_papers(run_at)
     async with SessionLocal() as db:
         db.add(PaperCrawlRun(trigger="manual", stats={}, status="success", run_at=run_at))
@@ -398,7 +415,7 @@ async def test_digest_window_falls_back_to_local_midnight_without_runs(client):
         json={"key": "subscribe_keywords", "value": {"keywords": ["alzheimer"]}},
         headers=headers,
     )
-    run_at = datetime.now(UTC) - timedelta(days=1)  # 仅用于造「昨天 run 后」那篇
+    run_at = _yesterday_local_midnight()  # 仅用于造「昨天 run 后」那篇（本地零点锚定）
     await _seed_window_papers(run_at)
 
     data = (await client.get("/papers/digest", headers=headers)).json()
@@ -424,6 +441,7 @@ async def _seed_stale_papers():
             paper = Paper(
                 pmid=pmid, source="openalex", title=title, abstract="stale",
                 created_at=now + timedelta(days=days),
+                user_id=1,
             )
             db.add(paper)
             await db.flush()
