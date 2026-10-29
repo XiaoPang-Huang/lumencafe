@@ -2513,37 +2513,112 @@
     var ni = qs("[data-sub-kw-input]", box);
     if (ni && input && document.activeElement === input) ni.focus();
   }
-  /* 数据源市场（P17）：已接源可勾选；待接入源灰显禁勾 + 「待接入」徽标；
+  /* 数据源（P17 两段式：第一层摘要 chips + 「管理数据源」→ 第二层选择页弹窗）
+   * 选择页：搜索 + 七分类可折叠分组；已接源可勾选；待接入源灰显禁勾 + 「待接入」徽标；
    * 需 key/收费源未配 key 时给「去 Key 管理配置」引导链接（链到平台管理 Key 页签） */
   var SUB_COST_LABELS = { free: "免费", free_key: "免费·需 Key", paid: "收费" };
-  function renderSubSources() {
-    var box = qs("[data-sub-src-list]");
+  /* 七分类固定顺序（与后端 catalog.py 拍板顺序一致） */
+  var SUB_CATEGORIES = ["综合索引", "生物医学", "理工", "社科人文", "中文国内", "商业收费", "开放期刊"];
+  /* 选择页草稿态：draft 独立于 subState.sources，保存才写回；取消/关弹窗即丢弃 */
+  var srcPickState = { draft: [], query: "", collapsed: {} };
+  /* 第一层摘要：已选源紧凑 chips（最多展示前 3 个名）+ 数量；点「管理数据源」进选择页 */
+  function renderSubSummary() {
+    var box = qs("[data-sub-src-summary]");
     if (!box) return;
-    if (!subState.allSources.length) {
-      box.innerHTML = '<div class="muted" style="padding:6px 2px;font-size:13px;">暂无可选数据源</div>';
+    if (!subState.loaded) {
+      box.innerHTML = '<span class="muted" style="font-size:13px;">加载中…</span>';
       return;
     }
-    box.innerHTML = subState.allSources.map(function (s) {
-      var on = subState.sources.indexOf(s.key) !== -1;
-      var pending = !s.implemented;
-      var needKey = !!(s.key_service && !s.key_configured);
-      var badges = '<span class="sub-src-badge">' + esc(s.category) + "</span>" +
-        '<span class="sub-src-badge' + (s.cost === "paid" ? " is-paid" : "") + '">' +
-          esc(SUB_COST_LABELS[s.cost] || s.cost) + "</span>" +
-        (pending ? '<span class="sub-src-badge is-pending-badge">待接入</span>' : "");
-      var keyRow = needKey
-        ? '<span class="sub-src-keyrow"><a href="#/admin" data-sub-keycfg="' + esc(s.key) +
-          '" class="sub-src-keylink">去 Key 管理配置</a></span>'
-        : "";
-      return '<label class="sub-src-item' + (pending ? " is-pending" : "") + '">' +
-        '<input type="checkbox" data-sub-src="' + esc(s.key) + '"' + (on ? " checked" : "") +
-          (pending ? " disabled" : "") + "> " +
-        '<span class="sub-src-main">' +
-          '<span class="sub-src-name">' + esc(s.name) + badges + "</span>" +
-          '<span class="sub-src-desc muted">' + esc(s.description || "") + "</span>" +
-          keyRow +
-        "</span></label>";
+    if (!subState.sources.length) {
+      box.innerHTML = '<span class="muted" style="font-size:13px;">未选择数据源</span>';
+      return;
+    }
+    var byKey = {};
+    subState.allSources.forEach(function (s) { byKey[s.key] = s; });
+    var names = subState.sources.map(function (k) {
+      var s = byKey[k];
+      return s ? s.name : k;
+    });
+    var shown = names.slice(0, 3).map(function (n) {
+      return '<span class="sub-src-chip">' + esc(n) + "</span>";
     }).join("");
+    /* 超过 3 个：第 4 个起折叠为「等 N 个」（已含总数，不再重复计数徽标） */
+    var tail = names.length > 3
+      ? '<span class="muted" style="font-size:12.5px;">等 ' + names.length + " 个</span>"
+      : '<span class="sub-src-chip sub-src-chip-count">共 ' + names.length + " 个</span>";
+    box.innerHTML = shown + tail;
+  }
+  /* 第二层选择页：打开时以当前已选为草稿 */
+  function openSrcPicker() {
+    srcPickState.draft = subState.sources.slice();
+    srcPickState.query = "";
+    srcPickState.collapsed = {};
+    var q = qs("[data-src-pick-q]");
+    if (q) q.value = "";
+    renderSrcPicker();
+    openModal("#modal-papers-src");
+  }
+  /* 选择页渲染：搜索按名称过滤；七分类分组（可折叠，搜索时强制展开） */
+  function renderSrcPicker() {
+    var list = qs("[data-src-pick-list]");
+    if (!list) return;
+    var q = srcPickState.query.trim().toLowerCase();
+    var srcs = subState.allSources.filter(function (s) {
+      return !q || (s.name || "").toLowerCase().indexOf(q) !== -1;
+    });
+    if (!srcs.length) {
+      list.innerHTML = '<div class="muted" style="padding:14px 2px;font-size:13px;">没有匹配的数据源</div>';
+      renderSrcPickCount();
+      return;
+    }
+    var groups = SUB_CATEGORIES.map(function (cat) {
+      return { cat: cat, items: srcs.filter(function (s) { return s.category === cat; }) };
+    }).filter(function (g) { return g.items.length; });
+    /* 防御：后端新增未预知的分类，排在已知分类之后 */
+    var known = {};
+    SUB_CATEGORIES.forEach(function (c) { known[c] = true; });
+    var others = srcs.filter(function (s) { return !known[s.category]; });
+    if (others.length) groups.push({ cat: "其他", items: others });
+    list.innerHTML = groups.map(function (g) {
+      var collapsed = srcPickState.collapsed[g.cat] && !q;
+      var onCount = g.items.filter(function (s) {
+        return srcPickState.draft.indexOf(s.key) !== -1;
+      }).length;
+      var head = '<div class="src-cat-head' + (collapsed ? " is-collapsed" : "") +
+        '" data-src-cat="' + esc(g.cat) + '" role="button" tabindex="0">' +
+        '<i data-ic="down" class="src-cat-caret"></i>' +
+        '<span class="src-cat-name">' + esc(g.cat) + "</span>" +
+        '<span class="muted src-cat-num">' + onCount + "/" + g.items.length + "</span>" +
+        "</div>";
+      var body = collapsed ? "" : g.items.map(function (s) {
+        var on = srcPickState.draft.indexOf(s.key) !== -1;
+        var pending = !s.implemented;
+        var needKey = !!(s.key_service && !s.key_configured);
+        var badges = '<span class="sub-src-badge">' + esc(s.category) + "</span>" +
+          '<span class="sub-src-badge' + (s.cost === "paid" ? " is-paid" : "") + '">' +
+            esc(SUB_COST_LABELS[s.cost] || s.cost) + "</span>" +
+          (pending ? '<span class="sub-src-badge is-pending-badge">待接入</span>' : "");
+        var keyRow = needKey
+          ? '<span class="sub-src-keyrow"><a href="#/admin" data-sub-keycfg="' + esc(s.key) +
+            '" class="sub-src-keylink">去 Key 管理配置</a></span>'
+          : "";
+        return '<label class="sub-src-item' + (pending ? " is-pending" : "") + '">' +
+          '<input type="checkbox" data-src-pick="' + esc(s.key) + '"' + (on ? " checked" : "") +
+            (pending ? " disabled" : "") + "> " +
+          '<span class="sub-src-main">' +
+            '<span class="sub-src-name">' + esc(s.name) + badges + "</span>" +
+            '<span class="sub-src-desc muted">' + esc(s.description || "") + "</span>" +
+            keyRow +
+          "</span></label>";
+      }).join("");
+      return '<div class="src-cat">' + head + body + "</div>";
+    }).join("");
+    injectIcons(list);
+    renderSrcPickCount();
+  }
+  function renderSrcPickCount() {
+    var el = qs("[data-src-pick-count]");
+    if (el) el.textContent = "已选 " + srcPickState.draft.length + " 个";
   }
   /* P21 检索条件区回显 */
   function renderSubP21() {
@@ -2594,7 +2669,7 @@
       subState.loaded = true;
       subState.baseline = subSnapshot();
       renderSubKeywords();
-      renderSubSources();
+      renderSubSummary();
       renderSubP21();
       subRefreshSaveBtn();
     }).catch(function (e) { toast(e.detail || "订阅设置加载失败"); });
@@ -2970,6 +3045,30 @@
     }
     /* 订阅设置弹窗：保存（脏状态亮起，写 subscribe_keywords + subscribe_sources） */
     if (el.closest("[data-sub-save]")) { saveSubscribe(); return; }
+    /* 订阅设置弹窗：「管理数据源」→ 第二层选择页（第一层保持打开在其下） */
+    if (el.closest("[data-sub-src-manage]")) { openSrcPicker(); return; }
+    /* 数据源选择页：分类分组折叠/展开 */
+    var catHead = el.closest("[data-src-cat]");
+    if (catHead) {
+      var cat = catHead.getAttribute("data-src-cat");
+      srcPickState.collapsed[cat] = !srcPickState.collapsed[cat];
+      renderSrcPicker();
+      return;
+    }
+    /* 数据源选择页：保存 = 草稿写回并刷新第一层摘要（点亮保存按钮）；取消 = 丢弃草稿 */
+    if (el.closest("[data-src-pick-save]")) {
+      subState.sources = srcPickState.draft.slice();
+      var pickDlg = qs("#modal-papers-src");
+      if (pickDlg && pickDlg.close) { if (pickDlg.open) pickDlg.close(); }
+      renderSubSummary();
+      subRefreshSaveBtn();
+      return;
+    }
+    if (el.closest("[data-src-pick-cancel]")) {
+      var pickDlg2 = qs("#modal-papers-src");
+      if (pickDlg2 && pickDlg2.close) { if (pickDlg2.open) pickDlg2.close(); }
+      return;
+    }
     /* 我的技能：「上传技能」按钮 → 触发隐藏 file input */
     if (el.closest("[data-skill-upload]")) {
       var skillFile = qs("[data-skill-file]");
@@ -3668,12 +3767,14 @@
     /* 文献页：语义检索（P13：一句话 → AI 扩词 → 临时聚合抓取） */
     var pNl = el.closest("[data-pp-nlsearch]");
     if (pNl) { nlSearch(pNl); return; }
-    /* 订阅弹窗：需 key/收费源「去 Key 管理配置」→ 关弹窗 → 平台管理·Key 管理页签
+    /* 订阅弹窗/选择页：需 key/收费源「去 Key 管理配置」→ 关两层弹窗 → 平台管理·Key 管理页签
      * （preventDefault 阻止 label 内点击连带切换复选框） */
     var keyCfg = el.closest("[data-sub-keycfg]");
     if (keyCfg) {
       e.preventDefault();
-      var subDlg = keyCfg.closest(".modal-mask");
+      var pickDlg3 = qs("#modal-papers-src");
+      if (pickDlg3 && pickDlg3.close) { if (pickDlg3.open) pickDlg3.close(); }
+      var subDlg = qs("#modal-papers-sub");
       if (subDlg && subDlg.close) { if (subDlg.open) subDlg.close(); }
       else if (subDlg) subDlg.classList.remove("open");
       go("admin");
@@ -3915,6 +4016,13 @@
 
   /* 输入事件委托：金额预览 / 应用搜索 */
   document.addEventListener("input", function (e) {
+    /* 数据源选择页：搜索框按名称过滤（即时重渲染，搜索时分组强制展开） */
+    var pickQ = e.target.closest ? e.target.closest("[data-src-pick-q]") : null;
+    if (pickQ) {
+      srcPickState.query = pickQ.value;
+      renderSrcPicker();
+      return;
+    }
     var amt = e.target.closest ? e.target.closest("[data-amount-input]") : null;
     if (amt) {
       var out = qs(amt.getAttribute("data-amount-input"));
@@ -4045,15 +4153,15 @@
     handleSkillFile(f);
   });
 
-  /* 订阅设置弹窗：数据源勾选（checkbox 变化 → 脏状态亮起保存按钮） */
+  /* 订阅设置弹窗：数据源选择页（第二层弹窗）勾选 → 改草稿并刷新计数 */
   document.addEventListener("change", function (e) {
-    var c = e.target.closest ? e.target.closest("[data-sub-src]") : null;
+    var c = e.target.closest ? e.target.closest("[data-src-pick]") : null;
     if (c) {
-      var key = c.getAttribute("data-sub-src");
-      var idx = subState.sources.indexOf(key);
-      if (c.checked && idx === -1) subState.sources.push(key);
-      if (!c.checked && idx !== -1) subState.sources.splice(idx, 1);
-      subRefreshSaveBtn();
+      var key = c.getAttribute("data-src-pick");
+      var idx = srcPickState.draft.indexOf(key);
+      if (c.checked && idx === -1) srcPickState.draft.push(key);
+      if (!c.checked && idx !== -1) srcPickState.draft.splice(idx, 1);
+      renderSrcPicker();
       return;
     }
     /* P21 检索条件（订阅弹窗）：年份起/止、作者、IF 下限 → 脏状态亮起保存按钮 */

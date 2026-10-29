@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流光咖啡馆</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%277%27 fill=%27%230064E0%27/%3E%3Ctext x=%2716%27 y=%2722%27 font-size=%2716%27 text-anchor=%27middle%27 fill=%27%23FFFFFF%27 font-family=%27serif%27%3E%E5%92%96%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/main.css?v=20261030a">
+<link rel="stylesheet" href="assets/css/main.css?v=20261030b">
 </head>
 <body data-route="workspace">
 
@@ -447,8 +447,11 @@
         <div class="hint">只抓取满足条件的文献：年份范围、任一命中作者、影响因子下限（近似口径）；留空 = 不限</div>
       </div>
       <div class="field" style="margin-bottom:0;">
-        <label>数据源市场</label>
-        <div class="sub-src-list" data-sub-src-list><div class="muted" style="padding:6px 2px;font-size:13px;">加载中…</div></div>
+        <label>数据源</label>
+        <div class="sub-src-summary" data-sub-src-summary><span class="muted" style="font-size:13px;">加载中…</span></div>
+        <div style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" type="button" data-sub-src-manage><i data-ic="grid"></i>管理数据源</button>
+        </div>
         <div class="hint">已接入源可勾选参与抓取；「待接入」源仅展示；需 Key 的源配 key 后自动生效</div>
       </div>
       <div class="sub-if-note">影响因子为近似口径（OpenAlex 引文影响指标 FWCI，非 JCR 官方值），仅供参考</div>
@@ -456,6 +459,28 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" type="button" data-modal-close>取消</button>
       <button class="btn sub-save" type="button" data-sub-save disabled>保存</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- 数据源选择页（第二层中央弹窗：叠加在订阅设置弹窗之上，选源草稿独立，保存才写回） -->
+<dialog class="modal-mask" id="modal-papers-src">
+  <div class="modal modal-lg modal-pick">
+    <div class="modal-head">
+      <h3>管理数据源</h3>
+      <button class="icon-btn" type="button" data-src-pick-cancel aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body" style="padding-top:12px;">
+      <div class="skill-search src-pick-search">
+        <i data-ic="search"></i>
+        <input type="text" data-src-pick-q placeholder="搜索数据源名称" autocomplete="off">
+      </div>
+      <div class="src-pick-list" data-src-pick-list><div class="muted" style="padding:6px 2px;font-size:13px;">加载中…</div></div>
+    </div>
+    <div class="modal-foot">
+      <span class="src-pick-count muted" data-src-pick-count>已选 0 个</span>
+      <button class="btn btn-ghost" type="button" data-src-pick-cancel>取消</button>
+      <button class="btn" type="button" data-src-pick-save>保存</button>
     </div>
   </div>
 </dialog>
@@ -501,6 +526,6 @@
 <script src="assets/js/data.js?v=20261024a"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
 <script src="assets/js/api.js?v=20261026b"></script>
-<script src="assets/js/app.js?v=20261030a"></script>
+<script src="assets/js/app.js?v=20261030b"></script>
 </body>
 </html>

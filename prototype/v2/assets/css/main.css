@@ -1709,6 +1709,37 @@ body[data-route="chat"] .chat-layout { height: calc(100vh - 48px - 24px); }
 .sub-src-keylink { font-size: 12px; color: var(--brand); text-decoration: none; }
 .sub-src-keylink:hover { text-decoration: underline; }
 
+/* ── 论文域 P17 两段式：第一层已选源摘要 chips + 第二层数据源选择页 ── */
+.sub-src-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 28px; }
+.sub-src-chip {
+  padding: 2px 10px; border-radius: 999px; font-size: 12.5px; line-height: 1.7;
+  background: var(--brand-soft); color: var(--brand-strong); border: 1px solid transparent;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sub-src-chip-count { background: var(--bg-soft); color: var(--ink-2); border-color: var(--line); flex: none; }
+/* 第二层弹窗：头/搜索/底部固定，分组列表独立滚动 */
+.modal-pick { max-width: 640px; display: flex; flex-direction: column; overflow: hidden; }
+.modal-pick .modal-head { flex: none; }
+.modal-pick .modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
+.modal-pick .modal-foot { flex: none; align-items: center; }
+.src-pick-search { flex: none; margin: 0 0 10px; }
+.src-pick-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.src-pick-count { margin-right: auto; font-size: 12.5px; }
+/* 分类分组（可折叠，借鉴 LobeChat 提供商分组样式） */
+.src-cat { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; flex: none; }
+.src-cat + .src-cat { margin-top: 2px; }
+.src-cat-head {
+  display: flex; align-items: center; gap: 7px; padding: 8px 12px;
+  background: var(--bg-soft); cursor: pointer; user-select: none; font-size: 13px;
+}
+.src-cat-head:hover { color: var(--ink); }
+.src-cat-caret { width: 14px; height: 14px; flex: none; transition: transform .18s var(--ease-out); color: var(--ink-3); }
+.src-cat-head.is-collapsed .src-cat-caret { transform: rotate(-90deg); }
+.src-cat-name { font-weight: 600; }
+.src-cat-num { font-size: 12px; margin-left: auto; }
+.src-cat .sub-src-item { border: none; border-radius: 0; padding: 8px 12px 8px 14px; }
+.src-cat .sub-src-item + .sub-src-item { border-top: 1px dashed var(--line); }
+
 /* ── 论文域增强②：订阅弹窗检索条件区（P21） ── */
 .sub-p21 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .sub-p21 .pp-tb-input { width: 96px; }
