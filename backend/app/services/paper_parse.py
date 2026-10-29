@@ -342,25 +342,42 @@ async def _mineru_download_zip(client: httpx.AsyncClient, zip_url: str) -> bytes
     return resp.content
 
 
-async def mineru_parse(db: AsyncSession, pdf_bytes: bytes, filename: str) -> tuple[bytes, str]:
+async def mineru_parse(
+    db: AsyncSession,
+    pdf_bytes: bytes,
+    filename: str,
+    phase_hook: "object | None" = None,
+) -> tuple[bytes, str]:
     """MinerU 精准解析全流程，返回 ``(zip_bytes, model_version)``。
 
     凭证从 service_keys ``mineru`` 行取（缺失抛 :class:`MinerUConfigError`）；
     任务轮询到 done 取 full_zip_url，failed/超时抛 :class:`MinerUError`。
+
+    phase_hook（轮② P26 可选）：异步回调 ``await phase_hook(phase)``，
+    在 上传(upload)→排队(queue)→解析中(parsing) 阶段推进时通知调用方写
+    papers.parse_phase；不传则零开销（旧调用方/单测兼容）。
     """
     base, token = await _mineru_config(db)
     headers = {"Authorization": f"Bearer {token}"}
     client = get_http_client()
 
     batch_id, upload_url = await _mineru_batch_upload_url(client, base, headers, filename)
+    if phase_hook is not None:
+        await phase_hook("upload")
     await _mineru_put_upload(client, upload_url, pdf_bytes)
+    if phase_hook is not None:
+        await phase_hook("queue")
     logger.info("MinerU 已上传，batch_id=%s（file=%s，任务由系统自动提交）", batch_id, filename)
 
     loop = asyncio.get_running_loop()
     deadline = loop.time() + MINERU_POLL_TIMEOUT
+    reported_running = False  # running 阶段只上报一次（轮询周期 3s，避免重复写库）
     while True:
         state = await _mineru_batch_state(client, base, headers, batch_id)
         status = str(state.get("state") or "").lower()
+        if status == "running" and phase_hook is not None and not reported_running:
+            reported_running = True
+            await phase_hook("parsing")
         if status == "done":
             zip_url = state.get("full_zip_url")
             if not zip_url:
@@ -377,7 +394,15 @@ async def mineru_parse(db: AsyncSession, pdf_bytes: bytes, filename: str) -> tup
 
 
 # ── 状态机：单篇解析管线（Hatchet 任务体与进程内降级共用）────
-async def run_parse_pipeline(db: AsyncSession, paper_id: int, user_id: int) -> dict:
+async def _set_phase(db: AsyncSession, paper: Paper, phase: str | None) -> None:
+    """写 papers.parse_phase 并提交（轮② P26 五段阶段条数据源；独立短事务）。"""
+    paper.parse_phase = phase
+    await db.commit()
+
+
+async def run_parse_pipeline(
+    db: AsyncSession, paper_id: int, user_id: int, pdf_bytes: bytes | None = None
+) -> dict:
     """单篇收藏并解析全链：download → store_pdf → mineru_parse → store_parsed。
 
     状态机写 papers.parse_status（none/pending → running → done|failed）：
@@ -386,7 +411,13 @@ async def run_parse_pipeline(db: AsyncSession, paper_id: int, user_id: int) -> d
     - 任一步失败：parse_status=failed + parse_error=原因（截断入库），返回终态字典
       （不向外抛——workflow 与进程内调用方都要落状态，重试 = 再次点按钮）。
 
-    user_id 仅作触发审计（归属隔离在 API 层已校验）。
+    parse_phase（轮② P26）随链路推进：download（OA 下载）→ upload（存 COS +
+    MinerU 直传）→ queue（MinerU 排队）→ parsing（MinerU 解析中）；done 清空、
+    failed 保留在出错段（前端该段标红）。
+
+    pdf_bytes（轮② P25 导入用）：调用方已备好全文（PDF 上传/arXiv/DOI 下载
+    完成）时传入——跳过 OA 下载步，阶段直接从 upload 起；user_id 仅作触发
+    审计（归属隔离在 API 层已校验）。
     """
     paper = (
         await db.execute(select(Paper).where(Paper.id == paper_id))
@@ -407,20 +438,34 @@ async def run_parse_pipeline(db: AsyncSession, paper_id: int, user_id: int) -> d
 
     paper.parse_status = "running"
     paper.parse_error = None
+    paper.parse_phase = "upload" if pdf_bytes is not None else "download"
     await db.commit()
     logger.info("papers-parse 开始：paper_id=%s user_id=%s", paper_id, user_id)
 
     try:
-        pdf_bytes, pdf_source = await download_oa_pdf(db, paper)
+        if pdf_bytes is None:
+            pdf_bytes, pdf_source = await download_oa_pdf(db, paper)
+        else:
+            pdf_source = "upload"  # 轮②导入：全文由调用方提供（上传/arXiv/DOI）
+        await _set_phase(db, paper, "upload")
         storage = await get_storage(db)
         await store_pdf(storage, paper, pdf_bytes)
-        zip_bytes, model_version = await mineru_parse(db, pdf_bytes, f"{paper_id}.pdf")
+
+        async def _phase_hook(phase: str) -> None:
+            await _set_phase(db, paper, phase)
+
+        zip_bytes, model_version = await mineru_parse(
+            db, pdf_bytes, f"{paper_id}.pdf", phase_hook=_phase_hook
+        )
         parsed = await store_parsed(storage, paper_id, zip_bytes, model_version)
     except Exception as exc:
         logger.exception("papers-parse 失败：paper_id=%s", paper_id)
         error = (str(exc) or exc.__class__.__name__)[:_PARSE_ERROR_MAX]
         paper.parse_status = "failed"
         paper.parse_error = error
+        # parse_phase 保留在出错段（前端五段条该段标红）；失败前未进链路则为 download
+        if paper.parse_phase is None:
+            paper.parse_phase = "download"
         await db.commit()
         return {
             "paper_id": paper_id,
@@ -431,6 +476,7 @@ async def run_parse_pipeline(db: AsyncSession, paper_id: int, user_id: int) -> d
 
     paper.parse_status = "done"
     paper.parse_error = None
+    paper.parse_phase = None  # 完成清空（done 由 parse_status 承载）
     paper.parsed_at = datetime.now().astimezone()
     await db.commit()
     logger.info(

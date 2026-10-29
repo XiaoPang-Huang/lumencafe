@@ -1999,3 +1999,79 @@ h1.pp-rh, h2.pp-rh { border-bottom: 1px solid var(--line); padding-bottom: 6px; 
 
 /* 轮①：顶栏 tab 不换行（pp-nav-item 原为纵向导航样式） */
 .pp-topbar .pp-nav-item { white-space: nowrap; }
+
+/* ===== 轮②：导入弹窗 / 解析五段阶段条 / 检索进度弹层（P25/P26） ===== */
+.lib-import-dialog { width: 480px; max-width: 100%; padding: 20px 22px; }
+.imp-tabs { display: flex; gap: 8px; margin: 12px 0 14px; }
+.imp-field { display: block; font-size: 12.5px; line-height: 1.7; }
+.imp-field input[type="text"] {
+  width: 100%; margin-top: 6px; padding: 8px 10px; font-size: 13.5px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+  color: var(--ink); outline: none;
+}
+.imp-field input[type="text"]:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.imp-field input[type="file"] { margin-top: 8px; font-size: 13px; width: 100%; }
+.imp-filename { margin-top: 6px; font-size: 12px; }
+.imp-err {
+  margin-top: 12px; font-size: 12.5px; font-weight: 600; color: var(--danger);
+  background: var(--danger-soft); border-radius: 8px; padding: 8px 12px; line-height: 1.6;
+  word-break: break-all;
+}
+
+/* 解析五段阶段条：下载→上传→排队→解析中→完成（P26，接受不显示假百分比） */
+.lib-phases { margin-top: 8px; }
+.lps-track { display: flex; gap: 4px; }
+.lps {
+  flex: 1; height: 6px; border-radius: 4px;
+  background: var(--pill-bg, var(--line)); transition: background .3s;
+}
+.lps.is-done { background: var(--brand); }
+.lps.is-active { background: var(--brand-soft); box-shadow: inset 0 0 0 1.5px var(--brand); }
+.lps.is-err { background: var(--danger); }
+.lps.is-flow {
+  background: linear-gradient(90deg, var(--brand-soft) 25%, var(--brand) 50%, var(--brand-soft) 75%);
+  background-size: 200% 100%; animation: lps-flow 1.4s linear infinite;
+}
+@keyframes lps-flow { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.lps-labels { display: flex; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--ink-3); }
+.lps-labels span { flex: 1; text-align: center; }
+.lps-labels span.on { color: var(--brand-strong); font-weight: 600; }
+.lps-errtext { margin-top: 6px; font-size: 11.5px; color: var(--danger); line-height: 1.5; word-break: break-all; }
+
+/* 立即检索进度弹层：右下角悬浮卡片（P26 阶段式进度） */
+.crawl-prog-mask {
+  position: fixed; right: 20px; bottom: 20px; z-index: 92;
+  display: flex; pointer-events: none;
+}
+.crawl-prog {
+  width: 320px; max-width: calc(100vw - 40px); padding: 14px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .18); pointer-events: auto;
+}
+.cp-head { display: flex; align-items: center; gap: 8px; }
+.cp-title { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.cp-head .icon-btn { margin-left: auto; width: 26px; height: 26px; }
+.cp-track { display: flex; gap: 4px; margin-top: 12px; }
+.cp-seg {
+  flex: 1; text-align: center; font-size: 11.5px; padding: 4px 0;
+  border-radius: 6px; color: var(--ink-3); background: var(--pill-bg, var(--line));
+}
+.cp-seg.is-active {
+  color: var(--brand-strong); background: var(--brand-soft); font-weight: 600;
+  animation: cp-pulse 1.4s ease-in-out infinite;
+}
+.cp-seg.is-done { color: #fff; background: var(--brand); font-weight: 600; }
+@keyframes cp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.cp-kw { margin-top: 10px; font-size: 12px; line-height: 1.6; word-break: break-all; }
+.cp-kw-err { color: var(--danger); font-weight: 600; }
+.cp-srcs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cp-chip {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 20px;
+  background: var(--pill-bg, var(--line)); color: var(--ink-3);
+}
+@media (max-width: 640px) {
+  .crawl-prog-mask { right: 12px; left: 12px; bottom: 12px; }
+  .crawl-prog { width: 100%; }
+}
+
+/* 轮②：顶栏「导入文献」按钮不换行（窄屏防竖排） */
+.pp-topbar .pp-actions .btn { white-space: nowrap; flex: none; }

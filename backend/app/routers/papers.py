@@ -51,6 +51,7 @@ from app.models.papers import (
     PaperCrawlRun,
     PaperExplanation,
     PaperFavorite,
+    PaperLibrary,
     PaperNote,
     PaperUser,
 )
@@ -62,10 +63,13 @@ from app.schemas.papers import (
     AnnotationUpdate,
     ContentBlockOut,
     CrawlNowResponse,
+    CrawlStatusOut,
     DigestItemOut,
     DigestOut,
     ExplainResponse,
     LibraryActionOut,
+    LibraryImportOut,
+    LibraryImportRequest,
     LibraryItemOut,
     NoteRequest,
     PaperContentOut,
@@ -83,6 +87,7 @@ from app.schemas.papers import (
 from app.services import (
     llm_gateway,
     paper_content,
+    paper_import,
     paper_library,
     paper_parse,
     papers_crawl,
@@ -161,6 +166,7 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
         saved=saved,
         parse_status=p.parse_status or "none",
         parsed_at=p.parsed_at,
+        parse_phase=p.parse_phase,
     )
 
 
@@ -473,6 +479,47 @@ async def crawl_now(
         ) from exc
 
 
+@router.get("/crawl-now/status", response_model=CrawlStatusOut)
+async def crawl_now_status(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """立即检索进度轮询（轮② P26）：返回最新一轮 runs 的状态 + 实时进度。
+
+    - 无 runs 记录 → state=idle；
+    - 最新行 status=running → state=running + progress（阶段/当前关键词/各源计数，
+      轮内逐源更新同一 runs 行，1.5s 轮询粒度足够平滑）；
+    - 终态 → state=done|failed + 该轮汇总（added/per_source/error）。
+    前端用 run_at 与点击时刻比对，防止把上一轮终态误当本轮完成。
+    """
+    run = (
+        await db.execute(
+            select(PaperCrawlRun).order_by(
+                PaperCrawlRun.run_at.desc(), PaperCrawlRun.id.desc()
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        return CrawlStatusOut(state="idle")
+    state = "running" if run.status == "running" else (
+        "done" if run.status == "success" else "failed"
+    )
+    stats = run.stats or {}
+    per_source = {
+        source: counts.get("fetched", 0)
+        for source, counts in (stats.get("per_source") or {}).items()
+        if isinstance(counts, dict)
+    }
+    return CrawlStatusOut(
+        state=state,
+        runs_id=run.id,
+        run_at=run.run_at,
+        added=stats.get("added"),
+        per_source=per_source,
+        progress=run.progress,
+        error=run.error,
+    )
+
+
 @router.get("/daily", response_model=list[PaperOut])
 async def daily_papers(
     tag: str | None = None,
@@ -551,6 +598,7 @@ async def _parse_status_out(db: AsyncSession, user_id: int, pid: int) -> ParseSt
         parse_error=paper.parse_error,
         parsed_at=paper.parsed_at,
         saved=pid in saved,
+        parse_phase=paper.parse_phase,
     )
 
 
@@ -635,8 +683,96 @@ async def list_library(
             added_at=lib.created_at,
         )
         item.annotations_count = cnt
+        item.parse_error = p.parse_error  # 失败原因随列表可见（解析中 tab 展示）
         out.append(item)
     return out
+
+
+@router.get("/library/parsing", response_model=list[LibraryItemOut])
+async def list_library_parsing(
+    user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """「解析中」tab 数据源（轮② P26/P28）：库内全部未完成的解析任务。
+
+    口径 = 本人 library ∩ parse_status ∈ {pending, running, failed}（done 完成、
+    none 从未发起不算任务）；每条带 parse_phase 五段阶段 + parse_error 失败原因，
+    前端 2s 轮询刷新阶段条。
+    """
+    rows = await paper_library.list_library(db, user.id)
+    out: list[LibraryItemOut] = []
+    for lib, p in rows:
+        status = p.parse_status or "none"
+        if status not in ("pending", "running", "failed"):
+            continue
+        item = LibraryItemOut(
+            **_out(p, True).model_dump(),
+            added_via=lib.added_via,
+            added_at=lib.created_at,
+        )
+        item.parse_error = p.parse_error
+        out.append(item)
+    return out
+
+
+@router.post("/library/import", response_model=LibraryImportOut)
+async def library_import(
+    body: LibraryImportRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """导入文献（拍板 P25）：① PDF 上传 ② arXiv ID / DOI 粘贴。
+
+    - 条目恒落库：papers.origin=import + owner=本人 + 自动进 library（added_via=
+      import）+ 触发解析状态机（pdf_bytes 通道，阶段条从「上传」起）；
+    - 请求本身不合法（格式/大小/非 PDF）→ 422，不落条目；
+    - 元数据/全文下载失败 → 条目落 failed 态 + parse_error 记原因（保留可重试，
+      P25），响应 200 携 parse_status=failed 与原因——前端 toast「导入失败：<原因>」。
+    """
+    paper: Paper | None = None
+    if body.kind == "pdf":
+        if not body.pdf_base64:
+            raise HTTPException(status_code=422, detail="请选择一个 PDF 文件")
+        try:
+            data = paper_import.decode_pdf_base64(body.pdf_base64)
+            paper = await paper_import.import_pdf(db, user.id, body.filename or "", data)
+        except paper_import.ImportInputError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        if not body.identifier or not body.identifier.strip():
+            raise HTTPException(status_code=422, detail="请输入 arXiv ID 或 DOI")
+        try:
+            paper = await paper_import.import_identifier(db, user.id, body.identifier)
+        except paper_import.ImportInputError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except paper_import.ImportFailedError as exc:
+            # 条目已落 failed 态：回读行组响应（明确失败信息随 200 返回）
+            paper = (
+                await db.execute(
+                    select(Paper).where(
+                        Paper.user_id == user.id, Paper.pmid == _import_key(body.identifier)
+                    )
+                )
+            ).scalar_one_or_none()
+            if paper is None:  # 防御：理论上条目必在
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    assert paper is not None
+    return LibraryImportOut(
+        paper_id=paper.id,
+        title=paper.title,
+        parse_status=paper.parse_status or "none",
+        parse_phase=paper.parse_phase,
+        parse_error=paper.parse_error,
+    )
+
+
+def _import_key(raw: str) -> str:
+    """与 paper_import 同口径的去重键（失败回读用）：arxiv:{id} / doi:{doi}。"""
+    try:
+        kind, ident = paper_import.classify_identifier(raw)
+    except paper_import.ImportInputError:
+        return ""
+    return f"{kind}:{ident}"
 
 
 @router.post("/{pid}/library", response_model=LibraryActionOut)
@@ -679,15 +815,28 @@ async def parse_status(
 async def collect_parse(
     pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
 ):
-    """收藏并解析（P16 主按钮）：自动收藏（幂等）→ 触发 papers-parse workflow。
+    """解析入口收紧（拍板 P28）：仅「我的文献」库内可发起解析。
 
-    - 自动收藏 ON CONFLICT DO NOTHING，已收藏不重复建行（P19 持久化）；
+    - 归属校验（_get_mine，404）后加库内校验：不在本人 library → 403
+      （前端详情面板主按钮已改「＋ 我的文献」，解析只在 #/library 内发起）；
     - 幂等：done 直返不再跑；pending/running 返回 409（前端「解析中…」禁用按钮）；
       failed/none 允许重跑（重试 = 再次点按钮）；
     - 触发：Hatchet 事件推送成功 → 异步执行（先置 pending 占坑防并发双跑）；
       引擎未接线/推送失败 → 进程内同步执行（与 crawl-now 同一哲学，即时出结果）。
     """
     paper = await _get_mine(db, user.id, pid)
+    # P28：目标论文须在本人 library（否 403）；同时自动入库存工作台语义
+    in_library = (
+        await db.execute(
+            select(PaperLibrary.id).where(
+                PaperLibrary.user_id == user.id, PaperLibrary.paper_id == pid
+            )
+        )
+    ).scalar_one_or_none()
+    if in_library is None:
+        raise HTTPException(
+            status_code=403, detail="该文献不在你的「我的文献」中，请先加入后再发起解析"
+        )
     # 自动收藏（幂等；收藏本身持久化，受 P14 清空规则保护）
     await db.execute(
         pg_insert(PaperFavorite)

@@ -471,14 +471,168 @@ def _apply_crawl_filters(items: list[PaperItem], sub: UserSubscription) -> list[
     return out
 
 
+# ── 轮次执行与 runs 记录（步 B） ──────────────────────────
+# 「立即检索」并发护栏：进程内 asyncio 锁，同一时刻只允许一轮抓取
+# （每日轮 / 手动轮 / P13 语义检索共用同一把锁）。
+_crawl_lock = asyncio.Lock()
+
+
+async def _write_run(
+    db: AsyncSession,
+    trigger: str,
+    stats: dict,
+    status: str,
+    error: str | None = None,
+    run_at: datetime | None = None,
+    progress: dict | None = None,
+) -> PaperCrawlRun:
+    """写一行抓取轮次记录并提交；返回 run 行（含 ORM 生成的自增 id）。
+
+    run_at 显式传轮次发起时刻（_execute_round 捕获）：该轮入库的论文 created_at
+    均 ≥ run_at，digest「自最近一轮检索以来」窗口才能把本轮命中算进来；
+    不传则回落数据库 now()（兼容直接调用方）。progress（轮② P26）随写入持久化。
+    """
+    run = PaperCrawlRun(
+        trigger=trigger, stats=stats, status=status, error=error, progress=progress
+    )
+    if run_at is not None:
+        run.run_at = run_at
+    db.add(run)
+    await db.commit()
+    return run
+
+
+def _initial_progress(total_keywords: int) -> dict:
+    """轮②（P26）检索进度条初始形态：阶段 fetching + 关键词计数 + 各源计数。"""
+    return {
+        "phase": "fetching",  # fetching | translating | done
+        "current_keyword": "",  # 当前检索批次标签（源 · 关键词组）
+        "done_keywords": 0,  # 已完成检索的关键词计数（源×关键词 维度累计）
+        "total_keywords": total_keywords,  # 全轮关键词总量（源×关键词）
+        "per_source": {},  # {源: {"fetched": n, "added": n}}，与 stats 同一份字典
+    }
+
+
+async def _update_run(
+    db: AsyncSession,
+    run: PaperCrawlRun,
+    *,
+    stats: dict | None = None,
+    progress: dict | None = None,
+    status: str | None = None,
+    error: str | None = None,
+) -> None:
+    """轮内更新同一 runs 行（P26：进度条轮询数据源）；独立短事务提交。
+
+    expire_on_commit 下提交后 ORM 属性过期，下次访问自动 refresh——
+    同一会话内反复 update 安全。
+    """
+    if stats is not None:
+        run.stats = stats
+    if progress is not None:
+        run.progress = progress
+    if status is not None:
+        run.status = status
+    if error is not None:
+        run.error = error
+    await db.commit()
+
+
+async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCrawlRun | None:
+    """执行一轮抓取并写 runs 表（成功/失败都写）；被 Q11 幂等跳过时返回 None。
+
+    force=True（手动「立即检索」）：跳过同日幂等，跑完整一轮；不写进程内当日标记
+    （schedule 的幂等语义不受手动轮影响，表内当日记录仍是第二重保险）。
+
+    轮②（P26）：runs 行**轮始 insert**（status=running + progress 初始形态），
+    轮内逐源 update 同一行（progress.per_source / done_keywords / current_keyword），
+    轮末置 success + phase=done；中译回填阶段 phase=translating。
+    失败时 rollback 只回滚当前未提交事务（runs 行此前已独立提交、仍然存活），
+    故 failed 态**原位 update 同一行**（ORM 对象过期后赋值即触发 refresh）。
+    """
+    started_at = datetime.now(UTC)  # 轮次发起时刻：digest 窗口锚点（见 _write_run）
+    if not force:
+        if already_ran_today():
+            return None
+        if await _papers_created_today(db):
+            mark_ran_today()  # 双保险：表内已有当日记录
+            return None
+
+    subs = await collect_subscriptions(db)
+    stats: dict = {"per_source": {}, "users": len(subs), "fetched": 0, "added": 0}
+    total_keywords = sum(len(sub.keywords) * len(sub.sources) for sub in subs)
+    progress = _initial_progress(total_keywords)
+    progress["per_source"] = stats["per_source"]  # 与 stats 共享同一字典，源计数自动可见
+    if not subs:
+        logger.info("无可抓取用户（无文献权限或无有效订阅关键词），本轮跳过")
+        if not force:
+            mark_ran_today()
+        progress["phase"] = "done"
+        return await _write_run(
+            db, trigger, stats, "success", run_at=started_at, progress=progress
+        )
+
+    # 轮始 insert runs 行：检索进度条（P26）从此刻可轮询到本行
+    run = await _write_run(
+        db, trigger, stats, "running", run_at=started_at, progress=progress
+    )
+    since_date = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
+    added = 0
+
+    async def _report(source_name: str, done_keywords: int) -> None:
+        """每源完成推进进度：关键词计数 + 当前批次标签，落库供轮询。"""
+        progress["done_keywords"] += done_keywords
+        first_kw = subs_keywords_first()
+        progress["current_keyword"] = f"{source_name} · {first_kw}"
+        await _update_run(db, run, stats=stats, progress=progress)
+
+    # 关键词标签取当前订阅批次的首词（展示口径：源 · 关键词组）
+    def subs_keywords_first() -> str:
+        kws = [k for sub in subs if sub.keywords for k in sub.keywords]
+        return (kws[0] + f" 等 {len(kws)} 词") if kws else ""
+
+    try:
+        for sub in subs:
+            added += await _crawl_subscription(
+                db, sub, stats, since_date, progress_reporter=_report
+            )
+        if not force:
+            mark_ran_today()
+        progress["phase"] = "translating"
+        progress["current_keyword"] = ""
+        await _update_run(db, run, stats=stats, progress=progress)
+        translated = await _backfill_translations(db)
+        if translated:
+            logger.info("中译回填 %d 篇", translated)
+        stats["translated"] = translated
+        stats["added"] = added
+        progress["phase"] = "done"
+        await _update_run(db, run, stats=stats, progress=progress, status="success")
+        return run
+    except Exception as exc:
+        await db.rollback()  # 复位未提交的入库半成品；runs 行此前已提交，原位更新
+        logger.exception("抓取轮次失败（trigger=%s）", trigger)
+        await _update_run(
+            db, run, stats=stats, progress=progress,
+            status="failed", error=str(exc)[:1000],
+        )
+        return run
+
+
 async def _crawl_subscription(
-    db: AsyncSession, sub: UserSubscription, stats: dict, base_since: date
+    db: AsyncSession,
+    sub: UserSubscription,
+    stats: dict,
+    base_since: date,
+    progress_reporter: "object | None" = None,
 ) -> int:
     """按单用户订阅计划逐源抓取并入库；返回本轮新入库篇数。
 
     key 认证升级：provider.key_service 非空时从 service_keys 取匙注入（取不到 =
     匿名态）；P21：since/until 按用户年份参数折算传源，authors/if_min 后过滤。
     供 _execute_round（每日/手动轮）与 run_semantic_search（P13 语义检索）共用。
+    progress_reporter（轮② P26 可选）：每源完成时回调
+    ``await progress_reporter(源名, 该源关键词数)`` 推进 runs.progress。
     """
     added = 0
     since = _sub_since_date(sub, base_since)
@@ -504,6 +658,8 @@ async def _crawl_subscription(
             items = await provider.search(list(sub.keywords), since, **call_kwargs)
         except httpx.HTTPError as exc:
             logger.warning("源 %s 抓取失败（用户 %d）：%s", source_name, sub.user_id, exc)
+            if progress_reporter is not None:
+                await progress_reporter(source_name, len(sub.keywords))
             continue
         await asyncio.sleep(RATE_LIMIT_SLEEP)  # 源间 polite 限速（非重试）
         items = _apply_crawl_filters(items, sub)
@@ -524,79 +680,9 @@ async def _crawl_subscription(
                 src_stats["added"] += 1
         await db.commit()
         logger.info("用户 %d 源 %s 入库完成（累计新增 %d）", sub.user_id, source_name, added)
+        if progress_reporter is not None:
+            await progress_reporter(source_name, len(sub.keywords))
     return added
-
-
-# ── 轮次执行与 runs 记录（步 B） ──────────────────────────
-# 「立即检索」并发护栏：进程内 asyncio 锁，同一时刻只允许一轮抓取
-# （每日轮 / 手动轮 / P13 语义检索共用同一把锁）。
-_crawl_lock = asyncio.Lock()
-
-
-async def _write_run(
-    db: AsyncSession,
-    trigger: str,
-    stats: dict,
-    status: str,
-    error: str | None = None,
-    run_at: datetime | None = None,
-) -> PaperCrawlRun:
-    """写一行抓取轮次记录并提交；返回 run 行（含 ORM 生成的自增 id）。
-
-    run_at 显式传轮次发起时刻（_execute_round 捕获）：该轮入库的论文 created_at
-    均 ≥ run_at，digest「自最近一轮检索以来」窗口才能把本轮命中算进来；
-    不传则回落数据库 now()（兼容直接调用方）。
-    """
-    run = PaperCrawlRun(trigger=trigger, stats=stats, status=status, error=error)
-    if run_at is not None:
-        run.run_at = run_at
-    db.add(run)
-    await db.commit()
-    return run
-
-
-async def _execute_round(db: AsyncSession, trigger: str, force: bool) -> PaperCrawlRun | None:
-    """执行一轮抓取并写 runs 表（成功/失败都写）；被 Q11 幂等跳过时返回 None。
-
-    force=True（手动「立即检索」）：跳过同日幂等，跑完整一轮；不写进程内当日标记
-    （schedule 的幂等语义不受手动轮影响，表内当日记录仍是第二重保险）。
-    失败时先 rollback 再写 failed 行，然后原异常上抛（Hatchet 侧据此标记运行失败）。
-    """
-    started_at = datetime.now(UTC)  # 轮次发起时刻：digest 窗口锚点（见 _write_run）
-    if not force:
-        if already_ran_today():
-            return None
-        if await _papers_created_today(db):
-            mark_ran_today()  # 双保险：表内已有当日记录
-            return None
-
-    subs = await collect_subscriptions(db)
-    stats: dict = {"per_source": {}, "users": len(subs), "fetched": 0, "added": 0}
-    if not subs:
-        logger.info("无可抓取用户（无文献权限或无有效订阅关键词），本轮跳过")
-        if not force:
-            mark_ran_today()
-        return await _write_run(db, trigger, stats, "success", run_at=started_at)
-
-    since_date = datetime.now(UTC).date() - timedelta(days=settings.papers_days_back)
-    added = 0
-    try:
-        for sub in subs:
-            added += await _crawl_subscription(db, sub, stats, since_date)
-        if not force:
-            mark_ran_today()
-        translated = await _backfill_translations(db)
-        if translated:
-            logger.info("中译回填 %d 篇", translated)
-        stats["translated"] = translated
-        stats["added"] = added
-        return await _write_run(db, trigger, stats, "success", run_at=started_at)
-    except Exception as exc:
-        await db.rollback()  # 会话可能处于中断事务，先复位再写 failed 行
-        logger.exception("抓取轮次失败（trigger=%s）", trigger)
-        return await _write_run(
-            db, trigger, stats, "failed", error=str(exc)[:1000], run_at=started_at
-        )
 
 
 async def run_daily_crawl(db: AsyncSession, trigger: str = "schedule") -> int:

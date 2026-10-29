@@ -22,6 +22,8 @@ class PaperOut(BaseModel):
     # ── 收藏并解析全链路（P16/P20）──
     parse_status: str = "none"  # none|pending|running|done|failed
     parsed_at: dt.datetime | None = None  # 解析完成时间（未完成 null）
+    # 轮②（P26）：解析五段阶段 download|upload|queue|parsing（完成/未启动 null）
+    parse_phase: str | None = None
     # ── 批注式笔记（P8）：「我的笔记」列表条目统计 ──
     annotations_count: int = 0  # 本人批注条数（不含旧全文笔记）
     last_annotation_at: dt.datetime | None = None  # 最近批注时间（无批注 null）
@@ -44,10 +46,31 @@ class LibraryItemOut(PaperOut):
 
     added_via: str = "crawl"  # crawl | import（轮②导入）
     added_at: dt.datetime | None = None  # 加入我的文献时间
+    parse_error: str | None = None  # 轮②：失败原因随列表可见（解析中 tab 展示）
 
 
 class LibraryActionOut(BaseModel):
     in_library: bool  # 操作后是否在库（POST 恒 True；幂等重复加入也 True）
+
+
+# ── 轮②：文献导入（P25：PDF 上传 / arXiv ID / DOI 粘贴）──────
+class LibraryImportRequest(BaseModel):
+    """导入请求：kind=pdf 走文件上传；kind=identifier 走 arXiv ID / DOI 粘贴。"""
+
+    kind: str = Field(pattern="^(pdf|identifier)$")
+    filename: str | None = Field(default=None, max_length=255)  # kind=pdf：原始文件名
+    pdf_base64: str | None = Field(default=None, max_length=80_000_000)  # kind=pdf：文件内容 base64
+    identifier: str | None = Field(default=None, max_length=512)  # kind=identifier：arXiv ID / DOI
+
+
+class LibraryImportOut(BaseModel):
+    """导入响应：条目恒落库（origin=import，下载失败也保留 failed 态可重试，P25）。"""
+
+    paper_id: int
+    title: str
+    parse_status: str  # pending|running|done|failed（导入即触发解析状态机）
+    parse_phase: str | None = None  # 五段阶段（失败时停在出错段）
+    parse_error: str | None = None  # 失败原因（成功 null）
 
 
 class NoteRequest(BaseModel):
@@ -118,6 +141,7 @@ class ParseStatusOut(BaseModel):
     parse_error: str | None = None  # 失败原因（failed 时有值）
     parsed_at: dt.datetime | None = None  # 完成时间（done 时有值）
     saved: bool = False  # 收藏并解析自动收藏后的回执
+    parse_phase: str | None = None  # 轮②（P26）：五段阶段 download|upload|queue|parsing
 
 
 class DigestOut(BaseModel):
@@ -132,6 +156,19 @@ class CrawlNowResponse(BaseModel):
     added: int  # 本轮新入库文献数
     runs_id: int  # papers_crawl_runs 行 id
     per_source: dict[str, int]  # 各源本轮命中（provider 返回）篇数
+
+
+# ── 轮②：立即检索进度条（P26：阶段式进度，轮询本接口）────────
+class CrawlStatusOut(BaseModel):
+    """GET /papers/crawl-now/status：最新一轮抓取的状态 + 实时进度。"""
+
+    state: str  # idle（无轮次记录）| running | done | failed
+    runs_id: int | None = None  # 最新 runs 行 id（idle 时 null）
+    run_at: dt.datetime | None = None  # 该轮发起时刻（前端比对防止读到旧轮次）
+    added: int | None = None  # 该轮新入库篇数（完成后有值）
+    per_source: dict[str, int] = {}  # 各源命中（fetched）篇数
+    progress: dict | None = None  # runs.progress（phase/current_keyword/done_keywords/total_keywords/per_source）
+    error: str | None = None  # 失败原因（failed 时有值）
 
 
 # ── P8：批注式笔记 + 知识网（锚定解析段落）────────────────

@@ -202,6 +202,16 @@ async def _make_paper(url: str = "", doi: str = "", source: str = "pubmed") -> i
         return paper.id
 
 
+async def _add_to_library(pid: int) -> None:
+    """轮② P28：collect-parse 收紧为仅库内可发起——测试先加入我的文献。"""
+    from app.models.papers import PaperLibrary
+
+    async with SessionLocal() as db:
+        uid = (await db.execute(select(User.id).where(User.username == "admin"))).scalar_one()
+        db.add(PaperLibrary(paper_id=pid, user_id=uid, added_via="crawl"))
+        await db.commit()
+
+
 async def _paper_status(pid: int) -> tuple[str, str | None]:
     async with SessionLocal() as db:
         row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
@@ -212,6 +222,7 @@ async def test_download_direct_and_full_pipeline_keys(client, monkeypatch):
     """直链下载（direct）→ 全链 done；COS 拆存 key 断言（SpyStorage，P20 结构）。"""
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/paper.pdf")
+    await _add_to_library(pid)  # 轮② P28：解析入口收紧，先入库
     spy = SpyStorage()
     fake = FakeHttpClient(_mineru_routes({
         ("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF),
@@ -366,6 +377,7 @@ async def test_collect_parse_api_idempotency_and_409(client, monkeypatch):
     """接口幂等：done 直返 200 不重跑；running 409；failed 可重跑；自动收藏幂等。"""
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/paper.pdf")
+    await _add_to_library(pid)  # 轮② P28：解析入口收紧，先入库
     fake = FakeHttpClient(_mineru_routes({
         ("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF),
     }))
@@ -419,6 +431,7 @@ async def test_parsed_notes_list_and_detail_fields(client, monkeypatch):
     await _add_mineru_key()
     pid_done = await _make_paper(url="https://oa.example/a.pdf")
     pid_none = await _make_paper(url="https://oa.example/b.pdf")
+    await _add_to_library(pid_done)  # 轮② P28：解析入口收紧，先入库
     fake = FakeHttpClient(_mineru_routes({
         ("GET", "https://oa.example/a.pdf"): _FakeResp(content=_FAKE_PDF),
     }))

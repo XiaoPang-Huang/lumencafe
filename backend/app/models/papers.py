@@ -24,6 +24,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -66,6 +67,9 @@ class Paper(Base):
     parsed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )  # 解析完成时间（可空）
+    # 轮②（Alembic 0012，P26）：解析五段阶段条数据源 download|upload|queue|parsing
+    # （完成清空、失败保留在出错阶段；存量行/未启动为 NULL）
+    parse_phase: Mapped[str | None] = mapped_column(String(16), nullable=True)
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list)  # AD/PD/ALS/scale
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -91,13 +95,16 @@ class PaperCrawlRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     trigger: Mapped[str] = mapped_column(String(16))  # schedule（定时）| manual（立即检索）
-    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # MutableDict：轮内原地改 stats/progress 也能被会话感知提交（轮② P26 进度条）
+    stats: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
     status: Mapped[str] = mapped_column(String(16))  # success | failed
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 轮①（Alembic 0011）：轮内实时进度（轮②检索进度条数据源；JSONB 可空）
     # 形如 {"phase": "fetching|translating|done", "keyword": 当前关键词,
     #       "per_source": {源: {"fetched": n, "added": n}}}
-    progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    progress: Mapped[dict | None] = mapped_column(
+        MutableDict.as_mutable(JSONB), nullable=True
+    )
 
 
 class PaperUser(Base):

@@ -106,6 +106,12 @@
   /* ================= Toast ================= */
   var toastTimer = null;
   function toast(text) {
+    /* 防御：FastAPI 422 detail 是数组等非字符串时也要给出可读信息，不显示 [object Object] */
+    if (typeof text !== "string") {
+      var d = text && text.detail;
+      text = typeof d === "string" ? d
+        : d ? JSON.stringify(d) : JSON.stringify(text);
+    }
     var t = qs("#toast");
     t.textContent = text;
     t.classList.add("show");
@@ -1449,7 +1455,7 @@
 
     /* ---------- 我的文献（轮① P22 一级页：阅读/批注/翻译唯一入口）
        三栏 = 左文献列表（元数据/解析状态/批注数）/ 中阅读器（P8 批注阅读器挂载态）
-       / 右批注栏（阅读器内建）；「解析中」tab 轮②填阶段条，本轮先给列表占位 ---------- */
+       / 右批注栏（阅读器内建）；轮②：「导入文献」弹窗 + 「解析中」tab 五段阶段条 ---------- */
     library: function () {
       return '' +
         '<div class="pp-page lib-page">' +
@@ -1459,6 +1465,7 @@
               '<span class="pp-updated muted" data-lib-tabhint></span>' +
             "</div>" +
             '<div class="pp-actions">' +
+              '<button class="btn btn-sm" type="button" data-lib-import><i data-ic="plus"></i>导入文献</button>' +
               '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="all">全部</button>' +
               '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="parsing">解析中</button>' +
             "</div>" +
@@ -2110,7 +2117,8 @@
    * 批注阅读器，挂载态）/ 右批注栏（阅读器内建）。删除 = 级联删（拍板 P24）。 */
   var libraryState = {
     items: [],          // GET /papers/library 条目（LibraryItemOut）
-    tab: "all",         // all | parsing（解析中 tab 轮②填阶段条，本轮先给列表占位）
+    parsingItems: [],   // 轮② P26：GET /papers/library/parsing（解析中 tab 数据源）
+    tab: "all",         // all | parsing（解析中 tab：五段阶段条）
     currentId: 0,       // 当前在阅读器中打开的文献
     pendingOpen: 0      // 从详情面板「到我的文献中阅读与批注」跳入时要自动打开的篇
   };
@@ -2381,21 +2389,127 @@
     }, 300);
   }
 
-  /* 立即检索：按钮 loading → POST /papers/crawl-now → 刷新 digest（防并发） */
+  /* 立即检索（轮② P26）：点击后按钮区变进度弹层——POST 触发本轮抓取，
+   * 弹层 1.5s 轮询 GET /papers/crawl-now/status（runs 轮始 insert + 轮内 update），
+   * 阶段式进度条（抓取中→翻译回填→完成）+ 当前关键词 + 各源计数；
+   * POST 返回（本轮完成）或轮询到终态时自动关闭并刷新 digest。 */
+  var crawlProg = { el: null, timer: null };
+  var CRAWL_PHASE_LABEL = ["抓取中", "翻译回填", "完成"];
   function crawlNow(btn) {
     if (paperState.crawlBusy) return;
     paperState.crawlBusy = true;
     if (btn) { btn.classList.add("is-loading"); btn.disabled = true; }
+    openCrawlProgress();
     API.post("/papers/crawl-now", {}).then(function (r) {
       paperState.crawlBusy = false;
       if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
-      toast("检索完成：本轮新入库 " + (r.added || 0) + " 篇");
-      if (paperState.nav === "digest") loadPapersNav(); else refreshDigestBar();
+      if (closeCrawlProgress()) {
+        toast("检索完成：本轮新入库 " + (r.added || 0) + " 篇");
+        if (paperState.nav === "digest") loadPapersNav(); else refreshDigestBar();
+      }
     }).catch(function (e) {
       paperState.crawlBusy = false;
       if (btn) { btn.classList.remove("is-loading"); btn.disabled = false; }
-      toast(e.detail || "检索失败");
+      if (closeCrawlProgress()) {
+        toast((e && e.detail) || "检索失败");
+      }
     });
+  }
+  function openCrawlProgress() {
+    closeCrawlProgress();
+    var mask = document.createElement("div");
+    mask.className = "crawl-prog-mask";
+    mask.setAttribute("data-crawl-mask", "");
+    mask.innerHTML = '' +
+      '<div class="card crawl-prog" role="status" aria-live="polite">' +
+        '<div class="cp-head"><span class="cp-title">文献检索中</span>' +
+          '<span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span>' +
+          '<button class="icon-btn" type="button" data-crawl-close aria-label="关闭"><i data-ic="close"></i></button></div>' +
+        '<div class="cp-track">' + _crawlPhaseSegs(0, false) + "</div>" +
+        '<div class="cp-kw muted">正在发起检索…</div>' +
+        '<div class="cp-srcs"></div>' +
+      "</div>";
+    document.body.appendChild(mask);
+    injectIcons(mask);
+    crawlProg.el = mask;
+    pollCrawlProgress();
+  }
+  function _crawlPhaseSegs(activeIdx, isDone) {
+    return CRAWL_PHASE_LABEL.map(function (label, i) {
+      var cls = "cp-seg";
+      if (isDone || i < activeIdx) cls += " is-done";
+      else if (i === activeIdx) cls += " is-active";
+      return '<span class="' + cls + '">' + esc(label) + "</span>";
+    }).join("");
+  }
+  function renderCrawlProgress(s) {
+    var box = crawlProg.el && crawlProg.el.querySelector(".crawl-prog");
+    if (!box) return;
+    var prog = s.progress || {};
+    var phase = prog.phase || "fetching";
+    var idx = phase === "translating" ? 1 : (phase === "done" ? 2 : 0);
+    var done = s.state === "done" || s.state === "failed";
+    var title = box.querySelector(".cp-title");
+    if (title) {
+      title.textContent = s.state === "failed" ? "检索失败"
+        : done ? "检索完成" : (phase === "translating" ? "翻译回填中" : "文献检索中");
+    }
+    var track = box.querySelector(".cp-track");
+    if (track) track.innerHTML = _crawlPhaseSegs(idx, s.state === "done");
+    var kw = box.querySelector(".cp-kw");
+    if (kw) {
+      var parts = [];
+      if (prog.current_keyword) parts.push("当前：" + prog.current_keyword);
+      if (prog.total_keywords) {
+        parts.push("关键词 " + (prog.done_keywords || 0) + "/" + prog.total_keywords);
+      }
+      if (s.state === "failed" && s.error) parts.push("失败原因：" + s.error);
+      kw.textContent = parts.join("　") || "检索中…";
+      kw.classList.toggle("cp-kw-err", s.state === "failed");
+    }
+    var srcs = box.querySelector(".cp-srcs");
+    if (srcs) {
+      var per = (prog.per_source) || {};
+      var chips = Object.keys(per).map(function (src) {
+        var c = per[src] || {};
+        return '<span class="cp-chip">' + esc(src) + "：抓 " + (c.fetched || 0) +
+          " · 新 " + (c.added || 0) + "</span>";
+      });
+      srcs.innerHTML = chips.join("");
+      srcs.style.display = chips.length ? "" : "none";
+    }
+  }
+  function pollCrawlProgress() {
+    clearTimeout(crawlProg.timer);
+    crawlProg.timer = setTimeout(function () {
+      if (!crawlProg.el) return;
+      API.get("/papers/crawl-now/status").then(function (s) {
+        if (!crawlProg.el) return;  // POST 已到终态并关闭
+        renderCrawlProgress(s);
+        if (s && s.state === "running") {
+          pollCrawlProgress();
+        } else if (s && s.state !== "idle") {
+          /* 轮询先看到终态（POST 响应还在路上）：直接关闭收尾，刷新 digest */
+          if (closeCrawlProgress()) {
+            if (s.state === "done") {
+              toast("检索完成：本轮新入库 " + (s.added || 0) + " 篇");
+              if (paperState.nav === "digest") loadPapersNav(); else refreshDigestBar();
+            } else {
+              toast("检索失败：" + (s.error || "未知原因"));
+            }
+          }
+        } else {
+          pollCrawlProgress();  // idle：本轮 runs 行尚未 insert，继续等
+        }
+      }).catch(function () { pollCrawlProgress(); });
+    }, 1500);
+  }
+  function closeCrawlProgress() {
+    if (!crawlProg.el) return false;
+    clearTimeout(crawlProg.timer);
+    crawlProg.el.remove();
+    crawlProg.el = null;
+    return true;
   }
 
   /* P13 本期·语义检索：一句话 → POST /papers/semantic-search（AI 扩词 + 临时聚合抓取）
@@ -2425,26 +2539,27 @@
     });
   }
 
-  /* P16 收藏并解析：主按钮四态（未收藏 ★ 收藏并解析 / running·pending 解析中… /
-   * failed ⟳ 重新解析 / done 已解析 ✓ 进我的笔记） */
-  function _parseBtnHtml(p) {
+  /* 轮② P28 解析入口收紧：详情面板不再直接触发解析——操作行只留「＋ 我的文献」，
+   * 解析只在 #/library 内发起（导入/加入后可点）；这里仅展示只读解析状态，
+   * 引导跳「我的文献」看五段阶段进度与发起重试。 */
+  function _parseStateHtml(p) {
     var st = p.parse_status || "none";
     if (st === "running" || st === "pending") {
-      return '<button class="btn btn-primary btn-sm" type="button" disabled data-pp-parsebtn>' +
-        '<span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span> 解析中…</button>';
+      return '<button class="btn btn-ghost btn-sm" type="button" data-pp-golib="' + p.id + '">' +
+        '<span class="thinking" style="display:inline-flex;"><i></i><i></i><i></i></span>' +
+        "解析中…（到我的文献看进度）</button>";
     }
     if (st === "failed") {
-      return '<button class="btn btn-primary btn-sm" type="button" data-pp-collectparse="' + p.id + '">' +
-        '<i data-ic="refresh"></i>⟳ 重新解析</button>';
+      return '<button class="btn btn-ghost btn-sm" type="button" data-pp-golib="' + p.id + '">' +
+        '<i data-ic="refresh"></i>解析失败（到我的文献重试）</button>';
     }
     if (st === "done") {
-      return '<button class="btn btn-primary btn-sm" type="button" data-pp-gonotes="' + p.id + '">' +
-        '<i data-ic="check"></i>已解析 ✓（打开批注笔记）</button>';
+      return '<button class="btn btn-ghost btn-sm" type="button" data-pp-golib="' + p.id + '">' +
+        '<i data-ic="check"></i>已解析 ✓（到我的文献阅读）</button>';
     }
-    return '<button class="btn btn-primary btn-sm" type="button" data-pp-collectparse="' + p.id + '">' +
-      '<i data-ic="star"></i>★ 收藏并解析</button>';
+    return '<span class="muted" style="font-size:12.5px;">加入「我的文献」后可发起解析</span>';
   }
-  /* 解析失败：错误区显示原因 + 手动下载指引（OA 原文链接 + 管理员导入提示） */
+  /* P16：解析失败原因 + 手动下载指引（OA 原文链接 + 导入提示，轮②起可自助导入） */
   function _parseErrHtml(p, url) {
     if (p.parse_status !== "failed") return "";
     return '<div class="pp-parse-err">' +
@@ -2452,26 +2567,9 @@
       "<div>" + esc(p.parse_error || "未知原因") + "</div>" +
       (url
         ? '<div class="pp-parse-guide">可手动下载 OA 原文：<a href="' + esc(url) +
-          '" target="_blank" rel="noopener">打开原文链接 ↗</a>，下载后可联系管理员导入。</div>'
-        : '<div class="pp-parse-guide">该文献暂无 OA 原文链接，可联系管理员协助获取。</div>') +
+          '" target="_blank" rel="noopener">打开原文链接 ↗</a>，然后到我的文献点「导入文献」上传 PDF。</div>'
+        : '<div class="pp-parse-guide">该文献暂无 OA 原文链接，可到我的文献点「导入文献」上传已有 PDF。</div>') +
       "</div>";
-  }
-
-  /* P16：解析状态轮询（2s 到 done/failed 停，终态刷新详情面板按钮/错误区） */
-  var _parseTimers = {};
-  function pollParseStatus(pid) {
-    if (_parseTimers[pid]) clearTimeout(_parseTimers[pid]);
-    _parseTimers[pid] = setTimeout(function () {
-      API.get("/papers/" + pid + "/parse-status").then(function (s) {
-        if (s && (s.parse_status === "running" || s.parse_status === "pending")) {
-          pollParseStatus(pid);
-          return;
-        }
-        delete _parseTimers[pid];
-        openPaperDetail(pid);  // 终态：刷新按钮四态 + 失败指引区
-        if (s && s.parse_status === "done") toast("解析完成，可到「我的笔记」查看");
-      }).catch(function () { pollParseStatus(pid); });
-    }, 2000);
   }
 
   /* 右侧详情面板（点卡片展开：摘要全文 + 作者 + DOI/链接 + 命中关键词 + 收藏并解析主按钮；
@@ -2509,8 +2607,9 @@
         (url ? '<br><a href="' + esc(url) + '" target="_blank" rel="noopener">打开原文链接 ↗</a>' : "") +
       "</div>" +
       (kws ? '<div class="pp-detail-kws">' + kws + "</div>" : "") +
-      /* P16 主操作行：收藏并解析四态 + 轮①「＋ 我的文献」（与收藏并存，P22） */
-      '<div class="pp-detail-ops">' + _parseBtnHtml(p) +
+      /* 轮② P28 主操作行：解析状态只读引导（解析入口收紧，只在 #/library 发起）
+       * + 「＋ 我的文献」（与收藏并存，P22） */
+      '<div class="pp-detail-ops">' + _parseStateHtml(p) +
         '<button class="btn btn-ghost btn-sm' + (paperState.lib[p.id] ? " is-on" : "") +
           '" type="button" data-paper-lib="' + p.id + '">' +
           '<i data-ic="book"></i>' + (paperState.lib[p.id] ? "✓ 已在库" : "＋ 我的文献") + "</button></div>" +
@@ -2570,6 +2669,8 @@
       renderLibraryList();
       var cnt = qs("[data-lib-count]");
       if (cnt) cnt.textContent = String(libraryState.items.length);
+      /* 轮②：解析中 tab 下刷新列表后同步拉取任务进度 */
+      if (libraryState.tab === "parsing") refreshParsingTab();
       /* 详情面板「到我的文献中阅读与批注」跳入：自动打开该篇 */
       if (libraryState.pendingOpen) {
         var pid = libraryState.pendingOpen;
@@ -2581,10 +2682,62 @@
 
   function _libVisibleItems() {
     if (libraryState.tab !== "parsing") return libraryState.items;
-    return libraryState.items.filter(function (p) {
-      var st = p.parse_status || "none";
-      return st === "pending" || st === "running" || st === "failed";
-    });
+    /* 轮② P26：解析中 tab 数据源 = GET /papers/library/parsing（非 done 任务，含 phase） */
+    return libraryState.parsingItems;
+  }
+
+  /* 轮② P26：解析五段阶段条（下载→上传→排队→解析中→完成）。
+   * 点亮规则：parse_phase 之前的段恒亮；当前段 active（解析中段流动）；失败态当前段标红；
+   * done 全亮（解析中列表不含 done，仅为完整语义保留）。 */
+  var LIB_PHASES = ["download", "upload", "queue", "parsing", "done"];
+  var LIB_PHASE_LABEL = { download: "下载", upload: "上传", queue: "排队", parsing: "解析中", done: "完成" };
+  function _phaseIdx(p) {
+    var st = p.parse_status || "none";
+    if (st === "done") return 4;
+    var phase = p.parse_phase;
+    if (!phase) phase = st === "pending" ? "queue" : "parsing";
+    var idx = LIB_PHASES.indexOf(phase);
+    return idx < 0 ? 0 : idx;
+  }
+  function _phaseBarHtml(p) {
+    var st = p.parse_status || "none";
+    var idx = _phaseIdx(p);
+    var segs = LIB_PHASES.map(function (ph, i) {
+      var cls = "lps";
+      if (i < idx || st === "done") cls += " is-done";
+      else if (i === idx) cls += st === "failed" ? " is-err" : (ph === "parsing" ? " is-flow" : " is-active");
+      return '<span class="' + cls + '" title="' + LIB_PHASE_LABEL[ph] + '"></span>';
+    }).join("");
+    var labels = LIB_PHASES.map(function (ph, i) {
+      var cls = i === idx && st !== "done" ? "on" : "";
+      return '<span class="' + cls + '">' + LIB_PHASE_LABEL[ph] + "</span>";
+    }).join("");
+    var err = st === "failed" && p.parse_error
+      ? '<div class="lps-errtext">' + esc(p.parse_error) + "</div>" : "";
+    return '<div class="lib-phases">' +
+      '<div class="lps-track">' + segs + "</div>" +
+      '<div class="lps-labels">' + labels + "</div>" + err + "</div>";
+  }
+
+  /* 解析中 tab：拉取未完成任务并 2s 轮询（仍有 pending/running 才续轮；离开页面自动停） */
+  var _parsingTimer = null;
+  function refreshParsingTab() {
+    if (libraryState.tab !== "parsing") return;
+    if (!qs("[data-lib-list]")) return;  // 已离开 #/library
+    API.get("/papers/library/parsing").then(function (items) {
+      libraryState.parsingItems = items || [];
+      renderLibraryList();
+      var active = libraryState.parsingItems.some(function (p) {
+        return p.parse_status === "pending" || p.parse_status === "running";
+      });
+      scheduleParsingPoll(active ? 2000 : 0);
+    }).catch(function () { scheduleParsingPoll(4000); });
+  }
+  function scheduleParsingPoll(delay) {
+    clearTimeout(_parsingTimer);
+    _parsingTimer = null;
+    if (!delay) return;
+    _parsingTimer = setTimeout(refreshParsingTab, delay);
   }
 
   function renderLibraryList() {
@@ -2592,17 +2745,22 @@
     if (!box) return;
     var items = _libVisibleItems();
     var hint = qs("[data-lib-tabhint]");
-    if (hint) hint.textContent = libraryState.tab === "parsing" ? "阶段式进度条下批提供" : "";
+    if (hint) {
+      hint.textContent = libraryState.tab === "parsing"
+        ? (items.length ? items.length + " 个解析任务" : "")
+        : "";
+    }
     if (!items.length) {
       box.innerHTML = '<div class="muted" style="padding:18px 6px;font-size:13px;">' +
         (libraryState.tab === "parsing"
           ? "没有解析中的文献"
           : (libraryState.items.length
               ? "全部文献都已解析完成 ✓"
-              : "还没有文献：到文献页点卡片/详情上的「＋ 我的文献」把论文加进来")) +
+              : "还没有文献：点右上角「导入文献」上传 PDF / 粘贴 arXiv ID 或 DOI，或到文献页点「＋ 我的文献」把论文加进来")) +
         "</div>";
       return;
     }
+    var showPhase = libraryState.tab === "parsing";
     box.innerHTML = items.map(function (p) {
       var st = p.parse_status || "none";
       var meta = [];
@@ -2613,6 +2771,7 @@
           '" data-lib-open="' + p.id + '" role="button" tabindex="0">' +
         '<div class="lib-item-title">' + esc(p.title) + "</div>" +
         (meta.length ? '<div class="lib-item-meta muted">' + meta.join(" · ") + "</div>" : "") +
+        (showPhase ? _phaseBarHtml(p) : "") +
         '<div class="lib-item-foot">' +
           '<span class="lib-st lib-st-' + esc(st) + '">' + _libStText(st) + "</span>" +
           '<span class="muted">' + (cnt > 0 ? cnt + " 条批注" : "无批注") + "</span>" +
@@ -2695,6 +2854,130 @@
     }).catch(function (e) {
       btn.disabled = false;
       toast(e.detail || "加入失败");
+    });
+  }
+
+  /* ================= 轮②：导入文献弹窗（P25：PDF 上传 / arXiv ID / DOI） =================
+   * 两路统一 POST /papers/library/import：
+   * - pdf：FileReader 直读 bytes → base64 JSON（后端 ≤30MB 校验 + 魔数校验）；
+   * - identifier：粘贴 arXiv ID / DOI（后端拉元数据 + 下 OA 全文）。
+   * 成功 → toast + 关闭 + 跳「解析中」tab 看阶段条；失败（下载失败等）→ 条目已落
+   * failed 态，弹层内红字原因 + toast「导入失败：<原因>」（P25 必须通知用户）。 */
+  var IMPORT_MAX_BYTES = 30 * 1024 * 1024;
+  var importState = { mode: "pdf" };
+
+  function openImportModal() {
+    closeImportModal();
+    importState.mode = "pdf";
+    var mask = document.createElement("div");
+    mask.className = "modal-mask lib-del-mask";
+    mask.setAttribute("data-lib-importmask", "");
+    mask.innerHTML = '' +
+      '<div class="card lib-import-dialog" role="dialog" aria-label="导入文献">' +
+        '<div class="lib-del-title">导入文献</div>' +
+        '<div class="imp-tabs">' +
+          '<button class="pp-nav-item active" type="button" data-import-mode="pdf"><i data-ic="doc"></i>上传 PDF</button>' +
+          '<button class="pp-nav-item" type="button" data-import-mode="identifier"><i data-ic="search"></i>arXiv ID / DOI</button>' +
+        "</div>" +
+        /* 路上传 */
+        '<div class="imp-pane" data-import-pane="pdf">' +
+          '<label class="imp-field"><span class="muted">选择 PDF 文件（≤30MB，上传后自动解析）</span>' +
+          '<input type="file" accept="application/pdf,.pdf" data-import-file></label>' +
+          '<div class="imp-filename muted" data-import-filename>未选择文件</div>' +
+        "</div>" +
+        /* 路标识符 */
+        '<div class="imp-pane hide" data-import-pane="identifier">' +
+          '<label class="imp-field"><span class="muted">粘贴 arXiv ID（如 2401.12345）或 DOI（如 10.1000/xyz）——自动拉元数据并下载开放获取全文</span>' +
+          '<input type="text" data-import-ident placeholder="2401.12345 或 10.1000/xyz.2026"></label>' +
+        "</div>" +
+        '<div class="imp-err hide" data-import-err></div>' +
+        '<div class="lib-del-ops">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-lib-importclose>取消</button>' +
+          '<button class="btn btn-primary btn-sm" type="button" data-import-submit>导入</button>' +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(mask);
+    injectIcons(mask);
+    var fileInput = mask.querySelector("[data-import-file]");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        var f = fileInput.files && fileInput.files[0];
+        var lbl = mask.querySelector("[data-import-filename]");
+        if (lbl) lbl.textContent = f ? (f.name + "（" + Math.ceil(f.size / 1024) + " KB）") : "未选择文件";
+      });
+    }
+  }
+  function closeImportModal() {
+    qsa("[data-lib-importmask]").forEach(function (m) { m.remove(); });
+  }
+  function switchImportMode(mode) {
+    importState.mode = mode;
+    var mask = qs("[data-lib-importmask]");
+    if (!mask) return;
+    qsa("[data-import-mode]", mask).forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-import-mode") === mode);
+    });
+    qsa("[data-import-pane]", mask).forEach(function (pane) {
+      pane.classList.toggle("hide", pane.getAttribute("data-import-pane") !== mode);
+    });
+    var err = mask.querySelector("[data-import-err]");
+    if (err) { err.textContent = ""; err.classList.add("hide"); }
+  }
+  function _importFail(msg) {
+    var err = qs("[data-import-err]");
+    if (err) { err.textContent = msg; err.classList.remove("hide"); }
+    toast("导入失败：" + msg);  // P25：失败必须通知用户
+  }
+  function submitImport(btn) {
+    var mask = qs("[data-lib-importmask]");
+    if (!mask) return;
+    var err = mask.querySelector("[data-import-err]");
+    if (err) { err.textContent = ""; err.classList.add("hide"); }
+    if (importState.mode === "pdf") {
+      var fileInput = mask.querySelector("[data-import-file]");
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!file) { _importFail("请先选择一个 PDF 文件"); return; }
+      if (file.size > IMPORT_MAX_BYTES) {
+        _importFail("PDF 超过 30MB 上限，请压缩后重新上传");
+        return;
+      }
+      btn.disabled = true;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = String(reader.result || "");
+        var b64 = dataUrl.indexOf(",") >= 0 ? dataUrl.split(",")[1] : dataUrl;
+        API.post("/papers/library/import", {
+          kind: "pdf", filename: file.name, pdf_base64: b64
+        }).then(function (r) { _importDone(r, btn); })
+          .catch(function (e) { btn.disabled = false; _importFail((e && e.detail) || "导入失败"); });
+      };
+      reader.onerror = function () { btn.disabled = false; _importFail("文件读取失败，请重试"); };
+      reader.readAsDataURL(file);
+    } else {
+      var input = mask.querySelector("[data-import-ident]");
+      var ident = input ? input.value.trim() : "";
+      if (!ident) { _importFail("请输入 arXiv ID 或 DOI"); return; }
+      btn.disabled = true;
+      API.post("/papers/library/import", { kind: "identifier", identifier: ident })
+        .then(function (r) { _importDone(r, btn); })
+        .catch(function (e) { btn.disabled = false; _importFail((e && e.detail) || "导入失败"); });
+    }
+  }
+  function _importDone(r, btn) {
+    if (!r || r.parse_status === "failed") {
+      btn.disabled = false;
+      _importFail((r && r.parse_error) || "未知原因");
+      return;
+    }
+    closeImportModal();
+    toast("导入成功：" + (r.title || ("文献 #" + r.paper_id)));
+    /* 成功后跳「解析中」tab 看五段阶段条（r.parse_status pending/running/done 均可见） */
+    libraryState.tab = "parsing";
+    loadLibrary().then(function () {
+      qsa("[data-lib-tab]").forEach(function (b) {
+        b.classList.toggle("active", b.getAttribute("data-lib-tab") === "parsing");
+      });
+      refreshParsingTab();
     });
   }
 
@@ -4393,11 +4676,23 @@
     var pLibBtn = el.closest("[data-paper-lib]");
     if (pLibBtn) { addToLibrary(pLibBtn); return; }
     /* ── 轮① P22：我的文献页（# /library）交互 ── */
+    /* 轮② P25：导入文献弹窗（打开/关闭/切路/提交/点遮罩取消） */
+    if (el.closest("[data-lib-import]")) { openImportModal(); return; }
+    if (el.closest("[data-lib-importclose]")) { closeImportModal(); return; }
+    var impMode = el.closest("[data-import-mode]");
+    if (impMode) { switchImportMode(impMode.getAttribute("data-import-mode")); return; }
+    var impSubmit = el.closest("[data-import-submit]");
+    if (impSubmit) { submitImport(impSubmit); return; }
+    if (el.hasAttribute && el.hasAttribute("data-lib-importmask")) { closeImportModal(); return; }
+    /* 轮② P26：检索进度弹层手动关闭 */
+    if (el.closest("[data-crawl-close]")) { closeCrawlProgress(); return; }
     var libTab = el.closest("[data-lib-tab]");
     if (libTab) {
       libraryState.tab = libTab.getAttribute("data-lib-tab");
       qsa("[data-lib-tab]").forEach(function (b) { b.classList.toggle("active", b === libTab); });
       renderLibraryList();
+      if (libraryState.tab === "parsing") refreshParsingTab();
+      else scheduleParsingPoll(0);
       return;
     }
     var libDelBtn = el.closest("[data-lib-del]");
@@ -4506,26 +4801,11 @@
       });
       return;
     }
-    /* 文献页：收藏并解析 / 重新解析（P16：一键收藏 → 后台下载 OA → COS → MinerU，
-     * 返回后 2s 轮询 parse-status 到 done/failed 刷新面板） */
+    /* 轮② P28：解析入口收紧——详情面板不再触发解析（原「收藏并解析」按钮已移除，
+     * 解析只在 #/library 内发起）；此处保留兜底：万一有旧 DOM 也引导去我的文献 */
     var pParse = el.closest("[data-pp-collectparse]");
     if (pParse) {
-      var pid8 = parseInt(pParse.getAttribute("data-pp-collectparse"), 10);
-      pParse.disabled = true;
-      API.post("/papers/" + pid8 + "/collect-parse", {}).then(function () {
-        toast("已开始解析，完成后会出现在「我的笔记」");
-        openPaperDetail(pid8);
-        pollParseStatus(pid8);
-      }).catch(function (e) {
-        pParse.disabled = false;
-        toast(e.detail || "解析启动失败");
-      });
-      return;
-    }
-    /* 文献页：已解析 ✓ → 直接打开批注阅读器（P8） */
-    var pGoNotes = el.closest("[data-pp-gonotes]");
-    if (pGoNotes) {
-      openReader(parseInt(pGoNotes.getAttribute("data-pp-gonotes"), 10));
+      toast("解析入口已收紧：请先到「我的文献」加入后，在库内发起解析");
       return;
     }
     /* 我的笔记：进入笔记 → 打开批注阅读器（P8 批注式笔记转正） */
