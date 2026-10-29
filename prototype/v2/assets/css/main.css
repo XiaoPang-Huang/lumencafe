@@ -2075,3 +2075,32 @@ h1.pp-rh, h2.pp-rh { border-bottom: 1px solid var(--line); padding-bottom: 6px; 
 
 /* 轮②：顶栏「导入文献」按钮不换行（窄屏防竖排） */
 .pp-topbar .pp-actions .btn { white-space: nowrap; flex: none; }
+
+/* ── 轮③ P27：段落级中英对照翻译 ─────────────────────────
+ * 译文段：英文段下紧跟中文（上下对照，移动端友好），muted 小字 */
+.pp-rzh {
+  margin-top: 4px; font-size: 12.5px; line-height: 1.65;
+  color: var(--ink-3); border-left: 2px solid var(--line); padding-left: 8px;
+}
+/* 翻译按钮流式态（翻译中…，复用 thinking 呼吸节奏） */
+.pp-translate-btn.is-flow { color: var(--brand-strong); }
+.pp-translate-btn.is-flow [data-pp-translate-label] {
+  animation: tr-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tr-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+/* 右栏对照译文状态条（done 计数 / failed 原因） */
+.pp-rtrans { font-size: 12px; color: var(--ink-3); padding: 4px 2px 8px; }
+.pp-rtrans.is-err { color: var(--danger); }
+/* 我的文献设置小项（齿轮弹层） */
+.lib-settings {
+  position: absolute; right: 12px; top: 52px; z-index: 30;
+  width: 280px; padding: 12px 14px; border-radius: 10px;
+  background: var(--card, #fff); border: 1px solid var(--line);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .14); font-size: 13px;
+}
+.pp-topbar { position: relative; }
+.lib-set-row {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 13px; color: var(--ink);
+}
+.lib-set-row input[type="checkbox"] { accent-color: var(--brand); width: 15px; height: 15px; }

@@ -245,13 +245,14 @@ async def test_delete_from_library_cascades_with_cos_spy(client, monkeypatch):
         ))
         await db.commit()
 
-    # COS 上预置四件产物（P20 目录结构）+ 一篇他人的 PDF 干扰项
+    # COS 上预置五件产物（P20 目录结构 + 轮③ P27 译文缓存）+ 一篇他人的 PDF 干扰项
     other_pdf_key = "papers/pdfs/2026/10/999999.pdf"
     spy = DeleteSpyStorage(
         {
             f"papers/parsed/{pid}/full.md": b"# full",
             f"papers/parsed/{pid}/content_list.json": b"[]",
             f"papers/parsed/{pid}/meta.json": b"{}",
+            f"papers/parsed/{pid}/translation.json": b"{}",
             f"papers/pdfs/2026/11/{pid}.pdf": b"%PDF-",
             other_pdf_key: b"%PDF-",
         }
@@ -262,11 +263,12 @@ async def test_delete_from_library_cascades_with_cos_spy(client, monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True and body["deleted_paper"] is True
-    # COS 四件全清（parsed 三件 + 本人 PDF），他人 PDF 不动
+    # COS 五件全清（parsed 四件含译文 + 本人 PDF），他人 PDF 不动
     assert set(body["cos_deleted"]) == {
         f"parsed/{pid}/full.md",
         f"parsed/{pid}/content_list.json",
         f"parsed/{pid}/meta.json",
+        f"parsed/{pid}/translation.json",
         f"pdfs/2026/11/{pid}.pdf",
     }
     assert set(spy.deleted) == {f"papers/{k}" for k in body["cos_deleted"]}

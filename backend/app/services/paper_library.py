@@ -5,9 +5,10 @@
 - :func:`delete_from_library`：删除（拍板 P24 级联语义）——
   本人关联全清（paper_library 行 / paper_favorites 行 / paper_users 归属 /
   paper_notes 全文笔记 + 批注，批注出链由 FK CASCADE 不涉及跨行残留，因为出链
-  只指向本人批注）；**行主**（papers.user_id == 本人）再删 papers 行
-  （FK CASCADE 带走 paper_explanations）并回收 COS 产物四件：
-  ``parsed/{id}/full.md + content_list.json + meta.json`` +
+  只指向本人批注）；**行主**  （papers.user_id == 本人）再删 papers 行
+  （FK CASCADE 带走 paper_explanations）并回收 COS 产物五件：
+  ``parsed/{id}/full.md + content_list.json + meta.json + translation.json``
+  （轮③ P27 译文缓存）+
   ``pdfs/{yyyy}/{mm}/{id}.pdf``（按 ``pdfs/`` 前缀列全后按 paper_id 结尾过滤，
   兼容任意年月分层）；非行主（历史公共行）只解除本人归属，不动行与产物
   （拍板 P23：删除任何文献只解除本人归属 + 删本人批注，另一用户不受影响）。
@@ -62,11 +63,12 @@ async def list_library(
 
 
 async def _delete_cos_artifacts(storage: object, paper_id: int) -> list[str]:
-    """回收 COS 产物四件（parsed/{id} 三件 + pdfs 分层 PDF）；返回实际删除的 key。"""
+    """回收 COS 产物五件（parsed/{id} 四件含译文 + pdfs 分层 PDF）；返回实际删除的 key。"""
     keys = [
         f"parsed/{paper_id}/full.md",
         f"parsed/{paper_id}/content_list.json",
         f"parsed/{paper_id}/meta.json",
+        f"parsed/{paper_id}/translation.json",  # 轮③ P27：中英对照译文缓存同回收
     ]
     try:
         pdfs = await storage.list("papers", "pdfs/")  # type: ignore[attr-defined]

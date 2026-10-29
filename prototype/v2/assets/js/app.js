@@ -1468,6 +1468,15 @@
               '<button class="btn btn-sm" type="button" data-lib-import><i data-ic="plus"></i>导入文献</button>' +
               '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="all">全部</button>' +
               '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="parsing">解析中</button>' +
+              '<button class="icon-btn" type="button" data-lib-settings title="我的文献设置" aria-label="我的文献设置"><i data-ic="gear"></i></button>' +
+            "</div>" +
+            /* 轮③ P27：设置小项（自动翻译开关，存 papers_prefs） */
+            '<div class="lib-settings hide" data-lib-settingspop>' +
+              '<label class="lib-set-row">' +
+                '<input type="checkbox" data-lib-autotranslate>' +
+                "<span>导入/解析后自动翻译（中英对照）</span>" +
+              "</label>" +
+              '<div class="muted" style="font-size:12px;margin-top:4px;">开启后，解析完成的文献会自动生成段落级中文对照译文</div>' +
             "</div>" +
           "</div>" +
           '<div class="lib-body">' +
@@ -2101,10 +2110,12 @@
   /* ================= 文献页活数据（步 C 三栏骨架；digest / daily / favorites 三源） ================= */
   var paperState = {
     nav: "digest", items: [], digest: null, crawlBusy: false,
-    /* P18 展示设置 + P21 抓取期过滤参数（同一份 papers_prefs，拍板 P21） */
+    /* P18 展示设置 + P21 抓取期过滤参数（同一份 papers_prefs，拍板 P21）
+     * 轮③ P27：auto_translate（导入/解析后自动中英对照翻译，默认关） */
     prefs: {
       display_limit: 50, sort: "time", if_min: null,
-      year_from: null, year_to: null, authors: []
+      year_from: null, year_to: null, authors: [],
+      auto_translate: false
     },
     saved: {},        // P19：paper_id -> bool，今日推送/我的收藏双列表共享收藏态
     lib: {},          // 轮① P22：paper_id -> bool，「我的文献」在库态（卡片/详情按钮 ✓ 已在库）
@@ -2354,6 +2365,8 @@
         paperState.prefs.authors = (Array.isArray(p.authors)
           ? p.authors.map(String).map(function (a) { return a.trim(); }).filter(Boolean)
           : []);
+        /* 轮③ P27：自动翻译开关（后端 parse_papers_prefs 同口径容错） */
+        paperState.prefs.auto_translate = p.auto_translate === true;
       }
       paperState.prefsLoaded = true;
       syncPrefsControls();
@@ -2740,6 +2753,28 @@
     _parsingTimer = setTimeout(refreshParsingTab, delay);
   }
 
+  /* 轮③ P27：我的文献设置小项——「导入/解析后自动翻译」开关（存 papers_prefs）。
+   * 打开弹层时按当前 prefs 回显；切换即时 PUT 保存（与订阅设置同一 prefs 通道）。 */
+  function toggleLibSettings() {
+    var pop = qs("[data-lib-settingspop]");
+    if (!pop) return;
+    var auto = qs("[data-lib-autotranslate]", pop);
+    if (auto) auto.checked = !!paperState.prefs.auto_translate;
+    pop.classList.toggle("hide");
+  }
+  function saveAutoTranslate(input) {
+    paperState.prefs.auto_translate = !!input.checked;
+    API.put("/me/settings", { key: "papers_prefs", value: paperState.prefs })
+      .then(function () {
+        toast(paperState.prefs.auto_translate ? "已开启自动翻译：解析完成即生成中英对照" : "已关闭自动翻译");
+      })
+      .catch(function (e) {
+        input.checked = !input.checked;  // 保存失败回滚开关态
+        paperState.prefs.auto_translate = !!input.checked;
+        toast(e.detail || "保存失败");
+      });
+  }
+
   function renderLibraryList() {
     var box = qs("[data-lib-list]");
     if (!box) return;
@@ -2995,7 +3030,9 @@
    * 手机端单栏、批注栏变浮层可切换。 */
   var readerState = {
     open: false, paperId: 0, title: "", blocks: [], annotations: [],
-    legacyNote: "", sel: null, meta: {}, flashAid: null, editingId: null, inline: false
+    legacyNote: "", sel: null, meta: {}, flashAid: null, editingId: null, inline: false,
+    /* 轮③ P27：中英对照翻译（translations = block_id → 中文译文） */
+    translations: {}, translateStatus: "none", translateError: null
   };
 
   function _fmtAnnoTime(t) {
@@ -3016,6 +3053,10 @@
       '<div class="pp-reader-head">' +
         '<div class="pp-reader-title"><i data-ic="edit"></i><span data-pp-rtitle>加载中…</span></div>' +
         '<div class="pp-reader-ops">' +
+          /* 轮③ P27：中英对照翻译按钮（未译/失败=「翻译」，已译=「重新翻译」，翻译中流动） */
+          '<button class="btn btn-ghost btn-sm pp-translate-btn" type="button" data-pp-translate' +
+            ' title="段落级中英对照翻译（MinerU 块锚点，结果缓存）">' +
+            '<i data-ic="spark"></i><span data-pp-translate-label>翻译</span></button>' +
           '<button class="btn btn-ghost btn-sm" type="button" data-pp-rexport><i data-ic="dl"></i>导出 Markdown</button>' +
           '<button class="btn btn-ghost btn-sm pp-reader-railbtn" type="button" data-pp-railtoggle aria-label="批注栏"><i data-ic="menu"></i>批注</button>' +
           '<button class="icon-btn" type="button" data-pp-rclose aria-label="关闭阅读器"><i data-ic="close"></i></button>' +
@@ -3036,8 +3077,10 @@
     readerState = {
       open: true, paperId: pid, title: "", blocks: [], annotations: [],
       legacyNote: "", sel: null, meta: {}, flashAid: flashAid || null, editingId: null,
-      inline: !!host
+      inline: !!host,
+      translations: {}, translateStatus: "none", translateError: null
     };
+    renderTranslateBtn();
 
     API.get("/papers/" + pid + "/content").then(function (c) {
       if (!readerState.open || readerState.paperId !== pid) return;
@@ -3080,6 +3123,21 @@
       (list || []).forEach(function (a) { readerState.meta[a.id] = a; });
       if (readerState.open) renderReaderRail();
     }).catch(function () {});
+
+    /* 轮③ P27：对照译文 + 翻译状态（无权限/非库内 → 隐藏翻译按钮不打扰） */
+    API.get("/papers/" + pid + "/translation").then(function (t) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.translations = (t && t.translations) || {};
+      readerState.translateStatus = (t && t.translate_status) || "none";
+      readerState.translateError = (t && t.translate_error) || null;
+      renderReaderMain();
+      renderTranslateRailNote();
+      renderTranslateBtn();
+      if (readerState.translateStatus === "running") scheduleTranslatePoll();
+    }).catch(function () {
+      var btn = qs("[data-pp-translate]");
+      if (btn) btn.classList.add("hide");
+    });
   }
 
   function closeReader() {
@@ -3089,6 +3147,101 @@
     readerState.open = false;
     readerState.sel = null;
     readerState.editingId = null;
+    clearTimeout(_translateTimer);
+    _translateTimer = null;
+  }
+
+  /* ── 轮③ P27：中英对照翻译交互 ── */
+  function renderTranslateBtn() {
+    var btn = qs("[data-pp-translate]");
+    if (!btn) return;
+    var st = readerState.translateStatus || "none";
+    btn.classList.toggle("is-flow", st === "running");
+    btn.disabled = st === "running";
+    btn.title = st === "failed" && readerState.translateError
+      ? "翻译失败：" + readerState.translateError + "（点击重试）"
+      : "段落级中英对照翻译（MinerU 块锚点，结果缓存）";
+    var lbl = qs("[data-pp-translate-label]", btn);
+    if (lbl) lbl.textContent = st === "running" ? "翻译中…" : (st === "done" ? "重新翻译" : "翻译");
+  }
+
+  function startTranslate() {
+    var pid = readerState.paperId;
+    if (!pid) return;
+    var force = readerState.translateStatus === "done";  // 「重新翻译」清缓存全量重译
+    var btn = qs("[data-pp-translate]");
+    if (btn) btn.disabled = true;
+    readerState.translateStatus = "running";
+    renderTranslateBtn();
+    API.post("/papers/" + pid + "/translate", { force: force }).then(function (r) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.translateStatus = (r && r.translate_status) || "none";
+      readerState.translateError = (r && r.translate_error) || null;
+      renderTranslateBtn();
+      if (readerState.translateStatus === "running") scheduleTranslatePoll();
+      else if (readerState.translateStatus === "done") refreshTranslation();
+      else if (readerState.translateStatus === "failed") {
+        toast("翻译失败：" + (readerState.translateError || "未知原因"));
+      }
+    }).catch(function (e) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.translateStatus = "failed";
+      readerState.translateError = (e && e.detail) || "请求失败";
+      renderTranslateBtn();
+      toast((e && e.detail) || "翻译请求失败");
+    });
+  }
+
+  /* 翻译中：2s 轮询状态到终态（引擎异步执行场景；进程内同步通常已终态） */
+  var _translateTimer = null;
+  function scheduleTranslatePoll() {
+    clearTimeout(_translateTimer);
+    _translateTimer = setTimeout(pollTranslate, 2000);
+  }
+  function pollTranslate() {
+    if (!readerState.open || !readerState.paperId) return;
+    var pid = readerState.paperId;
+    API.get("/papers/" + pid + "/translate-status").then(function (s) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.translateStatus = (s && s.translate_status) || "none";
+      readerState.translateError = (s && s.translate_error) || null;
+      renderTranslateBtn();
+      if (readerState.translateStatus === "running") scheduleTranslatePoll();
+      else if (readerState.translateStatus === "done") refreshTranslation();
+    }).catch(function () { scheduleTranslatePoll(); });
+  }
+  function refreshTranslation() {
+    var pid = readerState.paperId;
+    API.get("/papers/" + pid + "/translation").then(function (t) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.translations = (t && t.translations) || {};
+      readerState.translateStatus = (t && t.translate_status) || "done";
+      readerState.translateError = (t && t.translate_error) || null;
+      renderReaderMain();
+      renderTranslateRailNote();
+      renderTranslateBtn();
+    }).catch(function () {});
+  }
+  /* 右栏批注头下加一行对照译文状态说明（done 时提示可重新翻译；failed 给原因） */
+  function renderTranslateRailNote() {
+    var rail = qs("[data-pp-rail]");
+    if (!rail) return;
+    var note = qs("[data-pp-rtrans]", rail);
+    var st = readerState.translateStatus || "none";
+    var html = "";
+    if (st === "done") {
+      var n = 0;
+      Object.keys(readerState.translations || {}).forEach(function () { n += 1; });
+      html = '<div class="pp-rtrans" data-pp-rtrans>已生成中英对照译文（' + n + ' 段）</div>';
+    } else if (st === "failed" && readerState.translateError) {
+      html = '<div class="pp-rtrans is-err" data-pp-rtrans>翻译失败：' +
+        esc(readerState.translateError) + "</div>";
+    }
+    if (note) note.outerHTML = html || "<div data-pp-rtrans></div>";
+    else if (html) {
+      var head = qs(".pp-rail-head", rail);
+      if (head) head.insertAdjacentHTML("afterend", html);
+    }
   }
 
   /* 左栏：正文段落流（text_level → 标题层级；table/image 占位卡带页码）；
@@ -3115,6 +3268,9 @@
       if (b.type === "text") {
         if (b.text_level) { tag = "h" + Math.min(4, b.text_level); cls += " pp-rh"; }
         inner = esc(b.text);
+        /* 轮③ P27：有对照译文时英文段下紧跟中文段（上下对照，移动端友好；muted 小字） */
+        var zh = (readerState.translations || {})[b.block_id];
+        if (zh) inner += '<div class="pp-rzh">' + esc(zh) + "</div>";
       } else if (b.type === "table" || b.type === "image") {
         cls += " pp-rmedia";
         inner = '<span class="pp-rmediatag">' + (b.type === "table" ? "表" : "图") +
@@ -3686,6 +3842,8 @@
 
     /* 轮① P22：我的文献一级页（三栏；阅读器挂载态，批注交互与 P8 完全一致） */
     library: function () {
+      /* 轮③ P27：设置小项回显依赖 papers_prefs（未加载则补拉） */
+      if (!paperState.prefsLoaded) loadPapersPrefs();
       loadLibrary();
     },
 
@@ -3803,6 +3961,13 @@
   }
 
   /* ================= 全局事件委托 ================= */
+  /* 轮③ P27：自动翻译开关（change 只触发一次，避免 label 文本点击的合成双击） */
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest("[data-lib-autotranslate]")) {
+      saveAutoTranslate(t);
+    }
+  });
   document.addEventListener("click", function (e) {
     var el = e.target;
 
@@ -4678,6 +4843,8 @@
     /* ── 轮① P22：我的文献页（# /library）交互 ── */
     /* 轮② P25：导入文献弹窗（打开/关闭/切路/提交/点遮罩取消） */
     if (el.closest("[data-lib-import]")) { openImportModal(); return; }
+    /* 轮③ P27：我的文献设置小项（齿轮开弹层；开关用 change 委托见下） */
+    if (el.closest("[data-lib-settings]")) { toggleLibSettings(); return; }
     if (el.closest("[data-lib-importclose]")) { closeImportModal(); return; }
     var impMode = el.closest("[data-import-mode]");
     if (impMode) { switchImportMode(impMode.getAttribute("data-import-mode")); return; }
@@ -4817,6 +4984,8 @@
     /* ── P8 阅读器内交互（事件委托；阅读器在 body 直属层，#view 外）── */
     if (el.closest("[data-pp-rclose]")) { closeReader(); return; }
     if (el.closest("[data-pp-rexport]")) { exportReaderMd(); return; }
+    /* 轮③ P27：翻译/重新翻译按钮（翻译中禁用，点击触发分批翻译） */
+    if (el.closest("[data-pp-translate]")) { startTranslate(); return; }
     if (el.closest("[data-pp-railtoggle]")) {
       var rdBody = qs(".pp-reader-body");
       if (rdBody) rdBody.classList.toggle("showrail");

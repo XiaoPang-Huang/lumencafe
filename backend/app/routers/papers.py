@@ -83,6 +83,9 @@ from app.schemas.papers import (
     SourceOut,
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
+    TranslateRequest,
+    TranslateStatusOut,
+    TranslationOut,
 )
 from app.services import (
     llm_gateway,
@@ -90,12 +93,14 @@ from app.services import (
     paper_import,
     paper_library,
     paper_parse,
+    paper_translate,
     papers_crawl,
     pipeline,
     route_service,
 )
 from app.services.sources import SOURCE_CATALOG, SourceCatalogEntry, list_providers
 from app.services.sources.keys import fetch_service_api_key
+from app.services.storage import get_storage
 
 router = APIRouter(prefix="/papers", tags=["papers"])
 
@@ -167,6 +172,8 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
         parse_status=p.parse_status or "none",
         parsed_at=p.parsed_at,
         parse_phase=p.parse_phase,
+        translate_status=p.translate_status or "none",
+        translate_error=p.translate_error,
     )
 
 
@@ -863,6 +870,103 @@ async def collect_parse(
         # 引擎未接线：进程内同步执行（下载 → COS → MinerU → 状态机），即时返回终态
         await paper_parse.run_parse_pipeline(db, pid, user.id)
     return await _parse_status_out(db, user.id, pid)
+
+
+# ── 轮③：段落级中英对照翻译（P27：按钮触发 + 缓存 + 自动翻译开关）──
+async def _translate_status_out(db: AsyncSession, pid: int) -> TranslateStatusOut:
+    """按当前库内状态组翻译轮询响应（translated/total 随 translation.json 口径）。"""
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == pid))
+    ).scalar_one_or_none()
+    if paper is None:
+        raise HTTPException(status_code=404, detail="文献不存在")
+    storage = await get_storage(db)
+    translations = await paper_translate.load_translation(storage, pid)
+    blocks = await paper_content.load_parsed_content(db, pid)
+    targets = paper_translate.translatable_blocks(blocks or [])
+    return TranslateStatusOut(
+        paper_id=pid,
+        translate_status=paper.translate_status or "none",
+        translate_error=paper.translate_error,
+        translated_blocks=len(translations),
+        total_blocks=len(targets),
+    )
+
+
+async def _ensure_library(db: AsyncSession, user_id: int, pid: int) -> None:
+    """翻译/解析共用口径：目标论文须在本人 library，否则 403（P28 收紧语义）。"""
+    in_library = (
+        await db.execute(
+            select(PaperLibrary.id).where(
+                PaperLibrary.user_id == user_id, PaperLibrary.paper_id == pid
+            )
+        )
+    ).scalar_one_or_none()
+    if in_library is None:
+        raise HTTPException(
+            status_code=403, detail="该文献不在你的「我的文献」中，请先加入后再发起翻译"
+        )
+
+
+@router.post("/{pid}/translate", response_model=TranslateStatusOut)
+async def translate_paper(
+    pid: int,
+    body: TranslateRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """触发段落级中英对照翻译（拍板 P27：按钮触发、一次翻译永久缓存）。
+
+    - 归属校验（_get_mine，404）+ 库内校验（否 403）+ parse_status=done（否 409）；
+    - 幂等：done 直返不重跑；「重新翻译」由前端带 force=true（清缓存全量重译）；
+      running 409（翻译中按钮禁用）；failed/none 可重跑（增量跳过已译块）；
+    - 分批（≤15 段/批）走网关 app_key=papers_translate（未配置回落默认路由，
+      费用随 llm_call_logs 记账）；失败块重试一次。
+    """
+    await _get_mine(db, user.id, pid)
+    await _ensure_library(db, user.id, pid)
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == pid))
+    ).scalar_one_or_none()
+    if (paper.parse_status or "none") != "done":
+        raise HTTPException(
+            status_code=409, detail="该文献尚未解析完成，请等解析 done 后再翻译"
+        )
+    try:
+        result = await paper_translate.run_translate_pipeline(
+            db, pid, user.id, force=body.force
+        )
+    except paper_translate.TranslateAlreadyRunning as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return TranslateStatusOut(**result)
+
+
+@router.get("/{pid}/translate-status", response_model=TranslateStatusOut)
+async def translate_status(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """翻译状态轮询（阅读器 2s 轮询到 done/failed 停）；归属隔离同详情。"""
+    await _get_mine(db, user.id, pid)
+    return await _translate_status_out(db, pid)
+
+
+@router.get("/{pid}/translation", response_model=TranslationOut)
+async def get_translation(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """阅读器对照译文：translation.json（block_id → 中文译文，无则空表）。"""
+    await _get_mine(db, user.id, pid)
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == pid))
+    ).scalar_one_or_none()
+    storage = await get_storage(db)
+    translations = await paper_translate.load_translation(storage, pid)
+    return TranslationOut(
+        paper_id=pid,
+        translate_status=paper.translate_status or "none",
+        translate_error=paper.translate_error,
+        translations=translations,
+    )
 
 
 @router.get("/{pid}", response_model=PaperDetailOut)

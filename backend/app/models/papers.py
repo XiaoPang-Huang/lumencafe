@@ -70,6 +70,12 @@ class Paper(Base):
     # 轮②（Alembic 0012，P26）：解析五段阶段条数据源 download|upload|queue|parsing
     # （完成清空、失败保留在出错阶段；存量行/未启动为 NULL）
     parse_phase: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # ── 段落级中英对照翻译（轮③ P27，Alembic 0013）──
+    # none|running|done|failed；可空（存量行/从未翻译为 NULL，语义同 none）
+    translate_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    translate_error: Mapped[str | None] = mapped_column(
+        Text(), nullable=True
+    )  # 翻译失败原因（可空，前端失败态可见可重试）
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list)  # AD/PD/ALS/scale
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

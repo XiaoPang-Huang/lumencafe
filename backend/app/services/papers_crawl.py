@@ -61,6 +61,7 @@ PAPERS_PREFS_DEFAULTS: dict = {
     "year_from": None,  # P21：抓取起始年（null = 不限，回落 papers_days_back 窗口）
     "year_to": None,  # P21：抓取截止年（null = 不限）
     "authors": [],  # P21：作者限定（逗号分隔多值存数组；任一作者命中即过）
+    "auto_translate": False,  # 轮③ P27：解析完成后自动触发中英对照翻译（默认关）
 }
 SORT_MODES: tuple[str, ...] = ("time", "if", "score")
 
@@ -95,6 +96,7 @@ def parse_papers_prefs(value: object) -> dict:
     authors = value.get("authors")
     if isinstance(authors, (list, tuple)):
         prefs["authors"] = [str(a).strip() for a in authors if str(a).strip()]
+    prefs["auto_translate"] = bool(value.get("auto_translate"))  # 轮③ P27：默认关
     return prefs
 
 # 打标规则：标签 -> 命中词列表（大小写不敏感，可多命中；沿用旧版）

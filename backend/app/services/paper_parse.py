@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.papers import Paper
+from app.services import paper_translate
 from app.services.http_client import get_http_client
 from app.services.retry import external_retry
 from app.services.service_keys import get_key
@@ -483,6 +484,9 @@ async def run_parse_pipeline(
         "papers-parse 完成：paper_id=%s（source=%s page_count=%s）",
         paper_id, pdf_source, parsed["page_count"],
     )
+    # 轮③ P27：papers_prefs.auto_translate 开启 → 解析 done 自动触发中英对照
+    # 翻译（独立降级：翻译失败只落 translate_error，不回传阻断解析结果）
+    await paper_translate.maybe_auto_translate(db, paper_id, user_id)
     return {
         "paper_id": paper_id,
         "parse_status": "done",

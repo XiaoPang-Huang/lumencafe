@@ -24,6 +24,9 @@ class PaperOut(BaseModel):
     parsed_at: dt.datetime | None = None  # 解析完成时间（未完成 null）
     # 轮②（P26）：解析五段阶段 download|upload|queue|parsing（完成/未启动 null）
     parse_phase: str | None = None
+    # 轮③（P27）：段落级中英对照翻译状态 none|running|done|failed（未启动/存量 none）
+    translate_status: str = "none"
+    translate_error: str | None = None  # 翻译失败原因（failed 时有值，可重试）
     # ── 批注式笔记（P8）：「我的笔记」列表条目统计 ──
     annotations_count: int = 0  # 本人批注条数（不含旧全文笔记）
     last_annotation_at: dt.datetime | None = None  # 最近批注时间（无批注 null）
@@ -223,3 +226,29 @@ class RecentAnnotationOut(BaseModel):
     anchor_quote: str
     body: str
     updated_at: dt.datetime
+
+
+# ── 轮③：段落级中英对照翻译（P27：按钮触发 + translation.json 缓存 + 自动开关）──
+class TranslateRequest(BaseModel):
+    """翻译触发请求：force=true = 「重新翻译」（清空缓存全量重译，done 态也重跑）。"""
+
+    force: bool = False
+
+
+class TranslateStatusOut(BaseModel):
+    """翻译状态响应（POST /translate 触发回执与 GET /translate-status 轮询共用）。"""
+
+    paper_id: int
+    translate_status: str  # none|running|done|failed
+    translate_error: str | None = None  # 失败原因（failed 时有值）
+    translated_blocks: int = 0  # 已译段落数（translation.json 现有条目）
+    total_blocks: int = 0  # 正文 text 块总数
+
+
+class TranslationOut(BaseModel):
+    """阅读器对照译文：GET /papers/{id}/translation（block_id → 中文译文）。"""
+
+    paper_id: int
+    translate_status: str  # none|running|done|failed
+    translate_error: str | None = None
+    translations: dict[str, str]  # block_id（p{页}_b{序}）→ 中文译文
