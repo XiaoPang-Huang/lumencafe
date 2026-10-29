@@ -290,10 +290,13 @@ async def _mineru_batch_upload_url(
 async def _mineru_put_upload(
     client: httpx.AsyncClient, upload_url: str, pdf_bytes: bytes
 ) -> None:
-    """第 2 步：PUT 上传 PDF 到签名直传地址（签名 URL 自带鉴权，不带 Bearer）。"""
-    resp = await client.put(
-        upload_url, content=pdf_bytes, headers={"Content-Type": "application/pdf"}
-    )
+    """第 2 步：PUT 上传 PDF 到签名直传地址（签名 URL 自带鉴权，不带 Bearer）。
+
+    注意：OSS 签名是按「无 Content-Type」算的，任何显式 Content-Type 都会破坏
+    签名导致 403（2026-10-29 真实首测踩中；MinerU 文档明确要求 PUT 不带 Content-Type）。
+    httpx 对裸 bytes 不自动加 Content-Type，这里也绝不能手动加。
+    """
+    resp = await client.put(upload_url, content=pdf_bytes)
     resp.raise_for_status()
 
 
