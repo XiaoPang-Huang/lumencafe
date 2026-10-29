@@ -170,9 +170,15 @@ async def store_pdf(storage: Storage, paper: Paper, data: bytes) -> str:
 
 
 def _find_zip_member(names: list[str], basename: str) -> str | None:
-    """zip 内按文件名定位成员（MinerU 产物外层有目录包裹，按 basename 匹配）。"""
+    """zip 内按文件名定位成员。
+
+    MinerU 产物两种命名都见过（2026-10-29 真实复测）：裸名 ``content_list.json``
+    与带任务前缀的 ``{uuid}_content_list.json``——后者 basename 以 ``_ + 目标名``
+    结尾。两种都认；外层目录包裹不影响（只比 basename）。
+    """
     for name in names:
-        if name.rstrip("/").split("/")[-1] == basename:
+        base = name.rstrip("/").split("/")[-1]
+        if base == basename or base.endswith("_" + basename):
             return name
     return None
 
