@@ -267,6 +267,7 @@
   function render() {
     var r = currentRoute();
     if (!authGuard(r)) return;
+    closeReader(); /* P8：路由切换（含退出登录）时收起批注阅读器 */
     document.body.dataset.route = r;
     qsa("[data-route-link]").forEach(function (a) {
       a.classList.toggle("active", a.getAttribute("data-route-link") === r);
@@ -2246,7 +2247,7 @@
       }).catch(function (e) { toast(e.detail || "今日推送加载失败"); });
       return;
     }
-    /* P16 我的笔记：已收藏 ∩ 解析 done 的文献（标题 + 解析时间 + 进入笔记占位） */
+    /* P16+P8 我的笔记：已收藏 ∩ 解析 done（标题 + 解析时间 + 批注数/最后批注时间 + 进入笔记） */
     if (paperState.nav === "notes") {
       API.get("/papers/parsed").then(function (items) {
         var box2 = qs("[data-pp-list]");
@@ -2258,11 +2259,18 @@
         }
         box2.innerHTML = '<div class="pp-notes">' + items.map(function (p) {
           var t = p.parsed_at ? String(p.parsed_at).slice(0, 16).replace("T", " ") : "";
+          var cnt = p.annotations_count || 0;
+          var annLine = cnt > 0
+            ? cnt + " 条批注" + (p.last_annotation_at
+                ? " · 最后 " + String(p.last_annotation_at).slice(5, 16).replace("T", " ")
+                : "")
+            : "暂无批注";
           return '<div class="card pp-note-item">' +
             '<div class="pp-note-title">' + esc(p.title) + "</div>" +
             '<div class="pp-note-meta muted">' + esc(_paperAuthors(p.authors) || "") +
               (t ? (p.authors && p.authors.length ? " · " : "") + "解析于 " + esc(t) : "") + "</div>" +
-            '<div class="pp-note-ops"><button class="btn btn-ghost btn-sm" type="button" data-pp-noteentry="' +
+            '<div class="pp-note-ann">' + esc(annLine) + "</div>" +
+            '<div class="pp-note-ops"><button class="btn btn-primary btn-sm" type="button" data-pp-noteentry="' +
               p.id + '">进入笔记</button></div>' +
           "</div>";
         }).join("") + "</div>";
@@ -2388,7 +2396,7 @@
     }
     if (st === "done") {
       return '<button class="btn btn-primary btn-sm" type="button" data-pp-gonotes="' + p.id + '">' +
-        '<i data-ic="check"></i>已解析 ✓（进我的笔记）</button>';
+        '<i data-ic="check"></i>已解析 ✓（打开批注笔记）</button>';
     }
     return '<button class="btn btn-primary btn-sm" type="button" data-pp-collectparse="' + p.id + '">' +
       '<i data-ic="star"></i>★ 收藏并解析</button>';
@@ -2484,6 +2492,400 @@
     var box = qs("[data-pp-detail]");
     if (box) box.classList.add("hide");
     qsa("[data-pp-card]").forEach(function (c) { c.classList.remove("is-active"); });
+  }
+
+  /* ================= P8 批注式笔记阅读器（论文域后批①）
+   * 参考案例（AGENTS.md §一 设计强制规则，动手前已检索）：
+   * - Zotero Reader（zotero.org/support/pdf_reader）：选中文字 → 弹出高亮/批注
+   *   操作；批注聚在侧栏（引用+批注正文+位置），点批注「Show on Page」跳回原文；
+   *   批注可聚合导出 Markdown 且链接回原文位置——本阅读器的交互主干；
+   * - hypothes.is（W3C Web Annotation）：锚点 = 精确引用（quote）+ 定位双保险，
+   *   重定位失败（orphan）不静默丢弃、引用恒可见——对应 anchor_quote 字段与
+   *   右栏引用块；后端 block_id（p{页}_b{页内序}）承担 RangeSelector 角色；
+   * - Obsidian/Roam：[[双向链接]] + backlinks 面板——对应批注出链 chips +
+   *   被链数（后端查询派生，边单写不双写）。
+   * 布局（拍板 P8）：整页中央弹层，左原文段落流、右批注栏（SciSpace/Zotero 式），
+   * 手机端单栏、批注栏变浮层可切换。 */
+  var readerState = {
+    open: false, paperId: 0, title: "", blocks: [], annotations: [],
+    legacyNote: "", sel: null, meta: {}, flashAid: null, editingId: null
+  };
+
+  function _fmtAnnoTime(t) {
+    return t ? String(t).slice(0, 16).replace("T", " ") : "";
+  }
+
+  /* 打开阅读器：正文（/content）+ 批注（/annotations）+ 旧全文笔记（详情）+
+   * 互链选择器候选（/annotations/recent，建 id→meta 索引供跨篇跳转与 chips 展示） */
+  function openReader(pid, flashAid) {
+    closeReader();
+    var overlay = document.createElement("div");
+    overlay.className = "pp-reader";
+    overlay.setAttribute("data-pp-reader", "");
+    overlay.innerHTML = '' +
+      '<div class="pp-reader-head">' +
+        '<div class="pp-reader-title"><i data-ic="edit"></i><span data-pp-rtitle>加载中…</span></div>' +
+        '<div class="pp-reader-ops">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-pp-rexport><i data-ic="dl"></i>导出 Markdown</button>' +
+          '<button class="btn btn-ghost btn-sm pp-reader-railbtn" type="button" data-pp-railtoggle aria-label="批注栏"><i data-ic="menu"></i>批注</button>' +
+          '<button class="icon-btn" type="button" data-pp-rclose aria-label="关闭阅读器"><i data-ic="close"></i></button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="pp-reader-body">' +
+        '<div class="pp-reader-main" data-pp-rmain><div class="muted" style="padding:30px 6px;">正文加载中…</div></div>' +
+        '<aside class="pp-reader-rail" data-pp-rail></aside>' +
+      "</div>" +
+      '<div class="pp-selpop hide" data-pp-selpop></div>';
+    document.body.appendChild(overlay);
+    document.body.classList.add("pp-reading");
+    injectIcons(overlay);
+    readerState = {
+      open: true, paperId: pid, title: "", blocks: [], annotations: [],
+      legacyNote: "", sel: null, meta: {}, flashAid: flashAid || null, editingId: null
+    };
+
+    API.get("/papers/" + pid + "/content").then(function (c) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.blocks = (c && c.blocks) || [];
+      readerState.title = (c && c.title) || "";
+      var t = qs("[data-pp-rtitle]");
+      if (t) t.textContent = readerState.title;
+      renderReaderMain();
+    }).catch(function (e) {
+      toast((e && e.detail) || "正文加载失败");
+      closeReader();
+    });
+
+    API.get("/papers/" + pid + "/annotations").then(function (list) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.annotations = list || [];
+      (list || []).forEach(function (a) { readerState.meta[a.id] = a; });
+      renderReaderRail();
+      renderReaderMain();
+      if (readerState.flashAid) {
+        var f = readerState.flashAid;
+        readerState.flashAid = null;
+        setTimeout(function () { flashCard(f); }, 120);
+      }
+    }).catch(function () {});
+
+    API.get("/papers/" + pid).then(function (d) {
+      if (!readerState.open || readerState.paperId !== pid) return;
+      readerState.legacyNote = (d && d.note) || "";
+      if (readerState.legacyNote) renderReaderRail();
+    }).catch(function () {});
+
+    API.get("/papers/annotations/recent?limit=50").then(function (list) {
+      (list || []).forEach(function (a) { readerState.meta[a.id] = a; });
+      if (readerState.open) renderReaderRail();
+    }).catch(function () {});
+  }
+
+  function closeReader() {
+    var overlay = qs("[data-pp-reader]");
+    if (overlay) overlay.remove();
+    document.body.classList.remove("pp-reading");
+    readerState.open = false;
+    readerState.sel = null;
+    readerState.editingId = null;
+  }
+
+  /* 左栏：正文段落流（text_level → 标题层级；table/image 占位卡带页码）；
+   * 有批注的段落右侧插「N 批注」旗标，点击跳右栏对应卡片 */
+  function renderReaderMain() {
+    var main = qs("[data-pp-rmain]");
+    if (!main) return;
+    if (!readerState.blocks.length) {
+      main.innerHTML = '<div class="muted" style="padding:30px 6px;">暂无正文段落</div>';
+      return;
+    }
+    var counts = {};
+    (readerState.annotations || []).forEach(function (a) {
+      counts[a.anchor_block_id] = (counts[a.anchor_block_id] || 0) + 1;
+    });
+    main.innerHTML = readerState.blocks.map(function (b) {
+      var flag = counts[b.block_id]
+        ? '<button type="button" class="pp-rflag" data-pp-blockjump="' + b.block_id +
+          '" title="该段有 ' + counts[b.block_id] + ' 条批注，点击跳转">' + counts[b.block_id] + " 批注</button>"
+        : "";
+      var tag = "p";
+      var cls = "pp-rblock pp-rblock-" + b.type;
+      var inner;
+      if (b.type === "text") {
+        if (b.text_level) { tag = "h" + Math.min(4, b.text_level); cls += " pp-rh"; }
+        inner = esc(b.text);
+      } else if (b.type === "table" || b.type === "image") {
+        cls += " pp-rmedia";
+        inner = '<span class="pp-rmediatag">' + (b.type === "table" ? "表" : "图") +
+                " · 第 " + (b.page_idx + 1) + " 页</span>" + (b.text ? esc(b.text) : "");
+      } else {
+        inner = esc(b.text);
+      }
+      return "<" + tag + ' class="' + cls + '" data-block-id="' + b.block_id + '">' + inner + flag + "</" + tag + ">";
+    }).join("");
+  }
+
+  /* 右栏：旧全文笔记（兼容卡）+ 批注卡片（按原文段落序排列）；
+   * 卡片 = 引用块（点击跳原文）+ 正文 + 出链 chips / 被链数 + 操作行 */
+  function _annCardHtml(a) {
+    var chips = (a.links || []).map(function (tid) {
+      var m = readerState.meta[tid];
+      var label = m ? (m.anchor_quote || "").slice(0, 24) : ("批注 #" + tid);
+      var cross = m && m.paper_id !== readerState.paperId;
+      return '<button class="pp-rchip" type="button" data-pp-rajump="' + tid + '" title="' +
+        esc(m ? ("“" + m.anchor_quote + "”") : "") + '">→ ' + esc(label) + (cross ? " · 他篇" : "") + "</button>";
+    }).join("");
+    var bl = a.backlink_count
+      ? '<span class="pp-rchip pp-rchip-bl" title="有 ' + a.backlink_count + ' 条其他批注链接到本条">被链 ' + a.backlink_count + "</span>"
+      : "";
+    var editing = readerState.editingId === a.id;
+    var bodyHtml = editing
+      ? '<textarea class="pp-raedit" data-pp-ratext="' + a.id + '" rows="3" placeholder="批注正文（可空 = 纯划线）">' +
+        esc(a.body) + "</textarea>" +
+        '<div class="pp-raops"><button class="btn btn-primary btn-sm" type="button" data-pp-rasave="' + a.id + '">保存</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-pp-racancel="' + a.id + '">取消</button></div>'
+      : (a.body
+          ? '<div class="pp-rabody">' + esc(a.body) + "</div>"
+          : '<div class="pp-rabody muted">（划线）</div>');
+    return '<div class="pp-racard' + (a.body ? "" : " is-mark") + '" data-pp-racard="' + a.id + '">' +
+      '<button class="pp-raquote" type="button" data-pp-annjump="' + a.anchor_block_id +
+        '" title="跳转到原文 ' + esc(a.anchor_block_id) + '">“' + esc((a.anchor_quote || "").slice(0, 140)) + '”</button>' +
+      '<div class="pp-rameta muted">' + esc(a.anchor_block_id) + " · " + esc(_fmtAnnoTime(a.updated_at)) + "</div>" +
+      bodyHtml +
+      ((chips || bl) ? '<div class="pp-rchips">' + chips + bl + "</div>" : "") +
+      (editing ? "" : '<div class="pp-raops">' +
+        '<button class="pp-raop" type="button" data-pp-raedit="' + a.id + '">编辑</button>' +
+        '<button class="pp-raop" type="button" data-pp-ralink="' + a.id + '">链到…</button>' +
+        '<button class="pp-raop pp-raop-danger" type="button" data-pp-radel="' + a.id + '">删除</button>' +
+      "</div>") +
+    "</div>";
+  }
+
+  function renderReaderRail() {
+    var rail = qs("[data-pp-rail]");
+    if (!rail) return;
+    var order = {};
+    readerState.blocks.forEach(function (b, i) { order[b.block_id] = i; });
+    var anns = (readerState.annotations || []).slice().sort(function (x, y) {
+      var ox = order[x.anchor_block_id];
+      var oy = order[y.anchor_block_id];
+      if (ox == null) ox = 999999;
+      if (oy == null) oy = 999999;
+      return ox - oy || x.id - y.id;
+    });
+    var legacy = readerState.legacyNote
+      ? '<div class="pp-racard pp-ralegacy"><div class="pp-rasec">全文笔记</div>' +
+        '<div class="pp-rabody">' + esc(readerState.legacyNote) + "</div></div>"
+      : "";
+    rail.innerHTML =
+      '<div class="pp-rail-head">批注 <b>' + anns.length + '</b> 条' +
+        '<span class="pp-rail-hint muted">选中左侧文字可划线 / 批注</span></div>' +
+      legacy +
+      (anns.length
+        ? anns.map(_annCardHtml).join("")
+        : '<div class="pp-raempty muted">还没有批注——在左侧选中一段文字开始</div>');
+    injectIcons(rail);
+  }
+
+  function reloadReaderAnns() {
+    API.get("/papers/" + readerState.paperId + "/annotations").then(function (list) {
+      readerState.annotations = list || [];
+      (list || []).forEach(function (a) { readerState.meta[a.id] = a; });
+      renderReaderRail();
+      renderReaderMain();
+    }).catch(function () {});
+  }
+
+  /* 选中文字 → 弹出「划线 / 批注」（Zotero 式 selection popup） */
+  function renderSelPopDefault() {
+    var pop = qs("[data-pp-selpop]");
+    if (!pop) return;
+    pop.setAttribute("data-mode", "default");
+    pop.innerHTML = '<button type="button" class="pp-selbtn" data-pp-selmark><i data-ic="star"></i>划线</button>' +
+      '<button type="button" class="pp-selbtn" data-pp-selcomment><i data-ic="edit"></i>批注</button>';
+    injectIcons(pop);
+  }
+  function hideSelPop() {
+    var pop = qs("[data-pp-selpop]");
+    if (pop) { pop.classList.add("hide"); pop.removeAttribute("data-mode"); }
+    readerState.sel = null;
+    var sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
+  }
+  function updateSelPop() {
+    var pop = qs("[data-pp-selpop]");
+    var main = qs("[data-pp-rmain]");
+    if (!pop || !main) return;
+    var mode = pop.getAttribute("data-mode");
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed) {
+      /* 编辑中（composer）：聚焦 textarea 会塌掉正文选中态，此时保留弹层，
+       * 锚点数据已在 readerState.sel，等 保存/取消 收尾 */
+      if (mode === "composer") return;
+      hideSelPop();
+      return;
+    }
+    var text = sel.toString().replace(/\s+/g, " ").trim();
+    if (!text) { hideSelPop(); return; }
+    var node = sel.anchorNode;
+    var elN = node && node.nodeType === 3 ? node.parentElement : node;
+    var blockEl = elN && elN.closest ? elN.closest("[data-block-id]") : null;
+    if (!blockEl || !main.contains(blockEl)) { hideSelPop(); return; }
+    readerState.sel = { quote: text.slice(0, 2000), blockId: blockEl.getAttribute("data-block-id") };
+    if (mode !== "composer") renderSelPopDefault();
+    pop.classList.remove("hide");
+    var rect = sel.getRangeAt(0).getBoundingClientRect();
+    var pw = pop.offsetWidth;
+    var ph = pop.offsetHeight;
+    var top = rect.top - ph - 8;
+    if (top < 70) top = rect.bottom + 8;
+    var left = rect.left + rect.width / 2 - pw / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+    pop.style.top = top + "px";
+    pop.style.left = left + "px";
+  }
+  function selPopComposer() {
+    var pop = qs("[data-pp-selpop]");
+    if (!pop || !readerState.sel) return;
+    pop.setAttribute("data-mode", "composer");
+    pop.innerHTML = '<textarea class="pp-seltext" data-pp-seltext rows="3" placeholder="批注这段文字…"></textarea>' +
+      '<div class="pp-selops"><button type="button" class="btn btn-primary btn-sm" data-pp-selsave>保存</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-pp-selcancel>取消</button></div>';
+    var ta = qs("[data-pp-seltext]", pop);
+    if (ta) ta.focus();
+  }
+  function createAnnotationFromSel(body) {
+    var selData = readerState.sel;
+    if (!selData) { toast("请先在左侧正文中选中文字"); return; }
+    API.post("/papers/" + readerState.paperId + "/annotations", {
+      anchor_quote: selData.quote,
+      anchor_block_id: selData.blockId,
+      body: body || ""
+    }).then(function () {
+      var sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+      hideSelPop();
+      toast(body ? "批注已保存" : "已划线");
+      reloadReaderAnns();
+    }).catch(function (e) { toast((e && e.detail) || "保存失败"); });
+  }
+
+  /* 互链：中央弹窗选择器（AGENTS.md 统一中央弹窗），候选 = 本篇批注 +
+   * 跨论文最近批注（去重、排除自身与已链） */
+  function openLinkPicker(aid) {
+    var ann = null;
+    (readerState.annotations || []).forEach(function (a) { if (a.id === aid) ann = a; });
+    if (!ann) return;
+    var cur = {};
+    (ann.links || []).forEach(function (x) { cur[x] = true; });
+    var seen = {};
+    var candidates = [];
+    (readerState.annotations || []).forEach(function (a) {
+      if (a.id !== aid && !cur[a.id] && !seen[a.id]) { seen[a.id] = 1; candidates.push(a); }
+    });
+    Object.keys(readerState.meta).forEach(function (k) {
+      var m = readerState.meta[k];
+      var id = parseInt(k, 10);
+      if (id !== aid && !cur[id] && !seen[id]) { seen[id] = 1; candidates.push(m); }
+    });
+    candidates = candidates.slice(0, 20);
+    var dlg = document.createElement("dialog");
+    dlg.className = "modal-mask";
+    dlg.setAttribute("data-pp-linkdlg", "");
+    dlg.innerHTML = '<div class="modal">' +
+      '<div class="modal-head"><h3>链到…</h3>' +
+      '<button class="icon-btn" type="button" data-pp-linkclose aria-label="关闭"><i data-ic="close"></i></button></div>' +
+      '<div class="modal-body"><div class="pp-linkpick">' +
+      (candidates.length
+        ? candidates.map(function (m) {
+            var same = m.paper_id === readerState.paperId;
+            return '<button class="pp-linkpick-item" type="button" data-pp-ralinkpick="' + aid + "|" + m.id + '">' +
+              '<span class="pp-linkpick-quote">“' + esc((m.anchor_quote || "").slice(0, 64)) + '”</span>' +
+              '<span class="pp-linkpick-meta muted">' + (same ? "本篇" : esc((m.paper_title || "他篇").slice(0, 24))) + "</span>" +
+            "</button>";
+          }).join("")
+        : '<div class="muted" style="padding:14px 4px;">暂无其他批注可选——先去别的段落划几条线</div>') +
+      "</div></div></div>";
+    document.body.appendChild(dlg);
+    injectIcons(dlg);
+    if (dlg.showModal) dlg.showModal();
+    else dlg.classList.add("open");
+    dlg.addEventListener("close", function () { dlg.remove(); });
+  }
+
+  /* 跳转与高亮（Zotero Show on Page 式） */
+  function flashCard(aid) {
+    var card = qs('[data-pp-racard="' + aid + '"]');
+    if (!card) return;
+    card.scrollIntoView({ block: "center", behavior: "smooth" });
+    card.classList.add("is-flash");
+    setTimeout(function () { card.classList.remove("is-flash"); }, 1500);
+  }
+  function flashBlock(blockId) {
+    var b = qs('[data-block-id="' + blockId + '"]');
+    if (!b) return;
+    b.scrollIntoView({ block: "center", behavior: "smooth" });
+    b.classList.add("is-flash");
+    setTimeout(function () { b.classList.remove("is-flash"); }, 1500);
+  }
+  function jumpToAnnotation(tid) {
+    var m = readerState.meta[tid];
+    if (!m) { toast("目标批注不存在（可能已删除）"); return; }
+    if (m.paper_id === readerState.paperId) { flashCard(tid); return; }
+    openReader(m.paper_id, tid);  // 跨论文：整篇切换后高亮目标卡片
+  }
+
+  /* 导出 Markdown（拍板 P8：标题/元信息/逐条批注 quote+body+链接，.md 下载） */
+  function exportReaderMd() {
+    var order = {};
+    var pageOf = {};
+    readerState.blocks.forEach(function (b, i) {
+      order[b.block_id] = i;
+      pageOf[b.block_id] = b.page_idx + 1;
+    });
+    var anns = (readerState.annotations || []).slice().sort(function (x, y) {
+      var ox = order[x.anchor_block_id];
+      var oy = order[y.anchor_block_id];
+      if (ox == null) ox = 999999;
+      if (oy == null) oy = 999999;
+      return ox - oy || x.id - y.id;
+    });
+    var lines = [
+      "# " + (readerState.title || ("文献 #" + readerState.paperId)),
+      "",
+      "> 流光咖啡馆 · 文献批注导出 · " + localToday() + " · 共 " + anns.length + " 条批注",
+      "",
+    ];
+    if (readerState.legacyNote) {
+      lines.push("## 全文笔记", "", readerState.legacyNote, "");
+    }
+    anns.forEach(function (a, i) {
+      var page = pageOf[a.anchor_block_id];
+      lines.push("## " + (i + 1) + ". " + a.anchor_block_id + (page ? "（第 " + page + " 页）" : ""));
+      lines.push("");
+      lines.push("> " + String(a.anchor_quote || "").replace(/\s+/g, " "));
+      lines.push("");
+      if (a.body) { lines.push(a.body); lines.push(""); }
+      if ((a.links || []).length) {
+        var parts = a.links.map(function (tid) {
+          var m = readerState.meta[tid];
+          if (!m) return "#" + tid;
+          var where = m.paper_id === readerState.paperId ? "" : "（他篇：" + (m.paper_title || m.paper_id) + "）";
+          return "#" + tid + " “" + String(m.anchor_quote || "").slice(0, 40) + "”" + where;
+        });
+        lines.push("链接：" + parts.join("；"));
+        lines.push("");
+      }
+    });
+    var blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    var aEl = document.createElement("a");
+    var slug = (readerState.title || "paper").replace(/[\\/:*?"<>|\s]+/g, "-").slice(0, 60);
+    aEl.href = URL.createObjectURL(blob);
+    aEl.download = slug + "-批注.md";
+    document.body.appendChild(aEl);
+    aEl.click();
+    setTimeout(function () { URL.revokeObjectURL(aEl.href); aEl.remove(); }, 500);
+    toast("已导出 " + anns.length + " 条批注");
   }
 
   /* ================= 订阅设置弹窗（步 C；P5 拍板：文献页内齿轮单入口） =================
@@ -3852,15 +4254,115 @@
       });
       return;
     }
-    /* 文献页：已解析 ✓ → 跳到「我的笔记」导航 */
+    /* 文献页：已解析 ✓ → 直接打开批注阅读器（P8） */
     var pGoNotes = el.closest("[data-pp-gonotes]");
     if (pGoNotes) {
-      var notesNav = qs('[data-pp-nav="notes"]');
-      if (notesNav) notesNav.click();
+      openReader(parseInt(pGoNotes.getAttribute("data-pp-gonotes"), 10));
       return;
     }
-    /* 我的笔记：进入笔记（批注式笔记下批开放，占位提示） */
-    if (el.closest("[data-pp-noteentry]")) { toast("笔记功能下批开放"); return; }
+    /* 我的笔记：进入笔记 → 打开批注阅读器（P8 批注式笔记转正） */
+    var pNoteEntry = el.closest("[data-pp-noteentry]");
+    if (pNoteEntry) {
+      openReader(parseInt(pNoteEntry.getAttribute("data-pp-noteentry"), 10));
+      return;
+    }
+    /* ── P8 阅读器内交互（事件委托；阅读器在 body 直属层，#view 外）── */
+    if (el.closest("[data-pp-rclose]")) { closeReader(); return; }
+    if (el.closest("[data-pp-rexport]")) { exportReaderMd(); return; }
+    if (el.closest("[data-pp-railtoggle]")) {
+      var rdBody = qs(".pp-reader-body");
+      if (rdBody) rdBody.classList.toggle("showrail");
+      return;
+    }
+    var selMark = el.closest("[data-pp-selmark]");
+    if (selMark) { createAnnotationFromSel(""); return; }
+    var selComment = el.closest("[data-pp-selcomment]");
+    if (selComment) { selPopComposer(); return; }
+    if (el.closest("[data-pp-selsave]")) {
+      var ta = qs("[data-pp-seltext]");
+      createAnnotationFromSel(ta ? ta.value.trim() : "");
+      return;
+    }
+    if (el.closest("[data-pp-selcancel]")) { hideSelPop(); return; }
+    var raEdit = el.closest("[data-pp-raedit]");
+    if (raEdit) {
+      readerState.editingId = parseInt(raEdit.getAttribute("data-pp-raedit"), 10);
+      renderReaderRail();
+      return;
+    }
+    var raCancel = el.closest("[data-pp-racancel]");
+    if (raCancel) {
+      readerState.editingId = null;
+      renderReaderRail();
+      return;
+    }
+    var raSave = el.closest("[data-pp-rasave]");
+    if (raSave) {
+      var aid4 = parseInt(raSave.getAttribute("data-pp-rasave"), 10);
+      var ta4 = qs('[data-pp-ratext="' + aid4 + '"]');
+      API.put("/papers/annotations/" + aid4, { body: ta4 ? ta4.value.trim() : "" }).then(function () {
+        readerState.editingId = null;
+        toast("已保存");
+        reloadReaderAnns();
+      }).catch(function (e) { toast((e && e.detail) || "保存失败"); });
+      return;
+    }
+    var raDel = el.closest("[data-pp-radel]");
+    if (raDel) {
+      var aid5 = parseInt(raDel.getAttribute("data-pp-radel"), 10);
+      API.del("/papers/annotations/" + aid5).then(function () {
+        toast("批注已删除");
+        reloadReaderAnns();
+      }).catch(function (e) { toast((e && e.detail) || "删除失败"); });
+      return;
+    }
+    var raLink = el.closest("[data-pp-ralink]");
+    if (raLink) {
+      openLinkPicker(parseInt(raLink.getAttribute("data-pp-ralink"), 10));
+      return;
+    }
+    /* 互链选择器：选中目标 → PUT 出链（数组整体替换，后端保序去重） */
+    var raPick = el.closest("[data-pp-ralinkpick]");
+    if (raPick) {
+      var pickParts = raPick.getAttribute("data-pp-ralinkpick").split("|");
+      var fromId = parseInt(pickParts[0], 10);
+      var toId = parseInt(pickParts[1], 10);
+      var curLinks = [];
+      (readerState.annotations || []).forEach(function (a) {
+        if (a.id === fromId) curLinks = (a.links || []).slice();
+      });
+      if (curLinks.indexOf(toId) === -1) curLinks.push(toId);
+      API.put("/papers/annotations/" + fromId, { links: curLinks }).then(function () {
+        var dlgEl = raPick.closest("dialog");
+        if (dlgEl && dlgEl.close) dlgEl.close();
+        toast("已建立链接");
+        reloadReaderAnns();
+      }).catch(function (e) { toast((e && e.detail) || "建链失败"); });
+      return;
+    }
+    var linkClose = el.closest("[data-pp-linkclose]");
+    if (linkClose) {
+      var dlgEl2 = linkClose.closest("dialog");
+      if (dlgEl2 && dlgEl2.close) dlgEl2.close();
+      return;
+    }
+    /* 点引用块 → 跳回原文段落（Zotero Show on Page） */
+    var annJump = el.closest("[data-pp-annjump]");
+    if (annJump) { flashBlock(annJump.getAttribute("data-pp-annjump")); return; }
+    /* 点段落旗标 → 跳到该段第一条批注卡片 */
+    var blockJump = el.closest("[data-pp-blockjump]");
+    if (blockJump) {
+      var bid = blockJump.getAttribute("data-pp-blockjump");
+      var firstAnn = null;
+      (readerState.annotations || []).forEach(function (a) {
+        if (!firstAnn && a.anchor_block_id === bid) firstAnn = a;
+      });
+      if (firstAnn) flashCard(firstAnn.id);
+      return;
+    }
+    /* 点出链 chip → 跳目标批注（同篇高亮 / 跨篇切阅读器） */
+    var raJump = el.closest("[data-pp-rajump]");
+    if (raJump) { jumpToAnnotation(parseInt(raJump.getAttribute("data-pp-rajump"), 10)); return; }
     /* 应用中心：打开应用 */
     var appRow = el.closest("[data-app-open]");
     if (appRow) {
@@ -4095,6 +4597,7 @@
     }
     if (e.key === "Escape") {
       /* 原生 <dialog> 的 Esc 由浏览器自行处理（cancel → close），这里兜底非 dialog 弹层 */
+      if (readerState.open) { closeReader(); return; } /* P8：先收批注阅读器 */
       qsa("dialog.modal-mask[open]").forEach(function (m) { m.close(); });
       qsa(".udrawer:not(.hide), .ud-mask:not(.hide)").forEach(function (m) { m.classList.add("hide"); });
       rolePopCloseAll();
@@ -4342,6 +4845,20 @@
       });
     }
   }
+
+  /* P8 阅读器选中：mouseup 后 selection 落定再弹「划线/批注」；
+   * 弹层内点按钮时 mousedown 阻止默认（保正文选中态），textarea 不拦（要聚焦输入） */
+  document.addEventListener("mousedown", function (e) {
+    var selPop = qs("[data-pp-selpop]");
+    if (selPop && !selPop.classList.contains("hide") && selPop.contains(e.target) &&
+        e.target.closest && e.target.closest("button")) {
+      e.preventDefault();
+    }
+  }, true);
+  document.addEventListener("mouseup", function () {
+    if (!readerState.open) return;
+    setTimeout(updateSelPop, 0);
+  });
 
   /* 会话面板输入框自适应（委托 input 已覆盖文本域，此处针对 composer 高度 + 润色按钮态） */
   document.addEventListener("input", function (e) {

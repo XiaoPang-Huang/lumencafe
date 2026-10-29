@@ -22,6 +22,9 @@ class PaperOut(BaseModel):
     # ── 收藏并解析全链路（P16/P20）──
     parse_status: str = "none"  # none|pending|running|done|failed
     parsed_at: dt.datetime | None = None  # 解析完成时间（未完成 null）
+    # ── 批注式笔记（P8）：「我的笔记」列表条目统计 ──
+    annotations_count: int = 0  # 本人批注条数（不含旧全文笔记）
+    last_annotation_at: dt.datetime | None = None  # 最近批注时间（无批注 null）
 
 
 class PaperDetailOut(PaperOut):
@@ -117,3 +120,57 @@ class CrawlNowResponse(BaseModel):
     added: int  # 本轮新入库文献数
     runs_id: int  # papers_crawl_runs 行 id
     per_source: dict[str, int]  # 各源本轮命中（provider 返回）篇数
+
+
+# ── P8：批注式笔记 + 知识网（锚定解析段落）────────────────
+class ContentBlockOut(BaseModel):
+    """结构化段落块（content_list.json 派生；block_id 规则见 services/paper_content.py）。"""
+
+    block_id: str  # p{页}_b{页内序}（页 1 起、页内序 1 起，含非文本块计数）
+    type: str  # text|table|image|equation|...
+    text: str  # 展示文本（table 为去标签纯文本；image 为 caption 拼接）
+    page_idx: int  # 0 起页码
+    text_level: int | None = None  # 标题层级 1-4（正文 null）
+
+
+class PaperContentOut(BaseModel):
+    """阅读器正文：GET /papers/{id}/content 响应。"""
+
+    paper_id: int
+    title: str
+    blocks: list[ContentBlockOut]
+
+
+class AnnotationCreate(BaseModel):
+    anchor_quote: str = Field(min_length=1, max_length=2000)  # 被选中原文
+    anchor_block_id: str = Field(min_length=1, max_length=64)  # p{页}_b{序}
+    body: str = Field(default="", max_length=5000)  # 空串 = 纯划线
+
+
+class AnnotationUpdate(BaseModel):
+    body: str | None = Field(default=None, max_length=5000)  # None = 不改
+    links: list[int] | None = None  # None = 不改；传数组 = 整体替换出链
+
+
+class AnnotationOut(BaseModel):
+    id: int
+    paper_id: int
+    note_kind: str  # annotation
+    anchor_quote: str
+    anchor_block_id: str
+    body: str  # 空串 = 纯划线
+    links: list[int]  # 出链批注 id（保序去重）
+    backlink_count: int = 0  # 被链次数（查询派生，双向链接的另一半）
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class RecentAnnotationOut(BaseModel):
+    """互链选择器条目：跨论文「最近 N 条我的批注」。"""
+
+    id: int
+    paper_id: int
+    paper_title: str
+    anchor_quote: str
+    body: str
+    updated_at: dt.datetime

@@ -11,12 +11,14 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -100,15 +102,40 @@ class PaperFavorite(Base):
 
 
 class PaperNote(Base):
-    """每人每篇一条笔记（upsert 覆盖）。"""
+    """论文笔记行：全文笔记（note_kind='note'）与批注（note_kind='annotation'）共存同表。
+
+    P8 批注式笔记：批注每篇可多条，锚定解析段落（anchor_block_id =
+    content_list 派生的 `p{页}_b{页内序}`，规则见 services/paper_content.py），
+    anchor_quote 存被选中原文（hypothes.is 式精确引用）。links = 出链批注
+    id 数组（知识网边，单向存储；反向链接由查询派生，不双写）。
+
+    唯一性：全文笔记仍每篇至多一条（部分唯一索引 uq_paper_notes_legacy_note，
+    Alembic 0010，upsert 语义不变）；批注无篇级唯一约束。
+    """
 
     __tablename__ = "paper_notes"
-    __table_args__ = (UniqueConstraint("paper_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_paper_notes_paper_user", "paper_id", "user_id"),
+        # 部分唯一索引：全文笔记每篇至多一条（旧 upsert 语义）；批注（annotation）不受限
+        Index(
+            "uq_paper_notes_legacy_note",
+            "paper_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("note_kind = 'note'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     paper_id: Mapped[int] = mapped_column(Integer, ForeignKey("papers.id", ondelete="CASCADE"))
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    content: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")  # 笔记正文 / 批注 body（划线可空串）
+    # ── P8 批注锚点（Alembic 0010；全文笔记行三列均为默认值）──
+    anchor_quote: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    anchor_block_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    note_kind: Mapped[str] = mapped_column(String(16), default="note")  # annotation|note
+    links: Mapped[list[int]] = mapped_column(JSONB, default=list)  # 出链批注 id（去重保序）
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

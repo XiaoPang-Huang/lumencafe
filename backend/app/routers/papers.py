@@ -16,8 +16,16 @@
 - 论文域增强③（P16/P20）：POST /papers/{id}/collect-parse 收藏并解析（自动收藏幂等
   → 触发 papers-parse workflow，引擎未接线回落进程内同步执行；done 直返/pending·
   running 409/failed·none 可重跑）；GET /papers/{id}/parse-status 轮询；GET
-  /papers/parsed = 我的笔记列表（已收藏 ∩ 解析 done，parsed_at 倒序）；digest/daily
-  条目与详情带 parse_status（详情另带 parse_error 供失败指引区）。
+  /papers/parsed = 我的笔记列表；digest/daily 条目与详情带 parse_status（详情另带
+  parse_error 供失败指引区）。
+- 论文域后批①（P8 批注式笔记 + 知识网，Alembic 0010 改造 paper_notes 双形态）：
+  GET /papers/{id}/content 阅读器正文（content_list → 稳定 block_id `p{页}_b{序}`，
+  无产物 404）；POST/GET /papers/{id}/annotations 建批注（body 可空=纯划线）/
+  本篇列表；PUT/DELETE /papers/annotations/{aid} 改正文/换出链/删除（自链与越权
+  目标 422，删除级联摘链）；GET /papers/annotations/recent 互链选择器（最近 N 条，
+  跨论文）；GET /papers/annotations/{aid}/backlinks 反向链接（查询派生，边单写）；
+  /papers/parsed 条目带 annotations_count/last_annotation_at；旧 /note upsert 保留
+  （note_kind='note' 每篇至多一条的部分唯一索引约束不变）。
 """
 import json
 import logging
@@ -25,7 +33,7 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,14 +50,20 @@ from app.models.papers import (
 from app.models.user import User
 from app.models.user_settings import UserSetting
 from app.schemas.papers import (
+    AnnotationCreate,
+    AnnotationOut,
+    AnnotationUpdate,
+    ContentBlockOut,
     CrawlNowResponse,
     DigestItemOut,
     DigestOut,
     ExplainResponse,
     NoteRequest,
+    PaperContentOut,
     PaperDetailOut,
     PaperOut,
     ParseStatusOut,
+    RecentAnnotationOut,
     SaveResponse,
     SemanticSearchRequest,
     SemanticSearchResponse,
@@ -57,7 +71,14 @@ from app.schemas.papers import (
     SuggestKeywordsRequest,
     SuggestKeywordsResponse,
 )
-from app.services import llm_gateway, paper_parse, papers_crawl, pipeline, route_service
+from app.services import (
+    llm_gateway,
+    paper_content,
+    paper_parse,
+    papers_crawl,
+    pipeline,
+    route_service,
+)
 from app.services.sources import SOURCE_CATALOG, SourceCatalogEntry, list_providers
 from app.services.sources.keys import fetch_service_api_key
 
@@ -529,7 +550,8 @@ async def parsed_papers(
 ):
     """我的笔记列表（P16）：已收藏且解析完成（parse_status=done）的文献。
 
-    按 parsed_at 倒序；前端「我的笔记」左导航列表 = 标题 + 解析时间 + 进入笔记。
+    按 parsed_at 倒序；P8 起条目带 annotations_count / last_annotation_at
+    （本人批注统计，供列表展示「N 条批注 · 最后批注时间」）。
     """
     rows = (
         await db.execute(
@@ -539,7 +561,29 @@ async def parsed_papers(
             .order_by(Paper.parsed_at.desc().nullslast(), Paper.id.desc())
         )
     ).scalars().all()
-    return [_out(p, True) for p in rows]
+    out = [_out(p, True) for p in rows]
+    if out:
+        stats = (
+            await db.execute(
+                select(
+                    PaperNote.paper_id,
+                    func.count(PaperNote.id),
+                    func.max(PaperNote.updated_at),
+                )
+                .where(
+                    PaperNote.user_id == user.id,
+                    PaperNote.note_kind == "annotation",
+                    PaperNote.paper_id.in_([p.id for p in rows]),
+                )
+                .group_by(PaperNote.paper_id)
+            )
+        ).all()
+        stat_map = {pid: (cnt, latest) for pid, cnt, latest in stats}
+        for item in out:
+            cnt, latest = stat_map.get(item.id, (0, None))
+            item.annotations_count = cnt
+            item.last_annotation_at = latest
+    return out
 
 
 @router.get("/{pid}/parse-status", response_model=ParseStatusOut)
@@ -597,9 +641,14 @@ async def paper_detail(
     pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
 ):
     paper = await _get_mine(db, user.id, pid)
+    # P8：note 字段 = 旧全文笔记行（note_kind='note'，每篇至多一条）；批注走 /annotations
     note = (
         await db.execute(
-            select(PaperNote).where(PaperNote.user_id == user.id, PaperNote.paper_id == pid)
+            select(PaperNote).where(
+                PaperNote.user_id == user.id,
+                PaperNote.paper_id == pid,
+                PaperNote.note_kind == "note",
+            )
         )
     ).scalar_one_or_none()
     explanation = (
@@ -650,13 +699,18 @@ async def upsert_note(
     user: User = Depends(_reader),
     db: AsyncSession = Depends(get_db),
 ):
-    """笔记 upsert：每人每篇一条，覆盖更新。"""
+    """笔记 upsert：每人每篇一条全文笔记（note_kind='note'），覆盖更新。
+
+    P8 后唯一性落在部分唯一索引（仅 note_kind='note'）上，ON CONFLICT 需带
+    同款 index_where 才能命中索引推断。
+    """
     await _get_mine(db, user.id, pid)
     stmt = (
         pg_insert(PaperNote)
-        .values(paper_id=pid, user_id=user.id, content=body.content)
+        .values(paper_id=pid, user_id=user.id, content=body.content, note_kind="note")
         .on_conflict_do_update(
             index_elements=["paper_id", "user_id"],
+            index_where=text("note_kind = 'note'"),
             set_={"content": body.content},
         )
     )
@@ -709,3 +763,271 @@ async def explain_paper(
     await db.execute(stmt)
     await db.commit()
     return ExplainResponse(content=content.strip(), model=route.model_name, cached=False)
+
+
+# ── P8：批注式笔记 + 知识网（锚定解析段落，Alembic 0010）────
+def _annotation_out(
+    note: PaperNote, backlink_counts: dict[int, int] | None = None
+) -> AnnotationOut:
+    """PaperNote 行 → 批注响应（backlink_count 由调用方传入的统计表派生）。"""
+    return AnnotationOut(
+        id=note.id,
+        paper_id=note.paper_id,
+        note_kind=note.note_kind,
+        anchor_quote=note.anchor_quote or "",
+        anchor_block_id=note.anchor_block_id or "",
+        body=note.content or "",
+        links=list(note.links or []),
+        backlink_count=(backlink_counts or {}).get(note.id, 0),
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+async def _backlink_counts(
+    db: AsyncSession, user_id: int, ids: list[int]
+) -> dict[int, int]:
+    """被链次数表：扫描本人全部批注的出链，统计指向 ids 各元素的边数。
+
+    双向链接的派生半侧（另一半 = 存于 note.links 的出链）：边只写一次，
+    反向永远由查询得出——单写无同步泄漏风险（Obsidian backlinks 同构）。
+    """
+    counts = {i: 0 for i in ids}
+    if not ids:
+        return counts
+    rows = (
+        await db.execute(
+            select(PaperNote.id, PaperNote.links).where(
+                PaperNote.user_id == user_id, PaperNote.note_kind == "annotation"
+            )
+        )
+    ).all()
+    for _row_id, links in rows:
+        for target in links or []:
+            if target in counts:
+                counts[target] += 1
+    return counts
+
+
+async def _get_annotation(db: AsyncSession, user_id: int, aid: int) -> PaperNote:
+    """批注行级隔离：只认本人 annotation 行（不泄露存在性，统一 404）。"""
+    note = (
+        await db.execute(
+            select(PaperNote).where(
+                PaperNote.id == aid,
+                PaperNote.user_id == user_id,
+                PaperNote.note_kind == "annotation",
+            )
+        )
+    ).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="批注不存在")
+    return note
+
+
+async def _validate_links(
+    db: AsyncSession, user_id: int, self_id: int, links: list[int]
+) -> list[int]:
+    """出链校验：保序去重、拒自链、目标必须存在且是本人的批注（否则 422）。"""
+    cleaned: list[int] = []
+    for raw in links:
+        target = int(raw)
+        if target == self_id:
+            raise HTTPException(status_code=422, detail="批注不能链接到自己")
+        if target not in cleaned:
+            cleaned.append(target)
+    if not cleaned:
+        return []
+    rows = (
+        await db.execute(
+            select(PaperNote.id).where(
+                PaperNote.user_id == user_id,
+                PaperNote.note_kind == "annotation",
+                PaperNote.id.in_(cleaned),
+            )
+        )
+    ).scalars().all()
+    if set(rows) != set(cleaned):
+        raise HTTPException(status_code=422, detail="出链目标不存在或不属于你的批注")
+    return cleaned
+
+
+@router.get("/{pid}/content", response_model=PaperContentOut)
+async def paper_content_view(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """阅读器正文（P8）：解析产物 content_list.json → 结构化段落数组。
+
+    block_id = `p{页}_b{页内序}`（规则见 services/paper_content.py）；无解析产物
+    （未解析/对象缺失/JSON 损坏）一律 404「还没有解析产物」——拍板 P8 明确语义。
+    鉴权：app:papers 登录 + paper_users 归属（收藏者可见，与详情同口径）。
+    """
+    paper = await _get_mine(db, user.id, pid)
+    blocks = await paper_content.load_parsed_content(db, pid)
+    if blocks is None:
+        raise HTTPException(
+            status_code=404, detail="该文献还没有解析产物，请先「收藏并解析」"
+        )
+    return PaperContentOut(
+        paper_id=pid,
+        title=paper.title,
+        blocks=[ContentBlockOut(**b) for b in blocks],
+    )
+
+
+@router.post(
+    "/{pid}/annotations", response_model=AnnotationOut, status_code=201
+)
+async def create_annotation(
+    pid: int,
+    body: AnnotationCreate,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """建批注：anchor_quote（被选中原文）+ anchor_block_id（锚定段落）。
+
+    body 可空串 = 纯划线（Zotero/hypothes.is 式）。anchor_block_id 必须在当前
+    解析产物的块集合内（422 = 段落不存在，通常是解析产物更新后前端旧锚点）。
+    """
+    await _get_mine(db, user.id, pid)
+    blocks = await paper_content.load_parsed_content(db, pid)
+    if blocks is None:
+        raise HTTPException(
+            status_code=404, detail="该文献还没有解析产物，请先「收藏并解析」"
+        )
+    valid_ids = {b["block_id"] for b in blocks}
+    if body.anchor_block_id not in valid_ids:
+        raise HTTPException(status_code=422, detail="锚定段落不存在（解析产物已更新？）")
+    note = PaperNote(
+        paper_id=pid,
+        user_id=user.id,
+        content=body.body,
+        anchor_quote=body.anchor_quote,
+        anchor_block_id=body.anchor_block_id,
+        note_kind="annotation",
+        links=[],
+    )
+    db.add(note)
+    await db.commit()
+    await db.refresh(note)
+    return _annotation_out(note)
+
+
+@router.get("/{pid}/annotations", response_model=list[AnnotationOut])
+async def list_annotations(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """本篇我的批注列表（含出链 links 与被链数 backlink_count），id 升序。"""
+    await _get_mine(db, user.id, pid)
+    notes = (
+        await db.execute(
+            select(PaperNote)
+            .where(
+                PaperNote.paper_id == pid,
+                PaperNote.user_id == user.id,
+                PaperNote.note_kind == "annotation",
+            )
+            .order_by(PaperNote.id)
+        )
+    ).scalars().all()
+    counts = await _backlink_counts(db, user.id, [n.id for n in notes])
+    return [_annotation_out(n, counts) for n in notes]
+
+
+@router.get("/annotations/recent", response_model=list[RecentAnnotationOut])
+async def recent_annotations(
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """互链选择器数据源：我的最近 N 条批注（跨论文，updated_at 倒序）。
+
+    拍板 P8「链到…」弹该论文（或跨论文）我的批注选择器（最近 20 条）——
+    前端按当前篇优先排序展示。
+    """
+    rows = (
+        await db.execute(
+            select(PaperNote, Paper.title)
+            .join(Paper, Paper.id == PaperNote.paper_id)
+            .where(PaperNote.user_id == user.id, PaperNote.note_kind == "annotation")
+            .order_by(PaperNote.updated_at.desc(), PaperNote.id.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        RecentAnnotationOut(
+            id=note.id,
+            paper_id=note.paper_id,
+            paper_title=title,
+            anchor_quote=note.anchor_quote or "",
+            body=note.content or "",
+            updated_at=note.updated_at,
+        )
+        for note, title in rows
+    ]
+
+
+@router.put("/annotations/{aid}", response_model=AnnotationOut)
+async def update_annotation(
+    aid: int,
+    body: AnnotationUpdate,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """改批注：body（None=不改）/ links（None=不改；传数组=整体替换出链）。
+
+    双向链接语义：links 是出链，A 链 B 后 B 的 backlink_count 立即 +1
+    （派生查询，无需写 B）；自链与越权目标 422。
+    """
+    note = await _get_annotation(db, user.id, aid)
+    if body.body is not None:
+        note.content = body.body
+    if body.links is not None:
+        note.links = await _validate_links(db, user.id, aid, body.links)
+    await db.commit()
+    await db.refresh(note)
+    counts = await _backlink_counts(db, user.id, [note.id])
+    return _annotation_out(note, counts)
+
+
+@router.delete("/annotations/{aid}")
+async def delete_annotation(
+    aid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """删批注（本人）；同时摘除本人其他批注指向它的出链（边随节点删）。"""
+    note = await _get_annotation(db, user.id, aid)
+    await db.delete(note)
+    refs = (
+        await db.execute(
+            select(PaperNote).where(
+                PaperNote.user_id == user.id,
+                PaperNote.id != aid,
+                PaperNote.links.contains([aid]),
+            )
+        )
+    ).scalars().all()
+    for other in refs:
+        other.links = [x for x in (other.links or []) if x != aid]
+    await db.commit()
+    return {"ok": True}
+
+
+@router.get("/annotations/{aid}/backlinks", response_model=list[AnnotationOut])
+async def annotation_backlinks(
+    aid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """反向链接（知识网半侧）：哪些我的批注链向了 aid（Obsidian backlinks 面板）。"""
+    note = await _get_annotation(db, user.id, aid)
+    rows = (
+        await db.execute(
+            select(PaperNote)
+            .where(
+                PaperNote.user_id == user.id,
+                PaperNote.note_kind == "annotation",
+                PaperNote.links.contains([aid]),
+            )
+            .order_by(PaperNote.id)
+        )
+    ).scalars().all()
+    counts = await _backlink_counts(db, user.id, [n.id for n in rows] + [note.id])
+    return [_annotation_out(n, counts) for n in rows]
