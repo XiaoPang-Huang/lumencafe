@@ -1,26 +1,27 @@
-"""收藏并解析全链路（P16/P20）：下载 OA 全文 → 存 COS papers/ → MinerU 精准解析 → 状态机。
+"""全文存取 + 解析管线（P16/P20 起；P30 全文与解析解耦）。
 
-链路四步（Hatchet workflow papers-parse 与进程内降级共用
-:func:`run_parse_pipeline`，入口幂等语义一致）：
+拍板 P30 三独立动作：
+- **获取全文** :func:`fetch_fulltext`：直链（arXiv abs 页自动改 pdf 直链）→
+  Unpaywall 补链（doi → OA pdf url），共享 httpx 总机下载，30MB 上限流式强制，
+  tenacity 瞬时重试（4xx/非 PDF 不重试）；成功存 COS 并落
+  ``papers.fulltext_status=oa``，失败原因落 ``fulltext_error``（可见可重试）；
+- **上传全文** :func:`upload_fulltext`：用户自有 PDF（付费墙文献的正解）存 COS
+  （覆盖），落 ``fulltext_status=uploaded``；此前已解析/解析中 → 解析产物四清 +
+  ``reparse_pending=True``（「需重新解析」显式标志）；
+- **解析** :func:`run_parse_pipeline`：**只读已存文件，不含下载**（pdf_bytes 通道
+  保留给导入路）→ MinerU 精准解析 → 状态机。
 
-- :func:`download_oa_pdf`：优先 ``paper.url`` 直链（arXiv abs 页自动改 pdf 直链），
-  失败/内容非 PDF 走 Unpaywall 补链（doi → OA pdf url；免费 API 只需 email 参数）。
-  共享 httpx 总机下载，30MB 上限流式强制，tenacity 瞬时重试（retry.py 预设，
-  4xx/非 PDF 不重试）；返回 ``(pdf_bytes, source)``，source ∈ direct|unpaywall。
-- :func:`store_pdf`：原始 PDF 落 ``papers/pdfs/{yyyy}/{mm}/{paper_id}.pdf``（P20 年月分层）。
-- :func:`mineru_parse`：MinerU 精准解析 API（service_keys ``mineru`` 行 Bearer token，
-  base_url 已填 https://mineru.net/api/v4）。文件上传流：
-  ``POST /file-urls/batch`` 取签名直传地址 → ``PUT`` 上传 PDF →
-  ``POST /extract/task``（model_version=vlm）建任务 → 轮询 ``GET /extract/task/{task_id}``
-  （state: pending/running/done/failed，done 拿 full_zip_url）→ 下载 zip。
-- :func:`store_parsed`：zip 拆存（P20）：``papers/parsed/{id}/full.md`` +
-  ``content_list.json``（批注锚点/问答引用的根基）+ ``meta.json``
-  （model_version/页数/解析时间；页数优先取 MinerU _meta.json 的 page_size，
-  不可得从 content_list.json 的 page_idx 推断，再不可得留 null）。
+MinerU 文件上传流（service_keys ``mineru`` 行 Bearer token，base_url 默认
+``https://mineru.net/api/v4``）：
+``POST /file-urls/batch`` 取签名直传地址 → ``PUT`` 上传 PDF →
+轮询 ``GET /extract-results/batch/{batch_id}``（state: pending/running/done/failed，
+done 拿 full_zip_url）→ 下载 zip。
 
-状态机写 ``papers.parse_status``：none → pending → running → done | failed
-（``parse_error`` 记原因，前端错误区可见）。幂等（拍板：重试 = 再次点按钮）：
-done 不再跑；pending/running 拒绝重入（API 409）；failed/none 可全链重跑。
+:func:`store_parsed`：zip 拆存（P20）：``papers/parsed/{id}/full.md`` +
+``content_list.json``（批注锚点/问答引用的根基）+ ``meta.json``
+（model_version/页数/解析时间；页数优先取 MinerU _meta.json 的 page_size，
+不可得从 content_list.json 的 page_idx 推断，再不可得留 null）。
+
 存储全经 storage 抽象层 ``"papers"`` app——{app}/ 前缀硬隔离（P11），
 COS key 恒 ``papers/`` 开头。
 """
@@ -54,6 +55,7 @@ MINERU_POLL_INTERVAL = 3.0  # 任务轮询间隔（秒）
 MINERU_POLL_TIMEOUT = 600.0  # 任务轮询总超时（秒，排队+解析给足余量）
 _PDF_MAGIC = b"%PDF-"  # PDF 魔数：直链/补链内容校验（HTML 落地页不算全文）
 _PARSE_ERROR_MAX = 1000  # parse_error 入库截断长度（Text 列，防异常消息爆炸）
+_FULLTEXT_ERROR_MAX = 500  # fulltext_error 入库截断长度（P30：原因可见但防爆炸）
 
 
 class PdfDownloadError(RuntimeError):
@@ -168,6 +170,80 @@ async def store_pdf(storage: Storage, paper: Paper, data: bytes) -> str:
     await storage.put("papers", key, data)
     logger.info("paper_id=%s PDF 已存储：papers/%s（%d bytes）", paper.id, key, len(data))
     return key
+
+
+async def find_pdf_key(storage: Storage, paper_id: int) -> str | None:
+    """按 paper_id 定位已存全文（pdfs/ 前缀列全后按文件名过滤，兼容任意年月分层）。
+
+    P30 解耦后「全文是否存在」是全链路口径：获取/上传/解析三动作共享。
+    返回不含 app 前缀的对象 key；未找到返回 None。
+    """
+    try:
+        keys = await storage.list("papers", "pdfs/")
+    except NotImplementedError:
+        return None  # 存储实现不支持 list（旧测试替身等）：视为未找到
+    return next((k for k in keys if k.endswith(f"/{paper_id}.pdf")), None)
+
+
+# ── P30：全文与解析解耦——两个独立动作（获取 / 上传），各自落 fulltext_status ──
+async def fetch_fulltext(db: AsyncSession, paper: Paper, storage: Storage) -> dict:
+    """获取全文（拍板 P30 独立动作一）：直链 → Unpaywall 补链 → 存 COS。
+
+    - 幂等：已有全文文件 → ``{"ok": True, "already": True}`` 不再下载；
+    - 成功：fulltext_status=oa、fulltext_error 清 None；
+    - 失败：fulltext_status 保持 none、fulltext_error 记原因（截断 500），
+      返回 ``{"ok": False, "reason": ...}``（前端失败态可见可重试，不抛异常）；
+    - 不触发解析——解析是独立动作（POST /{id}/collect-parse）。
+    """
+    key = await find_pdf_key(storage, paper.id)
+    if key is not None:
+        return {"ok": True, "already": True, "source": None, "reason": None}
+    try:
+        pdf_bytes, source = await download_oa_pdf(db, paper)
+        await store_pdf(storage, paper, pdf_bytes)
+    except Exception as exc:  # noqa: BLE001 - 失败落状态不外抛（前端要 reason）
+        reason = (str(exc) or exc.__class__.__name__)[:_FULLTEXT_ERROR_MAX]
+        logger.warning("获取全文失败：paper_id=%s：%s", paper.id, reason)
+        paper.fulltext_status = "none"
+        paper.fulltext_error = reason
+        await db.commit()
+        return {"ok": False, "already": False, "source": None, "reason": reason}
+    paper.fulltext_status = "oa"
+    paper.fulltext_error = None
+    await db.commit()
+    logger.info("获取全文成功：paper_id=%s（source=%s）", paper.id, source)
+    return {"ok": True, "already": False, "source": source, "reason": None}
+
+
+async def upload_fulltext(db: AsyncSession, paper: Paper, storage: Storage, data: bytes) -> dict:
+    """上传/替换全文（拍板 P30 独立动作二，付费墙文献的正解）：存 COS（覆盖）。
+
+    - 内容校验（PDF 魔数）与 30MB 上限在路由层完成（ImportInputError → 422）；
+    - fulltext_status=uploaded、fulltext_error 清 None；
+    - 「需重新解析」：此前已解析（done）或解析中（pending/running）→ 解析产物四清
+      （parse_status=none、parse_phase=None、translate_status=None、parsed_at=None；
+      translate_error 同步清；COS parsed/ 三件 + translation.json 保留不删——
+      重解析成功自然覆盖，避免误删期间阅读不可用），reparse_pending=True；
+      failed/none 本就未产物或无产物，直接上传即可，标志保持 False；
+    - 返回 ``{"needs_reparse": bool}``（前端「⟳ 重新解析」高亮态数据源）。
+    """
+    await store_pdf(storage, paper, data)
+    needs_reparse = paper.parse_status in ("done", "pending", "running")
+    if needs_reparse:
+        paper.parse_status = "none"  # 四清①：解析状态机归零（重跑 = 再次点解析）
+        paper.parse_phase = None  # 四清②：五段阶段条清零
+        paper.translate_status = None  # 四清③：译文状态归零（译文缓存文件保留）
+        paper.translate_error = None
+        paper.parsed_at = None  # 四清④：完成时间归零
+        paper.reparse_pending = True
+    paper.fulltext_status = "uploaded"
+    paper.fulltext_error = None
+    await db.commit()
+    logger.info(
+        "上传/替换全文：paper_id=%s（%d bytes，needs_reparse=%s）",
+        paper.id, len(data), needs_reparse,
+    )
+    return {"ok": True, "needs_reparse": needs_reparse}
 
 
 def _find_zip_member(names: list[str], basename: str) -> str | None:
@@ -404,7 +480,14 @@ async def _set_phase(db: AsyncSession, paper: Paper, phase: str | None) -> None:
 async def run_parse_pipeline(
     db: AsyncSession, paper_id: int, user_id: int, pdf_bytes: bytes | None = None
 ) -> dict:
-    """单篇收藏并解析全链：download → store_pdf → mineru_parse → store_parsed。
+    """单篇解析管线（拍板 P30 独立动作三）：**只读已存全文，不含下载**。
+
+    全文来源二选一：
+    - ``pdf_bytes`` 传入（轮②导入路）：调用方已备好 PDF（上传/arXiv/DOI 下载完成），
+      先 ``store_pdf`` 落 COS（导入即存文件，重试不重传）再解析；
+    - ``pdf_bytes=None``（collect-parse 路）：从 COS 读已存文件
+      （``find_pdf_key`` 按 pdfs/ 前缀定位；不存在抛 :class:`PdfDownloadError`，
+      API 层已前置 409，双保险）——**绝不再走网络下载**（获取全文是独立动作）。
 
     状态机写 papers.parse_status（none/pending → running → done|failed）：
     - done：幂等直返，不再跑（重试靠前端按钮，failed 才允许重跑）；
@@ -412,13 +495,10 @@ async def run_parse_pipeline(
     - 任一步失败：parse_status=failed + parse_error=原因（截断入库），返回终态字典
       （不向外抛——workflow 与进程内调用方都要落状态，重试 = 再次点按钮）。
 
-    parse_phase（轮② P26）随链路推进：download（OA 下载）→ upload（存 COS +
-    MinerU 直传）→ queue（MinerU 排队）→ parsing（MinerU 解析中）；done 清空、
-    failed 保留在出错段（前端该段标红）。
-
-    pdf_bytes（轮② P25 导入用）：调用方已备好全文（PDF 上传/arXiv/DOI 下载
-    完成）时传入——跳过 OA 下载步，阶段直接从 upload 起；user_id 仅作触发
-    审计（归属隔离在 API 层已校验）。
+    parse_phase（轮② P26）随链路推进：upload（存 COS/读 COS + MinerU 直传）→
+    queue（MinerU 排队）→ parsing（MinerU 解析中）；done 清空、failed 保留在出错段
+    （前端该段标红）。download 段自 P30 起由「获取全文」动作承接——文件已就绪才
+    能进本管线，前端阶段条首段恒亮（fulltext_status 非 none 即完成）。
     """
     paper = (
         await db.execute(select(Paper).where(Paper.id == paper_id))
@@ -439,18 +519,24 @@ async def run_parse_pipeline(
 
     paper.parse_status = "running"
     paper.parse_error = None
-    paper.parse_phase = "upload" if pdf_bytes is not None else "download"
+    paper.reparse_pending = False  # P30：解析发起即清「需重新解析」标志
+    paper.parse_phase = "upload"
     await db.commit()
     logger.info("papers-parse 开始：paper_id=%s user_id=%s", paper_id, user_id)
 
     try:
-        if pdf_bytes is None:
-            pdf_bytes, pdf_source = await download_oa_pdf(db, paper)
-        else:
-            pdf_source = "upload"  # 轮②导入：全文由调用方提供（上传/arXiv/DOI）
-        await _set_phase(db, paper, "upload")
         storage = await get_storage(db)
-        await store_pdf(storage, paper, pdf_bytes)
+        if pdf_bytes is None:
+            # P30 解耦：只读 COS 已存全文，不下载（获取全文 = 独立动作）
+            key = await find_pdf_key(storage, paper_id)
+            if key is None:
+                raise PdfDownloadError("全文文件不存在，请先「获取全文」或「上传全文」")
+            pdf_bytes = await storage.get("papers", key)
+            pdf_source = "cos"
+            logger.info("paper_id=%s 从 COS 读取全文：papers/%s", paper_id, key)
+        else:
+            await store_pdf(storage, paper, pdf_bytes)  # 导入路：PDF 落 COS 再解析
+            pdf_source = "upload"  # 轮②导入：全文由调用方提供（上传/arXiv/DOI）
 
         async def _phase_hook(phase: str) -> None:
             await _set_phase(db, paper, phase)
@@ -464,9 +550,9 @@ async def run_parse_pipeline(
         error = (str(exc) or exc.__class__.__name__)[:_PARSE_ERROR_MAX]
         paper.parse_status = "failed"
         paper.parse_error = error
-        # parse_phase 保留在出错段（前端五段条该段标红）；失败前未进链路则为 download
+        # parse_phase 保留在出错段（前端五段条该段标红）；默认 upload（文件步）
         if paper.parse_phase is None:
-            paper.parse_phase = "download"
+            paper.parse_phase = "upload"
         await db.commit()
         return {
             "paper_id": paper_id,
@@ -506,9 +592,12 @@ __all__ = [
     "ParseAlreadyRunning",
     "PdfDownloadError",
     "download_oa_pdf",
+    "fetch_fulltext",
+    "find_pdf_key",
     "mineru_parse",
     "pdf_object_key",
     "run_parse_pipeline",
     "store_parsed",
     "store_pdf",
+    "upload_fulltext",
 ]

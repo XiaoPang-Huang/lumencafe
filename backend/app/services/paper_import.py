@@ -321,6 +321,8 @@ async def import_pdf(db: AsyncSession, user_id: int, filename: str, data: bytes)
     )
     if paper.parse_status == "done":
         return paper  # 幂等：同键已解析完成（理论上 uuid 不撞，防御）
+    paper.fulltext_status = "uploaded"  # P30：PDF 上传即全文就绪（上传动作）
+    await db.commit()
     logger.info("PDF 导入：paper_id=%s user_id=%s（%d bytes）", paper.id, user_id, len(data))
     await run_import_pipeline(db, paper.id, user_id, data)
     return paper
@@ -369,6 +371,8 @@ async def import_identifier(db: AsyncSession, user_id: int, raw: str) -> Paper:
         raise ImportFailedError(reason) from exc
 
     logger.info("标识符导入：paper_id=%s（%s:%s，%d bytes）", paper.id, kind, ident, len(data))
+    paper.fulltext_status = "oa"  # P30：OA 全文已下载就绪（获取全文动作等价物）
+    await db.commit()
     await run_import_pipeline(db, paper.id, user_id, data)
     return paper
 

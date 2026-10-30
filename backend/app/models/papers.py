@@ -76,6 +76,16 @@ class Paper(Base):
     translate_error: Mapped[str | None] = mapped_column(
         Text(), nullable=True
     )  # 翻译失败原因（可空，前端失败态可见可重试）
+    # ── 全文与解析解耦（P30，Alembic 0014）：全文文件就绪度，独立于解析状态机 ──
+    # none（无文件）| oa（获取全文成功）| uploaded（用户上传/替换）；
+    # 「获取全文/上传全文/解析」三动作各自独立（拍板 P30：付费墙文献出路）
+    fulltext_status: Mapped[str] = mapped_column(String(16), default="none")
+    # 获取全文失败原因（可空，前端失败态小字可见、可重试；成功/上传即清）
+    fulltext_error: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # 「需重新解析」显式标志：替换文件且此前已解析（done）或解析中
+    # （pending/running）→ true（四清后 parse_status=none，无法由行内推导）；
+    # 解析发起（collect-parse 占坑）即清 false
+    reparse_pending: Mapped[bool] = mapped_column(default=False)
     tags: Mapped[list[str]] = mapped_column(JSONB, default=list)  # AD/PD/ALS/scale
     keywords: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

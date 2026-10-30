@@ -29,7 +29,6 @@ from tests.conftest import login
 from tests.test_papers_parse import (
     FakeHttpClient,
     _add_mineru_key,
-    _FakeResp,
     _make_paper,
     _mineru_routes,
 )
@@ -63,6 +62,10 @@ class MemoryStorage(Storage):
 
     async def exists(self, app: str, key: str) -> bool:
         return (app, key) in self.objects
+
+    async def list(self, app: str, prefix: str) -> list[str]:
+        """P30：解析管线按 pdfs/ 前缀定位全文（collect-parse 前置校验依赖）。"""
+        return sorted(k for (a, k) in self.objects if a == app and k.startswith(prefix))
 
 
 def _patch_storage(monkeypatch, storage: Storage) -> None:
@@ -365,9 +368,8 @@ async def test_auto_translate_pref_on_triggers_after_parse_done(client, monkeypa
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/auto.pdf")
     storage = MemoryStorage()
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/auto.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    storage.objects[("papers", paper_parse.pdf_object_key(pid))] = _FAKE_PDF  # P30 全文就绪
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
     monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(storage))
     _patch_storage(monkeypatch, storage)
@@ -405,9 +407,8 @@ async def test_auto_translate_pref_off_no_gateway(client, monkeypatch):
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/noauto.pdf")
     storage = MemoryStorage()
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/noauto.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    storage.objects[("papers", paper_parse.pdf_object_key(pid))] = _FAKE_PDF  # P30 全文就绪
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
     monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(storage))
     _patch_storage(monkeypatch, storage)

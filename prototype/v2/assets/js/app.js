@@ -2678,9 +2678,11 @@
   function _phaseBarHtml(p) {
     var st = p.parse_status || "none";
     var idx = _phaseIdx(p);
+    /* P30 解耦：全文已就绪（获取/上传动作完成）→ 首段「下载」恒亮（由独立动作承接） */
+    var hasFile = (p.fulltext_status || "none") !== "none";
     var segs = LIB_PHASES.map(function (ph, i) {
       var cls = "lps";
-      if (i < idx || st === "done") cls += " is-done";
+      if (i < idx || st === "done" || (i === 0 && hasFile)) cls += " is-done";
       else if (i === idx) cls += st === "failed" ? " is-err" : (ph === "parsing" ? " is-flow" : " is-active");
       return '<span class="' + cls + '" title="' + LIB_PHASE_LABEL[ph] + '"></span>';
     }).join("");
@@ -2765,18 +2767,48 @@
       if (p.journal) meta.push(esc(p.journal));
       if (p.pub_date) meta.push(esc(String(p.pub_date).slice(0, 4)));
       var cnt = p.annotations_count || 0;
-      /* P29 行尾「解析」按钮：仅未解析/失败态出现（失败态文案「重试解析」）；
-       * 点击发起 collect-parse（库内 403 已是现状兜底）并跳「解析中」tab 看阶段条 */
-      var parseBtn = (st === "none" || st === "failed")
-        ? '<button class="btn btn-ghost btn-sm lib-parse" type="button" data-lib-parse="' + p.id + '">' +
-          '<i data-ic="refresh"></i>' + (st === "failed" ? "重试解析" : "解析") + "</button>"
-        : "";
+      /* P30 全文与解析解耦：行尾按钮按「全文状态 × 解析状态」演化（五态）——
+       * ① 无文件 → [获取全文][上传]（获取失败过 → [重试获取][上传] + 原因小字）；
+       * ② 有文件未解析 → [解析][替换文件]（「需重新解析」标志 → ⟳ 高亮主按钮）；
+       * ③ 解析中/排队 → 五段阶段条（不变）；④ failed → [重试解析][替换文件]；
+       * ⑤ done → 照旧（无操作钮）。上传/替换走同一文件选择弹窗。 */
+      var ft = p.fulltext_status || "none";
+      var fterr = p.fulltext_error || "";
+      var parseBtn = "";
+      var ftErrHtml = "";
+      var busy = st === "pending" || st === "running";
+      if (ft === "none") {
+        parseBtn =
+          '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id + '">' +
+            '<i data-ic="dl"></i>' + (fterr ? "重试获取" : "获取全文") + "</button>" +
+          '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
+            '<i data-ic="doc"></i>上传</button>';
+        if (fterr) {
+          ftErrHtml = '<div class="lib-ft-err" title="获取失败：' + esc(fterr) +
+            '（可重试获取，或上传自有 PDF）">' + esc(fterr) + "</div>";
+        }
+      } else if (!busy && st === "none") {
+        parseBtn = p.needs_reparse
+          ? '<button class="btn btn-primary btn-sm lib-act lib-reparse" type="button" data-lib-parse="' + p.id + '">' +
+            '<i data-ic="refresh"></i>⟳ 重新解析</button>'
+          : '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-parse="' + p.id + '">' +
+            '<i data-ic="refresh"></i>解析</button>';
+        parseBtn += '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
+          '<i data-ic="doc"></i>替换文件</button>';
+      } else if (st === "failed") {
+        parseBtn = '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-parse="' + p.id + '">' +
+          '<i data-ic="refresh"></i>重试解析</button>' +
+          '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
+          '<i data-ic="doc"></i>替换文件</button>';
+      }
+      /* 解析中/排队（busy）与 done：无行尾动作钮（阶段条照旧 / done 照旧） */
       return '<div class="lib-item' + (libraryState.currentId === p.id ? " is-active" : "") +
           '" data-lib-open="' + p.id + '" role="button" tabindex="0">' +
         '<div class="lib-item-main">' +
           '<div class="lib-item-title">' + esc(p.title) + "</div>" +
           (meta.length ? '<div class="lib-item-meta muted">' + meta.join(" · ") + "</div>" : "") +
           (showPhase ? _phaseBarHtml(p) : "") +
+          ftErrHtml +
         "</div>" +
         '<div class="lib-item-side">' +
           '<span class="lib-st lib-st-' + esc(st) + '">' + _libStText(st) + "</span>" +
@@ -2907,6 +2939,88 @@
       btn.disabled = false;
       toast(e.detail || "加入失败");
     });
+  }
+
+  /* ================= P30：上传/替换全文弹窗（独立动作二，付费墙文献的正解）
+   * 「上传」（无文件态）与「替换文件」（有文件态）共用同一文件选择弹窗：
+   * FileReader 读 bytes → base64 → POST /papers/{id}/fulltext（≤30MB，后端魔数校验）。
+   * 替换已解析（done）/解析中的文件 → 后端四清解析产物 + 「需重新解析」标志，
+   * 列表行尾出现高亮「⟳ 重新解析」，用户一点即重跑。 */
+  var _fulltextPid = 0;
+  function openFulltextModal(pid) {
+    closeFulltextModal();
+    _fulltextPid = pid;
+    var mask = document.createElement("div");
+    mask.className = "modal-mask lib-del-mask";
+    mask.setAttribute("data-lib-ftmask", "");
+    mask.innerHTML = '' +
+      '<div class="card lib-import-dialog" role="dialog" aria-label="上传全文">' +
+        '<div class="lib-del-title">上传全文 PDF</div>' +
+        '<div class="imp-pane" data-import-pane="pdf">' +
+          '<label class="imp-field"><span class="muted">选择 PDF 文件（≤30MB；替换已解析文件后将置为「需重新解析」）</span>' +
+          '<input type="file" accept="application/pdf,.pdf" data-lib-ftfile></label>' +
+          '<div class="imp-filename muted" data-lib-ftname>未选择文件</div>' +
+        "</div>" +
+        '<div class="imp-err hide" data-lib-fterr></div>' +
+        '<div class="lib-del-ops">' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-lib-ftclose>取消</button>' +
+          '<button class="btn btn-primary btn-sm" type="button" data-lib-ftsubmit>上传</button>' +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(mask);
+    var fileInput = mask.querySelector("[data-lib-ftfile]");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        var f = fileInput.files && fileInput.files[0];
+        var lbl = mask.querySelector("[data-lib-ftname]");
+        if (lbl) lbl.textContent = f ? (f.name + "（" + Math.ceil(f.size / 1024) + " KB）") : "未选择文件";
+      });
+    }
+  }
+  function closeFulltextModal() {
+    qsa("[data-lib-ftmask]").forEach(function (m) { m.remove(); });
+    _fulltextPid = 0;
+  }
+  function submitFulltext(btn) {
+    var mask = qs("[data-lib-ftmask]");
+    if (!mask || !_fulltextPid) return;
+    var err = mask.querySelector("[data-lib-fterr]");
+    if (err) { err.textContent = ""; err.classList.add("hide"); }
+    var fileInput = mask.querySelector("[data-lib-ftfile]");
+    var file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) {
+      if (err) { err.textContent = "请先选择一个 PDF 文件"; err.classList.remove("hide"); }
+      return;
+    }
+    if (file.size > IMPORT_MAX_BYTES) {
+      if (err) { err.textContent = "PDF 超过 30MB 上限，请压缩后重新上传"; err.classList.remove("hide"); }
+      return;
+    }
+    btn.disabled = true;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var dataUrl = String(reader.result || "");
+      var b64 = dataUrl.indexOf(",") >= 0 ? dataUrl.split(",")[1] : dataUrl;
+      API.post("/papers/" + _fulltextPid + "/fulltext", { pdf_base64: b64 })
+        .then(function (r) {
+          closeFulltextModal();
+          toast(r && r.needs_reparse
+            ? "已替换全文：解析产物已重置，点「⟳ 重新解析」重跑"
+            : "全文已上传，可发起解析");
+          loadLibrary();
+        })
+        .catch(function (e2) {
+          btn.disabled = false;
+          var msg = (e2 && e2.detail) || "上传失败";
+          if (err) { err.textContent = msg; err.classList.remove("hide"); }
+          toast(msg);
+        });
+    };
+    reader.onerror = function () {
+      btn.disabled = false;
+      if (err) { err.textContent = "文件读取失败，请重试"; err.classList.remove("hide"); }
+    };
+    reader.readAsDataURL(file);
   }
 
   /* ================= 轮②：导入文献弹窗（P25：PDF 上传 / arXiv ID / DOI） =================
@@ -4856,6 +4970,11 @@
     /* 轮③ P27：我的文献设置小项（齿轮开弹层；开关用 change 委托见下） */
     if (el.closest("[data-lib-settings]")) { toggleLibSettings(); return; }
     if (el.closest("[data-lib-importclose]")) { closeImportModal(); return; }
+    /* P30：上传/替换全文弹窗 */
+    if (el.closest("[data-lib-ftclose]")) { closeFulltextModal(); return; }
+    var ftSubmit = el.closest("[data-lib-ftsubmit]");
+    if (ftSubmit) { submitFulltext(ftSubmit); return; }
+    if (el.hasAttribute && el.hasAttribute("data-lib-ftmask")) { closeFulltextModal(); return; }
     var impMode = el.closest("[data-import-mode]");
     if (impMode) { switchImportMode(impMode.getAttribute("data-import-mode")); return; }
     var impSubmit = el.closest("[data-import-submit]");
@@ -4886,7 +5005,7 @@
       libConfirmDelete(parseInt(libDelConfirm.getAttribute("data-lib-delconfirm"), 10));
       return;
     }
-    /* P29：行尾「解析」按钮（未解析/失败态）→ collect-parse 发起并跳「解析中」tab */
+    /* P29→P30：行尾「解析/重新解析」按钮 → collect-parse 发起并跳「解析中」tab */
     var libParse = el.closest("[data-lib-parse]");
     if (libParse) {
       var parsePid = parseInt(libParse.getAttribute("data-lib-parse"), 10);
@@ -4904,15 +5023,40 @@
         });
       }).catch(function (e2) {
         libParse.disabled = false;
+        loadLibrary();  // P30：409「请先获取或上传全文」等态刷新可见
         toast((e2 && e2.detail) || "发起解析失败");
       });
       return;
     }
+    /* P30 独立动作一：行尾「获取全文/重试获取」→ fetch-fulltext（失败原因落库可见） */
+    var libFetch = el.closest("[data-lib-fetch]");
+    if (libFetch) {
+      var fetchPid = parseInt(libFetch.getAttribute("data-lib-fetch"), 10);
+      libFetch.disabled = true;
+      API.post("/papers/" + fetchPid + "/fetch-fulltext", {}).then(function (r) {
+        if (r && r.ok) {
+          toast(r.already ? "全文已存在，无需重复获取" : "全文获取成功，可发起解析");
+        } else {
+          toast("获取全文失败：" + ((r && r.reason) || "未知原因"));
+        }
+        loadLibrary();
+      }).catch(function (e2) {
+        toast((e2 && e2.detail) || "获取全文失败");
+        loadLibrary();
+      });
+      return;
+    }
+    /* P30 独立动作二：行尾「上传/替换文件」→ 统一文件选择弹窗 */
+    var libUpload = el.closest("[data-lib-upload]");
+    if (libUpload) {
+      openFulltextModal(parseInt(libUpload.getAttribute("data-lib-upload"), 10));
+      return;
+    }
     /* P29：整页阅读视图「← 返回」→ 回列表并恢复滚动位置 */
     if (el.closest("[data-lib-back]")) { libBackToList(); return; }
-    /* 我的文献：点列表项打开阅读视图（点在删除/解析钮上时不触发）；未解析完成给提示 */
+    /* 我的文献：点列表项打开阅读视图（点在行尾动作钮/删除钮上时不触发） */
     var libOpen = el.closest("[data-lib-open]");
-    if (libOpen && !el.closest(".lib-del") && !el.closest(".lib-parse")) {
+    if (libOpen && !el.closest(".lib-del") && !el.closest(".lib-act")) {
       var openPid = parseInt(libOpen.getAttribute("data-lib-open"), 10);
       var openItem = null;
       _libVisibleItems().forEach(function (p) { if (p.id === openPid) openItem = p; });

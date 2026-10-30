@@ -27,6 +27,9 @@ class PaperOut(BaseModel):
     # 轮③（P27）：段落级中英对照翻译状态 none|running|done|failed（未启动/存量 none）
     translate_status: str = "none"
     translate_error: str | None = None  # 翻译失败原因（failed 时有值，可重试）
+    # ── 全文与解析解耦（P30）：全文文件就绪度，独立于解析状态机 ──
+    fulltext_status: str = "none"  # none（无文件）| oa（获取成功）| uploaded（用户上传/替换）
+    fulltext_error: str | None = None  # 获取全文失败原因（可见可重试；成功/上传即清）
     # ── 批注式笔记（P8）：「我的笔记」列表条目统计 ──
     annotations_count: int = 0  # 本人批注条数（不含旧全文笔记）
     last_annotation_at: dt.datetime | None = None  # 最近批注时间（无批注 null）
@@ -50,6 +53,8 @@ class LibraryItemOut(PaperOut):
     added_via: str = "crawl"  # crawl | import（轮②导入）
     added_at: dt.datetime | None = None  # 加入我的文献时间
     parse_error: str | None = None  # 轮②：失败原因随列表可见（解析中 tab 展示）
+    # P30：替换文件且此前已解析/解析中 → true（后端显式标志，前端「⟳ 重新解析」高亮）
+    needs_reparse: bool = False
 
 
 class LibraryActionOut(BaseModel):
@@ -78,6 +83,36 @@ class LibraryImportOut(BaseModel):
 
 class NoteRequest(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
+
+
+# ── P30：全文与解析解耦（获取全文 / 上传全文两个独立动作）──────
+class FulltextUploadRequest(BaseModel):
+    """上传/替换全文请求：body base64 PDF（≤30MB，后端解码 + 魔数校验）。"""
+
+    pdf_base64: str = Field(min_length=1, max_length=80_000_000)
+
+
+class FulltextFetchOut(BaseModel):
+    """POST /papers/{id}/fetch-fulltext 回执（失败也 200，reason 可见可重试）。"""
+
+    ok: bool  # true = 全文已在 COS（本次下载成功 / 本就已存在）
+    already: bool = False  # true = 幂等直返（此前已有文件，未重新下载）
+    source: str | None = None  # 本次下载来源 direct|unpaywall（already 时 null）
+    reason: str | None = None  # 失败原因（ok=false 时有值，同 fulltext_error）
+    fulltext_status: str = "none"  # 动作后全文状态
+    fulltext_error: str | None = None
+
+
+class FulltextUploadOut(BaseModel):
+    """POST /papers/{id}/fulltext 回执：最新全文 + 解析状态（替换触发「需重新解析」）。"""
+
+    ok: bool
+    needs_reparse: bool = False  # true = 已四清解析产物并置「需重新解析」标志
+    fulltext_status: str = "uploaded"
+    fulltext_error: str | None = None
+    parse_status: str = "none"  # 动作后解析状态（done 态被替换 → none）
+    parse_phase: str | None = None
+    parse_error: str | None = None
 
 
 class ExplainResponse(BaseModel):

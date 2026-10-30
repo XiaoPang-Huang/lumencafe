@@ -360,13 +360,16 @@ async def test_import_identifier_unrecognized_422(client):
 
 # ── 解析入口收紧（P28）：collect-parse 仅库内 ────────────────
 async def test_collect_parse_requires_library_membership(client, monkeypatch):
-    """非库内 → 403；加入后 → 200。解析入口收紧（拍板 P28）。"""
+    """非库内 → 403；加入后 → 200。解析入口收紧（拍板 P28）+ P30 全文前置已就绪。"""
     await _add_mineru_key()
     pid = await _make_owned_paper("crawl", "https://oa.example/p28.pdf")
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/p28.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
-    _patch_http(monkeypatch, fake, SpyStorage())
+    fake = FakeHttpClient(_mineru_routes())
+    spy = SpyStorage()
+    spy.seed_pdf(pid)  # P30：解析只读 COS，全文由获取/上传独立动作就绪
+    _patch_http(monkeypatch, fake, spy)
+    import app.routers.papers as papers_router
+
+    monkeypatch.setattr(papers_router, "get_storage", lambda db: _async(spy))
     headers = await login(client)
 
     resp = await client.post(f"/papers/{pid}/collect-parse", headers=headers)
@@ -401,12 +404,12 @@ async def _make_owned_paper(pmid: str, url: str) -> int:
 # ── 解析进度（P26）：parse_phase + /library/parsing ─────────
 async def test_parse_phase_written_and_parsing_list(client, monkeypatch):
     """状态机写 parse_phase（失败保留在出错段）；/library/parsing 返回非 done 含 phase。"""
-    # MinerU 未配置：失败停在 upload 段（PDF 已存、MinerU 凭证缺失）
+    # MinerU 未配置：失败停在 upload 段（全文已在 COS、MinerU 凭证缺失）
     pid_failed = await _make_owned_paper("phase-fail", "https://oa.example/f.pdf")
-    fake = FakeHttpClient({
-        ("GET", "https://oa.example/f.pdf"): _FakeResp(content=_FAKE_PDF),
-    })
-    _patch_http(monkeypatch, fake, SpyStorage())
+    fake = FakeHttpClient({})
+    spy = SpyStorage()
+    spy.seed_pdf(pid_failed)  # P30：全文就绪（获取/上传独立动作），解析只读 COS
+    _patch_http(monkeypatch, fake, spy)
     async with SessionLocal() as db:
         result = await paper_parse.run_parse_pipeline(db, pid_failed, 1)
     assert result["parse_status"] == "failed"

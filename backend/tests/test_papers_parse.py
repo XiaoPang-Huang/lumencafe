@@ -1,20 +1,22 @@
-"""论文域增强③测试（P16/P20）：收藏并解析全链路。
+"""论文域增强③测试（P16/P20；P30 全文与解析解耦改造）。
 
-- 下载双通道：paper.url 直链成功（direct）；直链 404 → Unpaywall 补链（unpaywall）；
-  直链返回 HTML（非 PDF 魔数）→ 补链；双通道皆失败 → failed + 原因可见；
-- MinerU 三端点全流程（mock）：file-urls/batch → PUT 直传 → extract/task → 轮询 done
-  → 下载 zip → 拆存断言（zip 构造 full.md/content_list.json/_meta.json）；
-- COS key 断言：SpyStorage 记录全部 put，app 恒 "papers"、key 恒 papers/ 前缀内部结构
-  （pdfs/{yyyy}/{mm}/{id}.pdf、parsed/{id}/full.md|content_list.json|meta.json，P20）；
+P30 后链路语义：获取全文（fetch-fulltext 独立动作，见 test_papers_fulltext.py）
+与解析（collect-parse 只读 COS 已存文件，**绝不再下载**）解耦——本文件聚焦解析管
+线与状态机，SpyStorage 预置全文文件模拟「获取/上传已完成」。
+
+- 解析读 COS 不下载：collect-parse 全链 done；download_oa_pdf 零调用（spy）；
+- MinerU 三端点全流程（mock）：file-urls/batch → PUT 直传 → extract-results/batch
+  → 下载 zip → 拆存断言（P20 key 结构）；
+- COS key 断言：SpyStorage 记录全部 put，app 恒 "papers"、key 恒 P20 内部结构
+  （pdfs/{yyyy}/{mm}/{id}.pdf、parsed/{id}/full.md|content_list.json|meta.json）；
 - 状态机：none→done；done 幂等不重复跑；running/pending 拒重入；failed 可重跑；
-- 接口：collect-parse（登录 app:papers；自动收藏幂等；running 409；done 直返）、
-  parse-status 轮询、/papers/parsed 我的笔记列表（收藏 ∩ done）；
+- 接口：collect-parse（登录 app:papers；自动收藏幂等；running 409；done 直返；
+  无全文 409「请先获取或上传全文」）、parse-status 轮询、/papers/parsed 我的笔记列表；
 - pipeline：未配置 HATCHET_CLIENT_TOKEN 时 push_parse_event 返回 False（进程内兜底）。
 """
 
 import io
 import json
-import re
 import zipfile
 
 import httpx
@@ -124,22 +126,43 @@ class FakeHttpClient:
 
 
 class SpyStorage(Storage):
-    """记录 put 调用的存储替身：app 前缀硬隔离断言（P11）+ P20 key 结构断言。"""
+    """内存存储替身：put 落 files 字典；记录全部 put/get/delete 供断言。
 
-    def __init__(self) -> None:
+    P30 起解析管线读 COS（list 定位 + get 取文件），本替身同时服务
+    「全文已就绪」前置与「解析不下载」断言。
+    """
+
+    def __init__(self, files: dict[str, bytes] | None = None) -> None:
+        self.files: dict[str, bytes] = dict(files or {})
         self.puts: list[tuple[str, str, bytes]] = []
+        self.gets: list[tuple[str, str]] = []
+        self.deletes: list[tuple[str, str]] = []
 
     async def put(self, app: str, key: str, data: bytes) -> None:
         self.puts.append((app, key, bytes(data)))
+        self.files[key] = bytes(data)
 
-    async def get(self, app: str, key: str) -> bytes:  # pragma: no cover - 本批不测
-        raise FileNotFoundError(key)
+    async def get(self, app: str, key: str) -> bytes:
+        self.gets.append((app, key))
+        if key not in self.files:
+            raise FileNotFoundError(key)
+        return self.files[key]
 
-    async def delete(self, app: str, key: str) -> None:  # pragma: no cover
-        raise FileNotFoundError(key)
+    async def delete(self, app: str, key: str) -> None:
+        self.deletes.append((app, key))
+        self.files.pop(key, None)
 
-    async def exists(self, app: str, key: str) -> bool:  # pragma: no cover
-        return False
+    async def exists(self, app: str, key: str) -> bool:
+        return key in self.files
+
+    async def list(self, app: str, prefix: str) -> list[str]:
+        return sorted(k for k in self.files if k.startswith(prefix))
+
+    def seed_pdf(self, paper_id: int, data: bytes = _FAKE_PDF) -> str:
+        """预置已存全文（模拟获取/上传动作已完成），key 与 store_pdf 同口径（当前月）。"""
+        key = paper_parse.pdf_object_key(paper_id)
+        self.files[key] = data
+        return key
 
 
 def _mineru_routes(extra: dict | None = None) -> dict:
@@ -218,17 +241,29 @@ async def _paper_status(pid: int) -> tuple[str, str | None]:
         return row.parse_status, row.parse_error
 
 
-async def test_download_direct_and_full_pipeline_keys(client, monkeypatch):
-    """直链下载（direct）→ 全链 done；COS 拆存 key 断言（SpyStorage，P20 结构）。"""
+def _patch_storage(monkeypatch, spy: SpyStorage) -> None:
+    """路由层与管线层 get_storage 同源替换（collect-parse 前置校验在路由层读存储）。"""
+    import app.routers.papers as papers_router
+
+    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
+    monkeypatch.setattr(papers_router, "get_storage", lambda db: _async(spy))
+
+
+async def test_collect_parse_reads_cos_without_download(client, monkeypatch):
+    """P30：解析只读 COS 已存全文——done；download_oa_pdf 零调用（魔数替换为抛错）。"""
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/paper.pdf")
-    await _add_to_library(pid)  # 轮② P28：解析入口收紧，先入库
+    await _add_to_library(pid)
     spy = SpyStorage()
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    pdf_key = spy.seed_pdf(pid)  # 全文已由「获取/上传」独立动作就绪
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
+    _patch_storage(monkeypatch, spy)
+
+    def _boom(db, paper):  # P30 断言核心：解析链路绝不再走网络下载
+        raise AssertionError("解析管线不应调用 download_oa_pdf（全文与解析已解耦）")
+
+    monkeypatch.setattr(paper_parse, "download_oa_pdf", _boom)
 
     headers = await login(client)
     resp = await client.post(f"/papers/{pid}/collect-parse", headers=headers)
@@ -238,18 +273,19 @@ async def test_download_direct_and_full_pipeline_keys(client, monkeypatch):
     assert body["saved"] is True  # 自动收藏回执
     assert body["parsed_at"] is not None
 
-    # P11：app 恒 papers；P20：PDF 年月分层 + 解析产物三件套
-    assert len(spy.puts) == 4
+    # 全文从 COS 读取（而非 put 重存）：get 命中预置 key，PDF 不再写存储
+    assert spy.gets == [("papers", pdf_key)]
+    pdf_puts = [k for _, k, _ in spy.puts if k.startswith("pdfs/")]
+    assert pdf_puts == [], spy.puts
+    # P11：app 恒 papers；P20：解析产物三件套
     assert all(app == "papers" for app, _, _ in spy.puts)
     keys = [key for _, key, _ in spy.puts]
-    assert re.fullmatch(rf"pdfs/\d{{4}}/\d{{2}}/{pid}\.pdf", keys[0]), keys
-    assert keys[1:] == [
+    assert keys == [
         f"parsed/{pid}/full.md",
         f"parsed/{pid}/content_list.json",
         f"parsed/{pid}/meta.json",
     ]
-    assert spy.puts[0][2].startswith(b"%PDF-")  # 原始 PDF 原样落存储
-    meta = json.loads(spy.puts[3][2])
+    meta = json.loads(spy.puts[2][2])
     assert meta["model_version"] == "vlm"
     assert meta["page_count"] == 2  # _meta.json page_size
     assert meta["paper_id"] == pid
@@ -265,106 +301,40 @@ async def _async(value):
     return value
 
 
-async def test_download_falls_back_to_unpaywall_when_direct_404(client, monkeypatch):
-    """直链 404 → Unpaywall 补链成功（source=unpaywall），全链仍 done。"""
-    await _add_mineru_key()
-    pid = await _make_paper(url="https://paywall.example/a.pdf", doi="10.1000/parse.2026")
-    spy = SpyStorage()
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://paywall.example/a.pdf"): _FakeResp(status_code=404),
-        ("GET", "https://api.unpaywall.org/v2/10.1000/parse.2026"): _FakeResp(
-            json_data={"best_oa_location": {"url_for_pdf": "https://oa.example/u.pdf"}}
-        ),
-        ("GET", "https://oa.example/u.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
-    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
-
-    async with SessionLocal() as db:
-        result = await paper_parse.run_parse_pipeline(db, pid, 1)
-    assert result["parse_status"] == "done"
-    assert result["pdf_source"] == "unpaywall"
-    assert any("unpaywall.org" in u for m, u in fake.calls if m == "GET")
-
-
-async def test_download_falls_back_when_direct_returns_html(client, monkeypatch):
-    """直链返回 HTML（非 PDF 魔数）→ 触发补链；魔数校验挡住假全文。"""
-    await _add_mineru_key()
-    pid = await _make_paper(
-        url="https://arxiv.org/abs/2601.99999", doi="10.1000/html.2026", source="arxiv"
-    )
-    spy = SpyStorage()
-    fake = FakeHttpClient(_mineru_routes({
-        # arXiv abs 页自动改 pdf 直链：/abs/ → /pdf/
-        ("GET", "https://arxiv.org/pdf/2601.99999"): _FakeResp(content=_FAKE_HTML),
-        ("GET", "https://api.unpaywall.org/v2/10.1000/html.2026"): _FakeResp(
-            json_data={"first_oa_location": {"url": "https://oa.example/h.pdf"}}
-        ),
-        ("GET", "https://oa.example/h.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
-    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
-
-    async with SessionLocal() as db:
-        result = await paper_parse.run_parse_pipeline(db, pid, 1)
-    assert result["parse_status"] == "done"
-    assert any(u == "https://arxiv.org/pdf/2601.99999" for m, u in fake.calls)
-
-
-async def test_download_both_channels_fail_marks_failed(client, monkeypatch):
-    """双通道皆失败：状态 failed + parse_error 可见（前端错误区/手动下载指引）。"""
-    await _add_mineru_key()
-    pid = await _make_paper(url="https://dead.example/x.pdf", doi="10.1000/nofull.2026")
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://dead.example/x.pdf"): _FakeResp(status_code=404),
-        ("GET", "https://api.unpaywall.org/v2/10.1000/nofull.2026"): _FakeResp(
-            json_data={"best_oa_location": None}
-        ),
-    }))
-    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-
-    async with SessionLocal() as db:
-        result = await paper_parse.run_parse_pipeline(db, pid, 1)
-    assert result["parse_status"] == "failed"
-    assert "Unpaywall" in (result["parse_error"] or "")
-    status, error = await _paper_status(pid)
-    assert status == "failed" and error
-
-
 async def test_mineru_missing_key_fails_loudly(client, monkeypatch):
     """service_keys 无 mineru 行：MinerUConfigError 落 failed，原因引导配置（不静默）。"""
     pid = await _make_paper(url="https://oa.example/paper.pdf")
-    fake = FakeHttpClient({("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF)})
-    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
     spy = SpyStorage()
+    spy.seed_pdf(pid)  # P30：全文已就绪，失败只发生在解析配置
     monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
 
     async with SessionLocal() as db:
         result = await paper_parse.run_parse_pipeline(db, pid, 1)
     assert result["parse_status"] == "failed"
     assert "MinerU 未配置" in (result["parse_error"] or "")
-    # PDF 已存（下载成功），失败发生在解析配置——重跑不重下属后续优化，本期允许
-    assert len(spy.puts) == 1 and spy.puts[0][1].endswith(".pdf")
+    # 全文已在 COS（非解析写入），失败发生在解析配置——解析产物未产生
+    assert len(spy.puts) == 0
 
 
 async def test_state_machine_done_idempotent_and_running_rejected(client, monkeypatch):
-    """done 幂等不重复跑（下载不再触发）；pending/running 拒重入（ParseAlreadyRunning）。"""
+    """done 幂等不重复跑（COS 读不再触发）；pending/running 拒重入。"""
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/paper.pdf")
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    spy = SpyStorage()
+    spy.seed_pdf(pid)
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(SpyStorage()))
+    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(spy))
 
     async with SessionLocal() as db:
         first = await paper_parse.run_parse_pipeline(db, pid, 1)
         assert first["parse_status"] == "done"
-        download_calls = len([u for m, u in fake.calls if "oa.example" in u])
+        assert first["pdf_source"] == "cos"  # P30：来源 = COS 已存文件
 
+        get_calls = len(spy.gets)
         second = await paper_parse.run_parse_pipeline(db, pid, 1)
         assert second["parse_status"] == "done"
-        assert len([u for m, u in fake.calls if "oa.example" in u]) == download_calls
+        assert len(spy.gets) == get_calls  # done 幂等直返，不重复读
 
         paper = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
         paper.parse_status = "running"
@@ -377,22 +347,22 @@ async def test_collect_parse_api_idempotency_and_409(client, monkeypatch):
     """接口幂等：done 直返 200 不重跑；running 409；failed 可重跑；自动收藏幂等。"""
     await _add_mineru_key()
     pid = await _make_paper(url="https://oa.example/paper.pdf")
-    await _add_to_library(pid)  # 轮② P28：解析入口收紧，先入库
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/paper.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    await _add_to_library(pid)
+    spy = SpyStorage()
+    spy.seed_pdf(pid)
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(SpyStorage()))
+    _patch_storage(monkeypatch, spy)
     headers = await login(client)
 
     r1 = await client.post(f"/papers/{pid}/collect-parse", headers=headers)
     assert r1.status_code == 200 and r1.json()["parse_status"] == "done"
-    oa_calls = len([u for m, u in fake.calls if "oa.example" in u])
+    get_calls = len(spy.gets)
 
-    # done 再点：不重跑（下载零新增），仍 200
+    # done 再点：不重跑（COS 读零新增），仍 200
     r2 = await client.post(f"/papers/{pid}/collect-parse", headers=headers)
     assert r2.status_code == 200 and r2.json()["parse_status"] == "done"
-    assert len([u for m, u in fake.calls if "oa.example" in u]) == oa_calls
+    assert len(spy.gets) == get_calls
 
     # 自动收藏幂等：两次点按钮后收藏仍恰好一行
     async with SessionLocal() as db:
@@ -431,12 +401,12 @@ async def test_parsed_notes_list_and_detail_fields(client, monkeypatch):
     await _add_mineru_key()
     pid_done = await _make_paper(url="https://oa.example/a.pdf")
     pid_none = await _make_paper(url="https://oa.example/b.pdf")
-    await _add_to_library(pid_done)  # 轮② P28：解析入口收紧，先入库
-    fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://oa.example/a.pdf"): _FakeResp(content=_FAKE_PDF),
-    }))
+    await _add_to_library(pid_done)
+    spy = SpyStorage()
+    spy.seed_pdf(pid_done)
+    fake = FakeHttpClient(_mineru_routes())
     monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
-    monkeypatch.setattr(paper_parse, "get_storage", lambda db: _async(SpyStorage()))
+    _patch_storage(monkeypatch, spy)
     headers = await login(client)
 
     await client.post(f"/papers/{pid_done}/collect-parse", headers=headers)

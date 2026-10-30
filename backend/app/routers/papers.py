@@ -33,6 +33,12 @@
   跨论文）；GET /papers/annotations/{aid}/backlinks 反向链接（查询派生，边单写）；
   /papers/parsed 条目带 annotations_count/last_annotation_at；旧 /note upsert 保留
   （note_kind='note' 每篇至多一条的部分唯一索引约束不变）。
+- 论文域 P30（全文与解析解耦，Alembic 0014）：papers 加 fulltext_status(none|oa|
+  uploaded)/fulltext_error/reparse_pending 三列；三独立动作——POST /{pid}/fetch-fulltext
+  （获取：直链→Unpaywall→COS，失败原因可见可重试，幂等 already）、POST /{pid}/fulltext
+  （上传/替换：≤30MB base64，done/解析中触发四清+「需重新解析」标志）、collect-parse
+  去下载步（前置校验 COS 全文存在，否则 409；只读 COS → MinerU）；library 与
+  parsing 列表带 fulltext_status/fulltext_error/needs_reparse。
 """
 import json
 import logging
@@ -67,6 +73,9 @@ from app.schemas.papers import (
     DigestItemOut,
     DigestOut,
     ExplainResponse,
+    FulltextFetchOut,
+    FulltextUploadOut,
+    FulltextUploadRequest,
     LibraryActionOut,
     LibraryImportOut,
     LibraryImportRequest,
@@ -174,6 +183,8 @@ def _out(p: Paper, saved: bool = False) -> PaperOut:
         parse_phase=p.parse_phase,
         translate_status=p.translate_status or "none",
         translate_error=p.translate_error,
+        fulltext_status=p.fulltext_status or "none",
+        fulltext_error=p.fulltext_error,
     )
 
 
@@ -691,6 +702,7 @@ async def list_library(
         )
         item.annotations_count = cnt
         item.parse_error = p.parse_error  # 失败原因随列表可见（解析中 tab 展示）
+        item.needs_reparse = bool(p.reparse_pending)  # P30：「需重新解析」显式标志
         out.append(item)
     return out
 
@@ -717,6 +729,7 @@ async def list_library_parsing(
             added_at=lib.created_at,
         )
         item.parse_error = p.parse_error
+        item.needs_reparse = bool(p.reparse_pending)  # P30：替换文件后的重解析提示
         out.append(item)
     return out
 
@@ -818,32 +831,85 @@ async def parse_status(
     return await _parse_status_out(db, user.id, pid)
 
 
+@router.post("/{pid}/fetch-fulltext", response_model=FulltextFetchOut)
+async def fetch_fulltext(
+    pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
+):
+    """获取全文（拍板 P30 独立动作一）：直链 → Unpaywall 补链 → 存 COS。
+
+    - 归属校验（404）+ 库内校验（403，P28 收紧口径）；
+    - 幂等：COS 已有全文文件 → ``{ok: true, already: true}`` 不再下载；
+    - 成功 → fulltext_status=oa、错误清；失败 → 保持 none + fulltext_error 记原因
+      （截断 500），200 返回 ``{ok: false, reason}``（前端失败态可见可重试）；
+    - 不触发解析——解析是独立动作（POST /{pid}/collect-parse）。
+    """
+    paper = await _get_mine(db, user.id, pid)
+    await _ensure_library(db, user.id, pid)
+    storage = await get_storage(db)
+    result = await paper_parse.fetch_fulltext(db, paper, storage)
+    return FulltextFetchOut(
+        **result,
+        fulltext_status=paper.fulltext_status or "none",
+        fulltext_error=paper.fulltext_error,
+    )
+
+
+@router.post("/{pid}/fulltext", response_model=FulltextUploadOut)
+async def upload_fulltext(
+    pid: int,
+    body: FulltextUploadRequest,
+    user: User = Depends(_reader),
+    db: AsyncSession = Depends(get_db),
+):
+    """上传/替换全文（拍板 P30 独立动作二，付费墙文献的正解）。
+
+    - 归属校验（404）+ 库内校验（403，P28 收紧口径）；
+    - body base64 PDF ≤30MB：解码失败/超限/非 PDF 魔数 → 422 不落库；
+    - 存 COS pdfs/（覆盖同名）；此前已解析（done）或解析中（pending/running）
+      → 解析产物四清 + 「需重新解析」标志（COS parsed/ 三件保留不删，重解析覆盖）；
+    - 返回最新全文 + 解析状态（前端「⟳ 重新解析」高亮态数据源）。
+    """
+    paper = await _get_mine(db, user.id, pid)
+    await _ensure_library(db, user.id, pid)
+    try:
+        data = paper_import.decode_pdf_base64(body.pdf_base64)
+        paper_parse._ensure_pdf(data, "上传文件")
+    except (paper_import.ImportInputError, paper_parse.PdfDownloadError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    storage = await get_storage(db)
+    result = await paper_parse.upload_fulltext(db, paper, storage, data)
+    return FulltextUploadOut(
+        **result,
+        fulltext_status=paper.fulltext_status or "none",
+        fulltext_error=paper.fulltext_error,
+        parse_status=paper.parse_status or "none",
+        parse_phase=paper.parse_phase,
+        parse_error=paper.parse_error,
+    )
+
+
 @router.post("/{pid}/collect-parse", response_model=ParseStatusOut)
 async def collect_parse(
     pid: int, user: User = Depends(_reader), db: AsyncSession = Depends(get_db)
 ):
-    """解析入口收紧（拍板 P28）：仅「我的文献」库内可发起解析。
+    """解析（拍板 P30 独立动作三）：**只读已存全文，不含下载**。
 
     - 归属校验（_get_mine，404）后加库内校验：不在本人 library → 403
       （前端详情面板主按钮已改「＋ 我的文献」，解析只在 #/library 内发起）；
+    - 前置校验全文存在（storage ``pdfs/**/{id}.pdf``，否则 409「请先获取或上传全文」）
+      ——获取全文是独立动作，解析绝不再走网络下载；
     - 幂等：done 直返不再跑；pending/running 返回 409（前端「解析中…」禁用按钮）；
-      failed/none 允许重跑（重试 = 再次点按钮）；
+      failed/none 允许重跑（重试 = 再次点按钮，「需重新解析」标志随发起即清）；
     - 触发：Hatchet 事件推送成功 → 异步执行（先置 pending 占坑防并发双跑）；
       引擎未接线/推送失败 → 进程内同步执行（与 crawl-now 同一哲学，即时出结果）。
     """
     paper = await _get_mine(db, user.id, pid)
     # P28：目标论文须在本人 library（否 403）；同时自动入库存工作台语义
-    in_library = (
-        await db.execute(
-            select(PaperLibrary.id).where(
-                PaperLibrary.user_id == user.id, PaperLibrary.paper_id == pid
-            )
-        )
-    ).scalar_one_or_none()
-    if in_library is None:
-        raise HTTPException(
-            status_code=403, detail="该文献不在你的「我的文献」中，请先加入后再发起解析"
-        )
+    await _ensure_library(db, user.id, pid)
+    # P30：解析前置校验——全文文件必须已就绪（获取/上传是独立动作）
+    storage = await get_storage(db)
+    if await paper_parse.find_pdf_key(storage, pid) is None:
+        raise HTTPException(status_code=409, detail="请先获取或上传全文")
     # 自动收藏（幂等；收藏本身持久化，受 P14 清空规则保护）
     await db.execute(
         pg_insert(PaperFavorite)
@@ -864,10 +930,11 @@ async def collect_parse(
     # 置 pending 占坑（第二个并发请求到此即 409，workflow/进程内执行各自置 running）
     paper.parse_status = "pending"
     paper.parse_error = None
+    paper.reparse_pending = False  # P30：解析发起即清「需重新解析」标志
     await db.commit()
 
     if not pipeline.push_parse_event(pid, user.id):
-        # 引擎未接线：进程内同步执行（下载 → COS → MinerU → 状态机），即时返回终态
+        # 引擎未接线：进程内同步执行（读 COS → MinerU → 状态机），即时返回终态
         await paper_parse.run_parse_pipeline(db, pid, user.id)
     return await _parse_status_out(db, user.id, pid)
 

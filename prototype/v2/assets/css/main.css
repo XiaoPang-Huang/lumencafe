@@ -2044,6 +2044,10 @@ h1.pp-rh, h2.pp-rh { border-bottom: 1px solid var(--line); padding-bottom: 6px; 
 .lps-labels span { flex: 1; text-align: center; }
 .lps-labels span.on { color: var(--brand-strong); font-weight: 600; }
 .lps-errtext { margin-top: 6px; font-size: 11.5px; color: var(--danger); line-height: 1.5; word-break: break-all; }
+/* P30 全文与解析解耦：获取全文失败原因小字（悬停见完整原因）+ 重新解析高亮钮 */
+.lib-ft-err { margin-top: 6px; font-size: 11.5px; color: var(--danger); line-height: 1.5;
+  word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lib-reparse { font-weight: 600; }
 
 /* 立即检索进度弹层：右下角悬浮卡片（P26 阶段式进度） */
 .crawl-prog-mask {
