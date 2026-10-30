@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     # 系统状态（底座步 5）：/api/status 返回值；发版时手动 bump
     app_version: str = "1.0.0"
 
+    # 存储顶层环境段（拍板：COS/本地存储键改 {env}/{app}/... 顶层环境隔离）：
+    # 本地开发设 dev（dev/papers/pdfs/...），生产服务器设/默认 prod
+    # （prod/papers/pdfs/...）。同 bucket 内 dev 与 prod 对象零干扰；
+    # 存量桶里 papers/ 前缀的老对象是历史遗留，代码不再读写。
+    storage_env: str = "prod"
+
     # 备份状态卷挂载点（backup 容器写 last_run.json 的共享卷）。
     # compose 中 api 挂载 backup_state → /var/lib/backup-state；留空 = 未挂载，
     # /api/status 的 backup 字段返回 null（未配置灰灯）

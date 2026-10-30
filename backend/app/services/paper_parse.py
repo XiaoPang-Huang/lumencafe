@@ -22,8 +22,8 @@ done 拿 full_zip_url）→ 下载 zip。
 （model_version/页数/解析时间；页数优先取 MinerU _meta.json 的 page_size，
 不可得从 content_list.json 的 page_idx 推断，再不可得留 null）。
 
-存储全经 storage 抽象层 ``"papers"`` app——{app}/ 前缀硬隔离（P11），
-COS key 恒 ``papers/`` 开头。
+存储全经 storage 抽象层 ``"papers"`` app——{env}/{app}/ 前缀硬隔离
+（P11 + 顶层环境隔离：dev/papers/...、prod/papers/...，env 段由存储层注入）。
 """
 import asyncio
 import io
@@ -41,7 +41,7 @@ from app.services import paper_translate
 from app.services.http_client import get_http_client
 from app.services.retry import external_retry
 from app.services.service_keys import get_key
-from app.services.storage import Storage, get_storage
+from app.services.storage import Storage, get_storage, get_storage_env
 
 logger = logging.getLogger("lumencafe.paper_parse")
 
@@ -165,10 +165,11 @@ def pdf_object_key(paper_id: int, now: datetime | None = None) -> str:
 
 
 async def store_pdf(storage: Storage, paper: Paper, data: bytes) -> str:
-    """原始 PDF 落存储（app=papers，最终 key 恒 papers/pdfs/...）。"""
+    """原始 PDF 落存储（app=papers，最终 key 恒 {env}/papers/pdfs/...）。"""
     key = pdf_object_key(paper.id)
     await storage.put("papers", key, data)
-    logger.info("paper_id=%s PDF 已存储：papers/%s（%d bytes）", paper.id, key, len(data))
+    logger.info("paper_id=%s PDF 已存储：%s/papers/%s（%d bytes）",
+                paper.id, get_storage_env(), key, len(data))
     return key
 
 
@@ -324,8 +325,8 @@ async def store_parsed(
         "papers", keys[2], json.dumps(meta_out, ensure_ascii=False, indent=2).encode()
     )
     logger.info(
-        "paper_id=%s 解析产物已存储：papers/%s/*（page_count=%s）",
-        paper_id, prefix, page_count,
+        "paper_id=%s 解析产物已存储：%s/papers/%s/*（page_count=%s）",
+        paper_id, get_storage_env(), prefix, page_count,
     )
     return {"page_count": page_count, "keys": keys}
 
@@ -533,7 +534,8 @@ async def run_parse_pipeline(
                 raise PdfDownloadError("全文文件不存在，请先「获取全文」或「上传全文」")
             pdf_bytes = await storage.get("papers", key)
             pdf_source = "cos"
-            logger.info("paper_id=%s 从 COS 读取全文：papers/%s", paper_id, key)
+            logger.info("paper_id=%s 从 COS 读取全文：%s/papers/%s",
+                        paper_id, get_storage_env(), key)
         else:
             await store_pdf(storage, paper, pdf_bytes)  # 导入路：PDF 落 COS 再解析
             pdf_source = "upload"  # 轮②导入：全文由调用方提供（上传/arXiv/DOI）

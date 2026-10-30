@@ -1,12 +1,15 @@
-"""存储抽象层测试（论文域步 D，拍板 P9/P11）。
+"""存储抽象层测试（论文域步 D，拍板 P9/P11；环境隔离拍板：顶层 dev/prod）。
 
 覆盖：
 - P11 前缀硬约束：app 白名单 [a-z0-9_]+；key 禁止 / 开头、..、空段（papers/x 合法，
   ../x / /x / PAPERS / a//b / a/../b 全部 ValueError）；
+- 顶层环境隔离：键名恒为 {env}/{app}/{key}（env = settings.storage_env，
+  本地 .env=dev、默认 prod）；非法 env 响亮 ValueError；dev/prod 同 app+key
+  落不同对象（COS fake client 与 LocalStorage 双实现都验）；
 - parse_cos_endpoint：标准/内网/尾斜线/无 scheme 解析，畸形 endpoint 抛错；
 - LocalStorage 全操作（tmp_path 落盘）：put/get/exists/delete 闭环 + 不存在语义；
 - CosStorage：凭证缺失/未启用抛 StorageConfigError（不静默降级）；四操作经
-  fake client 验证键名恒为 {app}/{key}，404 → StorageNotFoundError/exists False；
+  fake client 验证键名恒为 {env}/{app}/{key}，404 → StorageNotFoundError/exists False；
 - 工厂 get_storage：双行未配置 → Local；只配置一行 → 抛错；两行齐备 → CosStorage。
 """
 
@@ -45,7 +48,8 @@ ENDPOINT = "https://lumencafe-papers-1234567890.cos.ap-guangzhou.myqcloud.com"
     ],
 )
 def test_object_key_legal(app, key):
-    assert build_object_key(app, key) == f"{app}/{key}"
+    env = storage_module.get_storage_env()
+    assert build_object_key(app, key) == f"{env}/{app}/{key}"
 
 
 @pytest.mark.parametrize(
@@ -67,6 +71,66 @@ def test_object_key_legal(app, key):
 def test_object_key_illegal(app, key):
     with pytest.raises(ValueError):
         build_object_key(app, key)
+
+
+# ---------- 顶层环境隔离（{env}/{app}/{key}） ----------
+
+def test_object_key_env_prefix_follows_settings(monkeypatch):
+    """键名 env 段随 settings.storage_env 切换：dev → dev/papers/...，prod 同理。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_env", "dev")
+    assert build_object_key("papers", "x.pdf") == "dev/papers/x.pdf"
+    monkeypatch.setattr(settings, "storage_env", "prod")
+    assert build_object_key("papers", "x.pdf") == "prod/papers/x.pdf"
+    # 大小写/空白归一（配置容错）
+    monkeypatch.setattr(settings, "storage_env", " Dev ")
+    assert build_object_key("papers", "x.pdf") == "dev/papers/x.pdf"
+
+
+@pytest.mark.parametrize("bad_env", ["DEV/PROD", "../x", "P-1", "pro d"])
+def test_object_key_illegal_env_rejected(monkeypatch, bad_env):
+    """畸形环境段响亮 ValueError——绝不带脏前缀落存储介质。"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_env", bad_env)
+    with pytest.raises(ValueError):
+        build_object_key("papers", "x.pdf")
+
+
+async def test_local_storage_env_isolation(tmp_path: Path, monkeypatch):
+    """dev 与 prod 同 app+key 落盘到不同目录，互不可见。"""
+    from app.config import settings
+
+    store = LocalStorage(root_dir=tmp_path)
+    monkeypatch.setattr(settings, "storage_env", "dev")
+    await store.put("papers", "same.pdf", b"dev-bytes")
+    monkeypatch.setattr(settings, "storage_env", "prod")
+    assert await store.exists("papers", "same.pdf") is False  # prod 视图无此对象
+    await store.put("papers", "same.pdf", b"prod-bytes")
+    assert (tmp_path / "dev" / "papers" / "same.pdf").read_bytes() == b"dev-bytes"
+    assert (tmp_path / "prod" / "papers" / "same.pdf").read_bytes() == b"prod-bytes"
+    # list 也只读本环境段
+    monkeypatch.setattr(settings, "storage_env", "dev")
+    assert await store.list("papers", "") == ["same.pdf"]
+
+
+async def test_cos_env_isolation_in_list_prefix(monkeypatch):
+    """COS list 的 Prefix 带 env 段（prod/papers/pdfs/），返回 key 仍剥 env+app。"""
+    from app.config import settings
+
+    fake = FakeCosClient()
+    store = _make_cos(monkeypatch, fake)
+    monkeypatch.setattr(settings, "storage_env", "prod")
+    await store.put("papers", "pdfs/2026/11/7.pdf", b"x")
+    monkeypatch.setattr(settings, "storage_env", "dev")
+    await store.put("papers", "pdfs/2026/11/7.pdf", b"x")  # 同 key 不同 env 段
+
+    assert ("put", "b", "prod/papers/pdfs/2026/11/7.pdf") in fake.calls
+    assert ("put", "b", "dev/papers/pdfs/2026/11/7.pdf") in fake.calls
+    keys = await store.list("papers", "pdfs/")
+    assert keys == ["pdfs/2026/11/7.pdf"]  # 只列 dev 环境段
+    assert ("list", "b", "dev/papers/pdfs/") in fake.calls
 
 
 # ---------- parse_cos_endpoint ----------
@@ -109,7 +173,9 @@ async def test_local_storage_roundtrip(tmp_path: Path):
 
     await store.put("papers", "2026/a.txt", b"hello")
     assert await store.exists("papers", "2026/a.txt") is True
-    assert (tmp_path / "papers" / "2026" / "a.txt").read_bytes() == b"hello"
+    # 落盘路径含顶层环境段：data/storage/<env>/<app>/<key>
+    assert (tmp_path / storage_module.get_storage_env() / "papers" / "2026" / "a.txt"
+            ).read_bytes() == b"hello"
     assert await store.get("papers", "2026/a.txt") == b"hello"
 
     await store.delete("papers", "2026/a.txt")
@@ -254,9 +320,10 @@ async def test_cos_roundtrip_fake_client(monkeypatch):
     assert await store.exists("papers", "2026/a.pdf") is True
     assert await store.get("papers", "2026/a.pdf") == b"%PDF-fake"
 
-    # 键名恒为 {app}/{key}（P11），bucket 固定
-    assert ("put", "b", "papers/2026/a.pdf") in fake.calls
-    assert ("get", "b", "papers/2026/a.pdf") in fake.calls
+    # 键名恒为 {env}/{app}/{key}（P11 + 顶层环境隔离），bucket 固定
+    env = storage_module.get_storage_env()
+    assert ("put", "b", f"{env}/papers/2026/a.pdf") in fake.calls
+    assert ("get", "b", f"{env}/papers/2026/a.pdf") in fake.calls
 
     await store.delete("papers", "2026/a.pdf")
     assert await store.exists("papers", "2026/a.pdf") is False
@@ -274,7 +341,8 @@ async def test_cos_list_directory_prefix_and_app_isolation(monkeypatch):
 
     keys = await store.list("papers", "pdfs/")
     assert keys == ["pdfs/2026/10/8.pdf", "pdfs/2026/11/7.pdf"]
-    assert ("list", "b", "papers/pdfs/") in fake.calls  # COS Prefix 带尾随 /
+    # COS Prefix 带 env 段 + 尾随 /（prod/papers/pdfs/）
+    assert ("list", "b", f"{storage_module.get_storage_env()}/papers/pdfs/") in fake.calls
 
     all_keys = await store.list("papers", "")
     assert all_keys == ["parsed/7/full.md", "pdfs/2026/10/8.pdf", "pdfs/2026/11/7.pdf"]

@@ -1,16 +1,21 @@
-"""存储抽象层（论文域步 D，拍板 P9/P11）：按应用目录硬隔离的对象存储。
+"""存储抽象层（论文域步 D，拍板 P9/P11；环境隔离拍板：顶层 dev/prod）。
 
-P11 硬性规定（用户定，最高优先级）：bucket/本地目录顶层按应用分文件夹
-（``papers/``、``chat/``……），应用间**绝对隔离**。本模块是全后端唯一的
-对象存储入口：
+P11 硬性规定（用户定，最高优先级）：bucket/本地目录按应用分文件夹
+（``papers/``、``chat/``……），应用间**绝对隔离**。环境隔离拍板在此基础上
+加顶层环境段：最终对象键恒为 ``f"{env}/{app}/{key}"``——本地开发
+``dev/papers/pdfs/...``、生产 ``prod/papers/pdfs/...``，同 bucket 内环境与
+环境、应用与应用双维隔离（存量桶里 ``papers/`` 前缀的老对象是历史遗留，
+代码不再读写）。本模块是全后端唯一的对象存储入口：
 
-- 所有公开方法强制 ``(app, key)`` 双参数，最终对象键恒为 ``f"{app}/{key}"``；
-- ``app`` 名白名单校验（``[a-z0-9_]+``）；``key`` 禁止以 ``/`` 开头、禁止
-  ``..``、禁止空段——违规一律 ``ValueError``，在边界直接拒绝（跨应用路径
-  没有任何机会落到存储介质）；
+- 所有公开方法强制 ``(app, key)`` 双参数，env 段由 ``settings.storage_env``
+  统一注入（默认 ``prod``，本地 ``.env`` 设 ``LUMEN_STORAGE_ENV=dev``）；
+- ``app``/env 名白名单校验（``[a-z0-9_]+``）；``key`` 禁止以 ``/`` 开头、
+  禁止 ``..``、禁止空段——违规一律 ``ValueError``，在边界直接拒绝（跨应用
+  路径没有任何机会落到存储介质）；
 - 两个实现：``CosStorage``（腾讯云 COS，凭证从 service_keys 表读
   ``tencent_cos_id`` / ``tencent_cos_key``，endpoint 拆自 ``tencent_cos_key``
-  行的网址字段）+ ``LocalStorage``（``data/storage/<app>/<key>`` 落盘，开发兜底）；
+  行的网址字段）+ ``LocalStorage``（``data/storage/<env>/<app>/<key>`` 落盘，
+  开发兜底）；
 - 凭证纪律：COS 已配置后**绝不静默降级**——显式构造 ``CosStorage`` 时
   凭证缺失/行未启用抛 ``StorageConfigError``；工厂 ``get_storage(db)`` 的选择
   策略见函数 docstring（只在 COS 完全未配置时回落 Local；配置了一半即报错）。
@@ -18,7 +23,7 @@ P11 硬性规定（用户定，最高优先级）：bucket/本地目录顶层按
 用法::
 
     storage = await get_storage(db)
-    await storage.put("papers", "2026/abc.pdf", pdf_bytes)
+    await storage.put("papers", "2026/abc.pdf", pdf_bytes)  # → dev/papers/2026/abc.pdf
     data = await storage.get("papers", "2026/abc.pdf")
 """
 import re
@@ -29,6 +34,7 @@ from qcloud_cos import CosConfig, CosS3Client
 from qcloud_cos.cos_exception import CosServiceError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.services.service_keys import get_key
 
 # ---- P11 前缀硬约束常量 ----
@@ -65,6 +71,22 @@ def _validate_app(app: str) -> None:
         raise ValueError(f"app 名非法: {app!r}（P11 硬隔离：仅允许小写字母/数字/下划线）")
 
 
+def get_storage_env() -> str:
+    """顶层环境段（拍板 dev/prod 隔离）：读 settings.storage_env 并校验。
+
+    默认 prod；本地开发 .env 设 LUMEN_STORAGE_ENV=dev。env 段与 app 同
+    白名单口径（[a-z0-9_]+ 全匹配）——配置错误要响亮（ValueError），
+    绝不带着畸形前缀写进存储介质。
+    """
+    env = (settings.storage_env or "prod").strip().lower()
+    if _APP_PATTERN.fullmatch(env) is None:
+        raise ValueError(
+            f"存储环境段非法: {settings.storage_env!r}（仅允许小写字母/数字/下划线，"
+            "如 dev / prod；请检查 LUMEN_STORAGE_ENV）"
+        )
+    return env
+
+
 def _validate_key(key: str) -> None:
     """P11 路径校验：key 不得空、不得以 / 开头、不得含 .. 或空段。"""
     if not isinstance(key, str) or not key:
@@ -78,10 +100,10 @@ def _validate_key(key: str) -> None:
 
 
 def build_object_key(app: str, key: str) -> str:
-    """校验并拼出最终对象键 f"{app}/{key}"（P11：唯一合法形态）。"""
+    """校验并拼出最终对象键 f"{env}/{app}/{key}"（P11 + 顶层环境隔离）。"""
     _validate_app(app)
     _validate_key(key)
-    return f"{app}/{key}"
+    return f"{get_storage_env()}/{app}/{key}"
 
 
 def parse_cos_endpoint(base_url: str) -> tuple[str, str]:
@@ -135,7 +157,7 @@ class Storage(ABC):
 
 
 class LocalStorage(Storage):
-    """本地磁盘兜底实现：root/<app>/<key> 落盘（开发环境用）。
+    """本地磁盘兜底实现：root/<env>/<app>/<key> 落盘（开发环境用）。
 
     生产容器不应依赖本实现（无卷持久化），它只是 COS 未配置时的显式兜底，
     让开发链路（如后续 MinerU 解析产物落盘）可以先跑通。
@@ -170,7 +192,7 @@ class LocalStorage(Storage):
 
     async def list(self, app: str, prefix: str) -> list[str]:
         _validate_app(app)
-        base = self._root / app
+        base = self._root / get_storage_env() / app
         if not base.is_dir():
             return []
         needle = prefix or ""
@@ -259,7 +281,7 @@ class CosStorage(Storage):
 
     async def list(self, app: str, prefix: str) -> list[str]:
         _validate_app(app)
-        app_prefix = f"{app}/"
+        app_prefix = f"{get_storage_env()}/{app}/"  # env 段在 app 之上（拍板顶层隔离）
         # prefix 校验沿用 key 规则（空 prefix = 列整个应用目录）；目录型前缀允许
         # 尾随 /（COS Prefix 语义），校验时剥掉——"pdfs/" 是合法前缀不是 key
         if prefix:
@@ -322,5 +344,6 @@ __all__ = [
     "StorageNotFoundError",
     "build_object_key",
     "get_storage",
+    "get_storage_env",
     "parse_cos_endpoint",
 ]
