@@ -1458,7 +1458,7 @@
        P29 改版：导航式重排（参考 Zotero 平板端「库列表→点行进阅读→返回」、Notion
        「全宽列表 vs 阅读」切换）——默认单列全宽文献列表（无选中时不再有大片空白），
        点行进整页阅读视图（左上角「← 返回」回列表并恢复滚动位置）；
-       「解析中」tab 保留五段阶段条。 ---------- */
+       「解析中」tab 保留四段阶段条（P30 解耦：上传→排队→解析中→完成）。 ---------- */
     library: function () {
       return '' +
         '<div class="pp-page lib-page">' +
@@ -2131,7 +2131,7 @@
   var libraryState = {
     items: [],          // GET /papers/library 条目（LibraryItemOut）
     parsingItems: [],   // 轮② P26：GET /papers/library/parsing（解析中 tab 数据源）
-    tab: "all",         // all | parsing（解析中 tab：五段阶段条）
+    tab: "all",         // all | parsing（解析中 tab：四段阶段条）
     currentId: 0,       // 当前在阅读视图中打开的文献
     scrollY: 0          // P29：进入阅读视图前保存的列表滚动位置（返回时恢复）
   };
@@ -2662,14 +2662,14 @@
     return libraryState.parsingItems;
   }
 
-  /* 轮② P26：解析五段阶段条（下载→上传→排队→解析中→完成）。
+  /* 轮② P26→P30：解析四段阶段条（上传→排队→解析中→完成；P30 解耦后流水线不再含「下载」）。
    * 点亮规则：parse_phase 之前的段恒亮；当前段 active（解析中段流动）；失败态当前段标红；
    * done 全亮（解析中列表不含 done，仅为完整语义保留）。 */
-  var LIB_PHASES = ["download", "upload", "queue", "parsing", "done"];
-  var LIB_PHASE_LABEL = { download: "下载", upload: "上传", queue: "排队", parsing: "解析中", done: "完成" };
+  var LIB_PHASES = ["upload", "queue", "parsing", "done"];
+  var LIB_PHASE_LABEL = { upload: "上传", queue: "排队", parsing: "解析中", done: "完成" };
   function _phaseIdx(p) {
     var st = p.parse_status || "none";
-    if (st === "done") return 4;
+    if (st === "done") return 3;
     var phase = p.parse_phase;
     if (!phase) phase = st === "pending" ? "queue" : "parsing";
     var idx = LIB_PHASES.indexOf(phase);
@@ -2678,11 +2678,9 @@
   function _phaseBarHtml(p) {
     var st = p.parse_status || "none";
     var idx = _phaseIdx(p);
-    /* P30 解耦：全文已就绪（获取/上传动作完成）→ 首段「下载」恒亮（由独立动作承接） */
-    var hasFile = (p.fulltext_status || "none") !== "none";
     var segs = LIB_PHASES.map(function (ph, i) {
       var cls = "lps";
-      if (i < idx || st === "done" || (i === 0 && hasFile)) cls += " is-done";
+      if (i < idx || st === "done") cls += " is-done";
       else if (i === idx) cls += st === "failed" ? " is-err" : (ph === "parsing" ? " is-flow" : " is-active");
       return '<span class="' + cls + '" title="' + LIB_PHASE_LABEL[ph] + '"></span>';
     }).join("");
@@ -2770,7 +2768,7 @@
       /* P30 全文与解析解耦：行尾按钮按「全文状态 × 解析状态」演化（五态）——
        * ① 无文件 → [获取全文][上传]（获取失败过 → [重试获取][上传] + 原因小字）；
        * ② 有文件未解析 → [解析][替换文件]（「需重新解析」标志 → ⟳ 高亮主按钮）；
-       * ③ 解析中/排队 → 五段阶段条（不变）；④ failed → [重试解析][替换文件]；
+       * ③ 解析中/排队 → 四段阶段条（不变）；④ failed → [重试解析][替换文件]；
        * ⑤ done → 照旧（无操作钮）。上传/替换走同一文件选择弹窗。 */
       var ft = p.fulltext_status || "none";
       var fterr = p.fulltext_error || "";
@@ -3137,7 +3135,7 @@
     }
     closeImportModal();
     toast("导入成功：" + (r.title || ("文献 #" + r.paper_id)));
-    /* 成功后跳「解析中」tab 看五段阶段条（r.parse_status pending/running/done 均可见） */
+    /* 成功后跳「解析中」tab 看四段阶段条（r.parse_status pending/running/done 均可见） */
     libraryState.tab = "parsing";
     loadLibrary().then(function () {
       qsa("[data-lib-tab]").forEach(function (b) {
@@ -5013,7 +5011,7 @@
       API.post("/papers/" + parsePid + "/collect-parse", {}).then(function (r) {
         toast("已发起解析：" + ((r && r.parse_status) === "done"
           ? "已完成，回到「全部」点行进入阅读"
-          : "可在「解析中」看五段进度"));
+          : "可在「解析中」看四段进度"));
         libraryState.tab = "parsing";
         loadLibrary().then(function () {
           qsa("[data-lib-tab]").forEach(function (b) {
