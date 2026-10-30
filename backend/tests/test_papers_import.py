@@ -148,10 +148,15 @@ async def test_import_pdf_success_stores_and_parses(client, monkeypatch):
         )).scalar_one()
         assert lib.added_via == "import"
 
-    # COS 落件断言：PDF 年月分层 + 解析三件套（P20），app 恒 papers（P11）
+    # COS 落件断言：PDF 年月分层 + 解析三件套（P20），app 恒 papers（P11）。
+    # run_import_pipeline 先落一次 COS、进程内 parse 再幂等同键覆盖一次
+    # （store-first 顺序的正确性代价），故 PDF 键出现 ≥1 次、parsed 三键各 1 次。
     keys = [k for _, k, _ in spy.puts]
-    assert re.fullmatch(rf"pdfs/\d{{4}}/\d{{2}}/{pid}\.pdf", keys[0]), keys
-    assert keys[1:] == [
+    pdf_keys = [k for k in keys if k.startswith("pdfs/")]
+    assert pdf_keys and all(
+        re.fullmatch(rf"pdfs/\d{{4}}/\d{{2}}/{pid}\.pdf", k) for k in pdf_keys
+    ), keys
+    assert [k for k in keys if k.startswith("parsed/")] == [
         f"parsed/{pid}/full.md",
         f"parsed/{pid}/content_list.json",
         f"parsed/{pid}/meta.json",
@@ -406,10 +411,18 @@ async def test_import_pdf_hatchet_path_stores_pdf_before_push(client, monkeypatc
     """
     from app.services import pipeline
 
-    monkeypatch.setattr(pipeline, "push_parse_event", lambda pid, uid: True)
     spy = SpyStorage()
     fake = FakeHttpClient(_mineru_routes())
     _patch_http(monkeypatch, fake, spy)
+
+    def _push_only_after_pdf_in_cos(pid, uid):
+        """推事件时校验 PDF 已落 COS（顺序断言：store 先于 push）。"""
+        assert any(
+            k.startswith("pdfs/") and k.endswith(f"/{pid}.pdf") for _, k, _ in spy.puts
+        ), f"paper_id={pid} 推 Hatchet 事件时 PDF 未落 COS（顺序错误：push 先于 store）"
+        return True
+
+    monkeypatch.setattr(pipeline, "push_parse_event", _push_only_after_pdf_in_cos)
     headers = await login(client)
 
     b64 = base64.b64encode(_FAKE_PDF).decode()
@@ -431,13 +444,21 @@ async def test_import_arxiv_hatchet_path_stores_pdf_before_push(client, monkeypa
     """arXiv 标识符路 + Hatchet 接线：OA 下载成功后同样先落 COS 再推事件。"""
     from app.services import pipeline
 
-    monkeypatch.setattr(pipeline, "push_parse_event", lambda pid, uid: True)
     spy = SpyStorage()
     fake = FakeHttpClient(_mineru_routes({
         ("GET", "https://export.arxiv.org/api/query"): _FakeResp(content=_ARXIV_ATOM.encode()),
         ("GET", "https://arxiv.org/pdf/2401.12345"): _FakeResp(content=_FAKE_PDF),
     }))
     _patch_http(monkeypatch, fake, spy)
+
+    def _push_only_after_pdf_in_cos(pid, uid):
+        """推事件时校验 PDF 已落 COS（顺序断言：store 先于 push）。"""
+        assert any(
+            k.startswith("pdfs/") and k.endswith(f"/{pid}.pdf") for _, k, _ in spy.puts
+        ), f"paper_id={pid} 推 Hatchet 事件时 PDF 未落 COS（顺序错误：push 先于 store）"
+        return True
+
+    monkeypatch.setattr(pipeline, "push_parse_event", _push_only_after_pdf_in_cos)
     headers = await login(client)
 
     resp = await client.post(

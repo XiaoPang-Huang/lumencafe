@@ -424,13 +424,19 @@ async def run_import_pipeline(
     """
     from app.services import pipeline  # 延迟导入：pipeline 反向加载 papers_crawl，防环
 
+    # 先落 COS 再推事件（顺序即正确性）：事件只带 (paper_id, user_id)，worker
+    # 拿到事件立即 run_parse_pipeline(pdf_bytes=None) 从 COS 读——若先推后存，
+    # worker 与 store 竞速，find_pdf_key 扑空即误标解析失败（竞态窗口）。
+    paper = (
+        await db.execute(select(Paper).where(Paper.id == paper_id))
+    ).scalar_one()
+    storage = await paper_parse.get_storage(db)
+    await paper_parse.store_pdf(storage, paper, pdf_bytes)
+
     if pipeline.push_parse_event(paper_id, user_id):
-        paper = (
-            await db.execute(select(Paper).where(Paper.id == paper_id))
-        ).scalar_one()
-        storage = await paper_parse.get_storage(db)
-        await paper_parse.store_pdf(storage, paper, pdf_bytes)
         return {"paper_id": paper_id, "parse_status": "pending", "parse_error": None}
+    # 引擎未接线/推送失败：进程内同步执行；run_parse_pipeline(pdf_bytes=...)
+    # 内部同键再存一遍（幂等覆盖，无害）
     return await paper_parse.run_parse_pipeline(db, paper_id, user_id, pdf_bytes=pdf_bytes)
 
 
