@@ -2,8 +2,11 @@
 
 拍板 P25：一期导入形态 = ① PDF 上传（≤30MB，走 MinerU 解析状态机）② arXiv ID /
 DOI 粘贴（自动拉元数据 + 下载 OA 全文 + 解析）；**下载失败必须通知用户**——
-条目仍落库（papers.origin=import + parse_status=failed + parse_error 记原因，
-文件/原因保留可重试），接口返回明确失败信息，前端 toast「导入失败：<原因>」。
+条目仍落库（papers.origin=import），接口返回明确失败信息，前端 toast 告知。
+P30 解耦后细分：元数据失败 → parse_status=failed + parse_error（P25 原口径）；
+全文下载失败 → fulltext_status=none + fulltext_error、parse_status 保持 none
+且绝不自动触发解析（解析交给用户拿到文件后手动点），前端引导「可点[获取全文]
+重试或[上传]本地文件」。
 
 两路统一出口 :func:`import_to_library`：
 1. 先建 papers 行（origin=import，owner=导入者本人 user_id，P23 行级隔离）+
@@ -11,11 +14,19 @@ DOI 粘贴（自动拉元数据 + 下载 OA 全文 + 解析）；**下载失败�
    后续任何失败都落在「已存在的条目」上，不会出现失败即丢失；
 2. identifier 路：拉元数据（arXiv Atom API / Crossref works）→ 写题录 →
    下载 OA 全文（arXiv 走其 pdf 直链；DOI 走 Unpaywall 最佳 OA 位置，与
-   paper_parse 补链同一口径）；任一步失败 → 条目置 failed + 原因，抛
-   :class:`ImportFailedError`（路由层转成明确的失败响应）；
-3. 全文就绪（PDF 路上传即就绪）→ 触发解析状态机
+   paper_parse 补链同一口径）；
+3. 失败口径（P30 解耦后「导入成功」与「获取全文成败」分开展示）：
+   - **元数据拉取失败**（题录都拿不到）：条目置 failed + 原因（P25 保留可重试），
+     抛 :class:`ImportFailedError`；
+   - **全文下载失败**（题录已落库，OA 全文拿不到）：条目保留、
+     ``fulltext_status=none`` + ``fulltext_error`` 记真实原因、
+     **parse_status 保持 none 且绝不自动触发解析**（解析是独立动作，用户拿到
+     文件后手动点）——抛 :class:`ImportDownloadError`（路由层转「已添加但下载
+     失败」响应，前端引导 [获取全文] 重试或 [上传] 本地文件）；
+4. 全文就绪（PDF 路上传即就绪）→ 触发解析状态机
    （:func:`paper_parse.run_parse_pipeline` 的 pdf_bytes 通道：跳过 OA 下载步，
-   阶段条从「上传」段起）。
+   阶段条从「上传」段起；Hatchet 事件分支先把 PDF 落 COS 再推事件，工作体
+   只读 COS——存文件是导入自身职责，解析路绝不在解析时补下载）。
 
 元数据口径：
 - arXiv：export.arxiv.org/api/query?id_list=（官方 Atom，免费无密钥），题录取
@@ -64,7 +75,12 @@ class ImportInputError(ValueError):
 
 
 class ImportFailedError(RuntimeError):
-    """元数据拉取或全文下载失败：条目已落 failed 态，原因即异常消息。"""
+    """元数据拉取失败：条目已落 failed 态，原因即异常消息。"""
+
+
+class ImportDownloadError(ImportFailedError):
+    """OA 全文下载失败：条目与题录已落库（origin=import），fulltext_error 记原因，
+    parse_status 保持 none 且未触发解析——「已添加但自动下载全文失败」。"""
 
 
 def classify_identifier(raw: str) -> tuple[str, str]:
@@ -329,10 +345,15 @@ async def import_pdf(db: AsyncSession, user_id: int, filename: str, data: bytes)
 
 
 async def import_identifier(db: AsyncSession, user_id: int, raw: str) -> Paper:
-    """arXiv ID / DOI 粘贴导入：拉元数据 → 下载 OA 全文 → 状态机。
+    """arXiv ID / DOI 粘贴导入：拉元数据 → 写题录 → 下载 OA 全文 → 状态机。
 
-    元数据/下载任一步失败：条目落 failed 态 + 原因（已保留在库中，可重试），
-    抛 :class:`ImportFailedError` 供路由层返回明确失败信息。
+    失败口径（P30 解耦，见模块 docstring）：
+    - 元数据拉取失败 → 条目落 failed 态 + 原因（P25 保留可重试），
+      抛 :class:`ImportFailedError`；
+    - 全文下载失败（含 DOI 路 Unpaywall 无 OA 位置）→ 题录保留、
+      ``fulltext_status=none`` + ``fulltext_error`` 记原因、
+      **parse_status 归 none 且绝不触发解析**，抛 :class:`ImportDownloadError`
+      （路由层转「已添加但自动下载全文失败」响应）。
     """
     kind, ident = classify_identifier(raw)
     client = get_http_client()
@@ -341,34 +362,45 @@ async def import_identifier(db: AsyncSession, user_id: int, raw: str) -> Paper:
     if paper.parse_status == "done":
         return paper  # 幂等：同用户重复导入同一 arXiv/DOI，已完成则直返不重跑
 
+    # 阶段一：元数据（题录拿不到 = 条目无意义 → P25 failed 态）
     try:
         if kind == "arxiv":
             meta = await fetch_arxiv_metadata(client, ident)
-            pdf_url = f"https://arxiv.org/pdf/{ident}"
         else:
             meta = await fetch_crossref_metadata(client, ident)
-            pdf_url = await resolve_doi_pdf_url(client, ident)
-        for col, value in meta.items():
-            setattr(paper, col, value)
-        await db.commit()
-
-        try:
-            data = await paper_parse._fetch_bytes(client, pdf_url)
-            paper_parse._ensure_pdf(data, f"OA 全文 {pdf_url}")
-        except Exception as exc:
-            reason = f"全文下载失败：{str(exc) or exc.__class__.__name__}"
-            await _mark_import_failed(db, paper, reason)
-            raise ImportFailedError(reason) from exc
     except ImportFailedError as exc:
-        # 元数据/补链阶段的失败同样落 failed 态（下载阶段已落，重复置同值幂等）
-        if paper.parse_status != "failed":
-            await _mark_import_failed(db, paper, str(exc))
+        await _mark_import_failed(db, paper, str(exc))  # P25：元数据失败落 failed 态
         raise
     except Exception as exc:
         reason = f"元数据拉取失败：{str(exc) or exc.__class__.__name__}"
         logger.warning("导入元数据失败（%s）：%s", dedupe_key, reason)
         await _mark_import_failed(db, paper, reason)
         raise ImportFailedError(reason) from exc
+
+    for col, value in meta.items():
+        setattr(paper, col, value)
+    await db.commit()
+
+    # 阶段二：OA 全文（arXiv pdf 直链 / DOI 走 Unpaywall 补链后下载——
+    # 拿不到 ≠ 解析失败，与解析解耦展示）
+    try:
+        if kind == "arxiv":
+            pdf_url = f"https://arxiv.org/pdf/{ident}"
+        else:
+            pdf_url = await resolve_doi_pdf_url(client, ident)
+        data = await paper_parse._fetch_bytes(client, pdf_url)
+        paper_parse._ensure_pdf(data, f"OA 全文 {pdf_url}")
+    except Exception as exc:
+        reason = (f"全文下载失败：{str(exc) or exc.__class__.__name__}")[
+            : paper_parse._FULLTEXT_ERROR_MAX
+        ]
+        paper.fulltext_status = "none"
+        paper.fulltext_error = reason
+        paper.parse_status = "none"  # 绝不在无文件时触发解析（解析 = 独立动作）
+        paper.parse_error = None
+        await db.commit()
+        logger.warning("导入全文下载失败（%s）：%s", dedupe_key, reason)
+        raise ImportDownloadError(reason) from exc
 
     logger.info("标识符导入：paper_id=%s（%s:%s，%d bytes）", paper.id, kind, ident, len(data))
     paper.fulltext_status = "oa"  # P30：OA 全文已下载就绪（获取全文动作等价物）
@@ -382,18 +414,28 @@ async def run_import_pipeline(
 ) -> dict:
     """导入条目触发解析状态机（pdf_bytes 通道：跳过 OA 下载步）。
 
+    事件分支先把 PDF 落 COS 再推 Hatchet 事件——事件只带 (paper_id, user_id)，
+    工作体按 collect-parse 同口径从 COS 读全文（P30：存文件是导入自身职责，
+    解析路绝不在解析时补下载；早前「事件丢 pdf_bytes → 工作体回落下载路 →
+    导入行无 url/doi 报『该文献无可用全文链接』且误标解析失败」即此断裂）。
     Hatchet 未接线时进程内同步执行（与 collect-parse 同一哲学，用户要的是
-    结果可达）；引擎侧 papers-parse workflow 兼容走 run_parse_pipeline
-    的下载通道（重试场景，PDF 已在 COS，直链失败可回落 Unpaywall）。
+    结果可达）；进程内路径 run_parse_pipeline(pdf_bytes=...) 内部同键再存
+    一遍（幂等覆盖）。
     """
     from app.services import pipeline  # 延迟导入：pipeline 反向加载 papers_crawl，防环
 
     if pipeline.push_parse_event(paper_id, user_id):
+        paper = (
+            await db.execute(select(Paper).where(Paper.id == paper_id))
+        ).scalar_one()
+        storage = await paper_parse.get_storage(db)
+        await paper_parse.store_pdf(storage, paper, pdf_bytes)
         return {"paper_id": paper_id, "parse_status": "pending", "parse_error": None}
     return await paper_parse.run_parse_pipeline(db, paper_id, user_id, pdf_bytes=pdf_bytes)
 
 
 __all__ = [
+    "ImportDownloadError",
     "ImportFailedError",
     "ImportInputError",
     "classify_identifier",

@@ -3,10 +3,14 @@
 - 导入两路（mock arXiv Atom / Crossref / Unpaywall / MinerU）：
   PDF 上传（落 COS 断言 + 自动进 library + 触发解析状态机）；
   arXiv / DOI 粘贴（元数据起表 + OA 下载 + 解析）；
-- 失败路径（拍板 P25「下载失败必须通知用户」）：条目落 import 失败态
-  （papers.origin=import + parse_status=failed + parse_error 记原因）且接口
-  返回明确失败信息；元数据拉取失败同口径；请求非法（超大/非 PDF/标识符
-  不识）→ 422 不落条目；同用户重复导入同一 arXiv/DOI 幂等直返；
+- 失败路径（P25 元数据失败 → parse_status=failed + parse_error 保留可重试；
+  P30 全文下载失败 → fulltext_status=none + fulltext_error 记真实原因、
+  parse_status 恒 none 且绝不自动触发解析——「已添加但自动下载全文失败」
+  解耦展示，绝不误报解析失败）：接口均 200 携明确信息；
+  请求非法（超大/非 PDF/标识符不识）→ 422 不落条目；同用户重复导入同一
+  arXiv/DOI 幂等直返；
+- Hatchet 接线回归：导入触发的事件分支推送前 PDF 已落 COS（修复「事件只带
+  id 丢 pdf_bytes → 工作体回落下载路 → 无 url/doi 误报解析失败」根因）；
 - 解析入口收紧（P28）：collect-parse 非库内 → 403，库内 → 200；
 - 解析进度（P26）：papers.parse_phase 随状态机推进（失败保留在出错段）；
   GET /papers/library/parsing 返回非 done 列表含 phase + 失败原因；
@@ -269,38 +273,59 @@ async def test_import_doi_success_via_crossref_and_unpaywall(client, monkeypatch
         assert str(paper.pub_date) == "2026-03-01"
 
 
-# ── 失败路径（P25：条目落 import 失败态 + 原因可见）──────────
-async def test_import_arxiv_download_fails_marks_failed_with_reason(client, monkeypatch):
-    """arXiv 全文下载失败：条目仍落库（failed + 原因），接口返回明确失败信息。"""
-    await _add_mineru_key()
+# ── 失败路径（P25 元数据失败 → failed 态；P30 下载失败 → 全文态与解析解耦）──
+async def test_import_arxiv_download_fails_decoupled_from_parse(client, monkeypatch):
+    """回归：arXiv 旧编号（无年份后缀）下载失败——条目落库但 **绝不误报解析失败**。
+
+    原 bug：Hatchet 事件丢 pdf_bytes → 工作体回落下载路 → 导入行无 url/doi →
+    parse_error 出现「该文献无可用全文链接（无 url/doi）」且 parse_phase=download。
+    P30 口径：下载只属于 import/fetch_fulltext 自身，解析绝不下载；标识符导入
+    下载失败时 parse_status 恒 none、fulltext_error 记真实原因、绝不自动触发解析。
+    """
+    atom_1706 = _ARXIV_ATOM.replace("2401.12345", "1706.0372")
     fake = FakeHttpClient(_mineru_routes({
-        ("GET", "https://export.arxiv.org/api/query"): _FakeResp(content=_ARXIV_ATOM.encode()),
-        ("GET", "https://arxiv.org/pdf/2401.12345"): _FakeResp(status_code=404),
+        ("GET", "https://export.arxiv.org/api/query"): _FakeResp(content=atom_1706.encode()),
+        ("GET", "https://arxiv.org/pdf/1706.0372"): _FakeResp(status_code=404),
     }))
-    _patch_http(monkeypatch, fake, SpyStorage())
+    spy = SpyStorage()
+    _patch_http(monkeypatch, fake, spy)
     headers = await login(client)
 
     resp = await client.post(
         "/papers/library/import",
-        json={"kind": "identifier", "identifier": "2401.12345"},
+        json={"kind": "identifier", "identifier": "1706.0372"},
         headers=headers,
     )
-    assert resp.status_code == 200, resp.text  # 条目已落库：200 携失败态
+    assert resp.status_code == 200, resp.text  # 条目与题录已落库：200 携全文态
     body = resp.json()
-    assert body["parse_status"] == "failed"
-    assert "全文下载失败" in (body["parse_error"] or "")
+    assert body["parse_status"] == "none"  # 恒 none：未触发解析、绝不停留在 pending
+    assert body["parse_error"] is None
+    assert body["fulltext_status"] == "none"
+    assert "全文下载失败" in (body["fulltext_error"] or "")  # 真实原因（HTTP 404）
 
     pid = body["paper_id"]
     async with SessionLocal() as db:
         paper = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
-        assert paper.origin == "import" and paper.parse_status == "failed"
-        assert "全文下载失败" in (paper.parse_error or "")
-        assert paper.title == "Imported arXiv Paper Title"  # 元数据已起表
-        # 失败条目保留在 library（P25：失败保留可重试）
+        assert paper.origin == "import" and paper.source == "arxiv"
+        # 题录已起表：旧编号 abs 页链接构造正确（arXiv 新窗口期前编号无年份歧义）
+        assert paper.url == "https://arxiv.org/abs/1706.0372"
+        assert paper.title == "Imported arXiv Paper Title"
+        # 全文态：失败原因落 fulltext_error，行内呈「无全文」而非「解析失败」
+        assert paper.fulltext_status == "none"
+        assert "全文下载失败" in (paper.fulltext_error or "")
+        assert paper.parse_status == "none"
+        assert paper.parse_error is None
+        assert paper.parse_phase is None
+        assert paper.parsed_at is None
+        # 条目保留在 library（P25：失败保留可重试）
         lib = (await db.execute(
             select(PaperLibrary).where(PaperLibrary.paper_id == pid)
         )).scalar_one()
         assert lib.added_via == "import"
+
+    # 绝不在解析路发起任何下载/解析动作：全文未存 COS、MinerU 零调用
+    assert spy.puts == []
+    assert not any("mineru.net" in u for m, u in fake.calls)
 
 
 async def test_import_arxiv_metadata_not_found_fails(client, monkeypatch):
@@ -324,8 +349,12 @@ async def test_import_arxiv_metadata_not_found_fails(client, monkeypatch):
     assert "未找到" in (body["parse_error"] or "")
 
 
-async def test_import_doi_no_oa_location_fails_with_reason(client, monkeypatch):
-    """DOI 无开放获取全文（Unpaywall 空）：条目落 failed 态 + 原因可见。"""
+async def test_import_doi_no_oa_location_download_decoupled(client, monkeypatch):
+    """DOI 无开放获取全文（Unpaywall 空）：题录落库 + fulltext_error，parse_status 恒 none。
+
+    P30 口径：拿不到 OA 全文 ≠ 解析失败——与 arXiv 下载失败同一「已添加但自动
+    下载全文失败」口径（此前该用例断言 failed 态，即本 bug 的 DOI 路表现）。
+    """
     fake = FakeHttpClient({
         ("GET", "https://api.crossref.org/works/10.1000/xyz.2026"): _FakeResp(
             json_data=_CROSSREF_WORKS
@@ -344,8 +373,17 @@ async def test_import_doi_no_oa_location_fails_with_reason(client, monkeypatch):
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["parse_status"] == "failed"
-    assert body["parse_error"]
+    assert body["parse_status"] == "none"
+    assert body["parse_error"] is None
+    assert body["fulltext_status"] == "none"
+    assert "Unpaywall" in (body["fulltext_error"] or "")
+    pid = body["paper_id"]
+    async with SessionLocal() as db:
+        paper = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
+        assert paper.title == "Crossref Imported Title"  # 题录已落库
+        assert paper.parse_status == "none" and paper.parse_error is None
+        assert paper.fulltext_status == "none"
+        assert "Unpaywall" in (paper.fulltext_error or "")
 
 
 async def test_import_identifier_unrecognized_422(client):
@@ -356,6 +394,64 @@ async def test_import_identifier_unrecognized_422(client):
         headers=headers,
     )
     assert resp.status_code == 422
+
+
+# ── 回归：Hatchet 事件分支先把 PDF 落 COS（事件只带 id，工作体从 COS 读）──
+async def test_import_pdf_hatchet_path_stores_pdf_before_push(client, monkeypatch):
+    """PDF 上传 + Hatchet 接线：事件推送前 PDF 已落 COS（修复「事件丢 pdf_bytes」）。
+
+    原 bug：run_import_pipeline 推事件即返，pdf_bytes 丢失 → 工作体 run_parse_
+    pipeline(pdf_bytes=None) 回落下载路 → 导入行无 url/doi 报「该文献无可用全文
+    链接」且误标解析失败。现口径：存文件是导入自身职责，推送前必落 COS。
+    """
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "push_parse_event", lambda pid, uid: True)
+    spy = SpyStorage()
+    fake = FakeHttpClient(_mineru_routes())
+    _patch_http(monkeypatch, fake, spy)
+    headers = await login(client)
+
+    b64 = base64.b64encode(_FAKE_PDF).decode()
+    resp = await client.post(
+        "/papers/library/import",
+        json={"kind": "pdf", "filename": "hatchet_path.pdf", "pdf_base64": b64},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["parse_status"] == "pending"  # 事件已推，异步执行
+    pid = body["paper_id"]
+    # 推送前已落 COS：工作体按 collect-parse 同口径从 COS 读，绝不再走下载路
+    keys = [k for _, k, _ in spy.puts]
+    assert any(k.endswith(f"/{pid}.pdf") and k.startswith("pdfs/") for k in keys), keys
+
+
+async def test_import_arxiv_hatchet_path_stores_pdf_before_push(client, monkeypatch):
+    """arXiv 标识符路 + Hatchet 接线：OA 下载成功后同样先落 COS 再推事件。"""
+    from app.services import pipeline
+
+    monkeypatch.setattr(pipeline, "push_parse_event", lambda pid, uid: True)
+    spy = SpyStorage()
+    fake = FakeHttpClient(_mineru_routes({
+        ("GET", "https://export.arxiv.org/api/query"): _FakeResp(content=_ARXIV_ATOM.encode()),
+        ("GET", "https://arxiv.org/pdf/2401.12345"): _FakeResp(content=_FAKE_PDF),
+    }))
+    _patch_http(monkeypatch, fake, spy)
+    headers = await login(client)
+
+    resp = await client.post(
+        "/papers/library/import",
+        json={"kind": "identifier", "identifier": "2401.12345"},
+        headers=headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["parse_status"] == "pending"
+    assert body["fulltext_status"] == "oa"
+    pid = body["paper_id"]
+    keys = [k for _, k, _ in spy.puts]
+    assert any(k.endswith(f"/{pid}.pdf") and k.startswith("pdfs/") for k in keys), keys
 
 
 # ── 解析入口收紧（P28）：collect-parse 仅库内 ────────────────

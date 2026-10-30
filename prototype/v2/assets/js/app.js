@@ -3025,8 +3025,10 @@
    * 两路统一 POST /papers/library/import：
    * - pdf：FileReader 直读 bytes → base64 JSON（后端 ≤30MB 校验 + 魔数校验）；
    * - identifier：粘贴 arXiv ID / DOI（后端拉元数据 + 下 OA 全文）。
-   * 成功 → toast + 关闭 + 跳「解析中」tab 看阶段条；失败（下载失败等）→ 条目已落
-   * failed 态，弹层内红字原因 + toast「导入失败：<原因>」（P25 必须通知用户）。 */
+   * 成功 → toast + 关闭 + 跳「解析中」tab 看阶段条；元数据失败 → 条目已落
+   * failed 态，弹层内红字原因 + toast「导入失败：<原因>」（P25 必须通知用户）；
+   * 全文下载失败（P30 解耦）→ 条目已添加、行内呈「无全文」态，toast 引导
+   * [获取全文] 重试或 [上传] 本地文件（绝不误报解析失败、绝不自动触发解析）。 */
   var IMPORT_MAX_BYTES = 30 * 1024 * 1024;
   var importState = { mode: "pdf" };
 
@@ -3051,7 +3053,7 @@
         "</div>" +
         /* 路标识符 */
         '<div class="imp-pane hide" data-import-pane="identifier">' +
-          '<label class="imp-field"><span class="muted">粘贴 arXiv ID（如 2401.12345）或 DOI（如 10.1000/xyz）——自动拉元数据并下载开放获取全文</span>' +
+          '<label class="imp-field"><span class="muted">粘贴 arXiv ID（如 2401.12345）或 DOI（如 10.1000/xyz）——自动拉元数据并下载开放获取全文（下载失败可在列表点[获取全文]重试或[上传]本地文件）</span>' +
           '<input type="text" data-import-ident placeholder="2401.12345 或 10.1000/xyz.2026"></label>' +
         "</div>" +
         '<div class="imp-err hide" data-import-err></div>' +
@@ -3128,9 +3130,25 @@
     }
   }
   function _importDone(r, btn) {
-    if (!r || r.parse_status === "failed") {
+    if (!r) {
       btn.disabled = false;
-      _importFail((r && r.parse_error) || "未知原因");
+      _importFail("未知原因");
+      return;
+    }
+    if (r.parse_status === "failed") {
+      /* 元数据拉取失败（P25）：条目落 failed 态，弹层红字 + toast */
+      btn.disabled = false;
+      _importFail(r.parse_error || "未知原因");
+      return;
+    }
+    if (r.fulltext_error) {
+      /* P30 解耦：条目与题录已落库，仅自动下载全文失败——不是解析失败；
+       * 行内呈「无全文」态（[重试获取][上传] + 原因小字），解析由用户拿到
+       * 文件后手动点，绝不自动触发 */
+      closeImportModal();
+      toast("文献已添加，但自动下载全文失败：" + r.fulltext_error +
+        "，可点[获取全文]重试或[上传]本地文件");
+      loadLibrary();
       return;
     }
     closeImportModal();

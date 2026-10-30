@@ -72,13 +72,20 @@ class LibraryImportRequest(BaseModel):
 
 
 class LibraryImportOut(BaseModel):
-    """导入响应：条目恒落库（origin=import，下载失败也保留 failed 态可重试，P25）。"""
+    """导入响应：条目恒落库（origin=import，P25/P30 口径见 routers/library_import）。
+
+    P30 解耦：fulltext_error 非空且 parse_status=none = 「已添加但自动下载全文
+    失败」（前端引导 [获取全文] 重试或 [上传] 本地文件，绝不误报解析失败）；
+    parse_status=failed = 元数据拉取失败（P25，条目落 failed 态 + parse_error）。
+    """
 
     paper_id: int
     title: str
-    parse_status: str  # pending|running|done|failed（导入即触发解析状态机）
-    parse_phase: str | None = None  # 五段阶段（失败时停在出错段）
-    parse_error: str | None = None  # 失败原因（成功 null）
+    parse_status: str  # none|pending|running|done|failed（导入成功即触发解析状态机）
+    parse_phase: str | None = None  # 阶段条（失败时停在出错段）
+    parse_error: str | None = None  # 失败原因（成功 null；元数据失败有值）
+    fulltext_status: str | None = None  # none|oa|uploaded（P30：全文就绪态）
+    fulltext_error: str | None = None  # 自动下载全文失败原因（P30 解耦展示）
 
 
 class NoteRequest(BaseModel):

@@ -740,13 +740,17 @@ async def library_import(
     user: User = Depends(_reader),
     db: AsyncSession = Depends(get_db),
 ):
-    """导入文献（拍板 P25）：① PDF 上传 ② arXiv ID / DOI 粘贴。
+    """导入文献（拍板 P25；P30 解耦后「导入成功」与「获取全文成败」分开展示）。
 
     - 条目恒落库：papers.origin=import + owner=本人 + 自动进 library（added_via=
       import）+ 触发解析状态机（pdf_bytes 通道，阶段条从「上传」起）；
     - 请求本身不合法（格式/大小/非 PDF）→ 422，不落条目；
-    - 元数据/全文下载失败 → 条目落 failed 态 + parse_error 记原因（保留可重试，
-      P25），响应 200 携 parse_status=failed 与原因——前端 toast「导入失败：<原因>」。
+    - 元数据拉取失败 → 条目落 failed 态 + parse_error 记原因（P25 保留可重试），
+      响应 200 携 parse_status=failed——前端 toast「导入失败：<原因>」；
+    - 全文下载失败（P30 解耦）→ 条目与题录已落库、fulltext_status=none +
+      fulltext_error 记真实原因、parse_status 保持 none 且未触发解析——响应 200
+      携 fulltext_error，前端提示「文献已添加，但自动下载全文失败：<原因>，
+      可点[获取全文]重试或[上传]本地文件」。
     """
     paper: Paper | None = None
     if body.kind == "pdf":
@@ -764,15 +768,12 @@ async def library_import(
             paper = await paper_import.import_identifier(db, user.id, body.identifier)
         except paper_import.ImportInputError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except paper_import.ImportDownloadError:
+            # 已添加但自动下载全文失败：回读行组响应（fulltext_error 引导重试/上传）
+            paper = await _reread_import_paper(db, user.id, body.identifier)
         except paper_import.ImportFailedError as exc:
-            # 条目已落 failed 态：回读行组响应（明确失败信息随 200 返回）
-            paper = (
-                await db.execute(
-                    select(Paper).where(
-                        Paper.user_id == user.id, Paper.pmid == _import_key(body.identifier)
-                    )
-                )
-            ).scalar_one_or_none()
+            # 元数据失败条目已落 failed 态：回读行组响应（明确失败信息随 200 返回）
+            paper = await _reread_import_paper(db, user.id, body.identifier)
             if paper is None:  # 防御：理论上条目必在
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -783,7 +784,22 @@ async def library_import(
         parse_status=paper.parse_status or "none",
         parse_phase=paper.parse_phase,
         parse_error=paper.parse_error,
+        fulltext_status=paper.fulltext_status or "none",
+        fulltext_error=paper.fulltext_error,
     )
+
+
+async def _reread_import_paper(
+    db: AsyncSession, user_id: int, identifier: str
+) -> Paper | None:
+    """导入失败（元数据/下载）后回读已落库条目：按去重键 arxiv:{id}/doi:{doi}。"""
+    return (
+        await db.execute(
+            select(Paper).where(
+                Paper.user_id == user_id, Paper.pmid == _import_key(identifier)
+            )
+        )
+    ).scalar_one_or_none()
 
 
 def _import_key(raw: str) -> str:
