@@ -4,7 +4,7 @@
 > **发布日期**：2026-10-31
 > **作者**：DeepSeek Harness 团队（Yujia Qiao 完成系统实现与写作）
 > **配套原型**：[github.com/deepseek-ai/dsh-superagent-prototype](https://github.com/deepseek-ai/dsh-superagent-prototype)（MIT 协议；官方注明：仅为验证技术路线的研究原型，非正式产品，TypeScript 97.5%）
-> **存档说明**：全文完整提取，保留章节结构；原文插图无法呈现，以「（图：……）」标注。
+> **存档说明**：全文完整提取，保留章节结构；原文 14 张插图已抓取归档至 `images/superagent/fig-01~14.webp`（文末招聘海报已剔除）。
 > **定性**：面向工程实践的架构思路探讨，非论文、非产品功能介绍。
 
 ---
