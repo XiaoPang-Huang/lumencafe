@@ -3,6 +3,9 @@
 - fetch-fulltext 成功径：直链 → COS，fulltext_status=oa、错误清；幂等 already 不重复下载；
 - fetch-fulltext 失败径：直链 404 → Unpaywall 404/无 OA 位置链 → {ok:false, reason}
   （mock unpaywall 404 链），fulltext_status 保持 none、fulltext_error 截断 500 入库；
+- 获取成功自动触发解析（与导入路对齐）：进程内路径跑通至 done（parsed/ 三件落 COS）、
+  Hatchet 事件路径 push 被调用（顺序断言：先存 COS 后推事件）且响应落 pending、
+  already 幂等同样触发、解析失败时 ok 仍为 true 且 parse_error 可见；
 - upload/replace：base64 PDF → COS 覆盖（key 恒 pdfs/**/{id}.pdf）；此前 done 态触发
   「需重新解析」四清断言（parse_status/parse_phase/translate_status/parsed_at 全清 +
   reparse_pending 标志）；解析中（running）同样四清；
@@ -17,7 +20,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models.papers import Paper
-from app.services import paper_parse
+from app.services import paper_parse, pipeline
 from tests.conftest import login
 from tests.test_papers_parse import (
     FakeHttpClient,
@@ -314,6 +317,133 @@ async def test_parsing_list_carries_fulltext_fields(client, monkeypatch):
     assert item["fulltext_status"] == "none"
     assert item["fulltext_error"]  # 获取失败原因随 parsing 列表可见
     assert item["parse_error"] == "上次解析失败"
+
+
+async def test_fetch_fulltext_triggers_parse_inline_done(client, monkeypatch):
+    """获取成功自动触发解析（进程内路径）：一次请求拿到 done，parsed/ 三件落 COS。"""
+    await _add_mineru_key()
+    pid = await _make_paper(url="https://oa.example/ft.pdf")
+    await _add_to_library(pid)
+    spy = SpyStorage()
+    routes = _mineru_routes()
+    routes[("GET", "https://oa.example/ft.pdf")] = _FakeResp(content=_FAKE_PDF)
+    fake = FakeHttpClient(routes)
+    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
+    _patch_storage(monkeypatch, spy)
+    headers = await login(client)
+
+    r = await client.post(f"/papers/{pid}/fetch-fulltext", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True and body["already"] is False
+    assert body["fulltext_status"] == "oa"
+    # 自动解析已同步跑通至 done（引擎未接线 → 进程内路径）
+    assert body["parse_status"] == "done", body
+    assert body["parse_error"] is None
+    assert any(k.startswith(f"parsed/{pid}/") for k in spy.files)
+
+    async with SessionLocal() as db:
+        row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
+        assert row.parse_status == "done"
+        assert row.parsed_at is not None
+
+
+async def test_fetch_fulltext_pushes_parse_event_pending(client, monkeypatch):
+    """Hatchet 路径：push 被调用（顺序断言：先存 COS 后推事件），响应落 pending。"""
+    pid = await _make_paper(url="https://oa.example/ft.pdf")
+    await _add_to_library(pid)
+    spy = SpyStorage()
+    fake = FakeHttpClient({
+        ("GET", "https://oa.example/ft.pdf"): _FakeResp(content=_FAKE_PDF),
+    })
+    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
+    _patch_storage(monkeypatch, spy)
+
+    pushed: list[tuple[int, int]] = []
+
+    def _push_after_pdf_in_cos(paper_id: int, user_id: int) -> bool:
+        """推事件时校验 PDF 已落 COS（顺序断言：store 先于 push）。"""
+        assert any(
+            k.startswith("pdfs/") and k.endswith(f"/{paper_id}.pdf") for _, k, _ in spy.puts
+        ), f"paper_id={paper_id} 推 Hatchet 事件时 PDF 未落 COS（顺序错误：push 先于 store）"
+        pushed.append((paper_id, user_id))
+        return True
+
+    monkeypatch.setattr(pipeline, "push_parse_event", _push_after_pdf_in_cos)
+    headers = await login(client)
+
+    r = await client.post(f"/papers/{pid}/fetch-fulltext", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert pushed == [(pid, await _admin_uid())]  # 事件体带 (paper_id, 归属 user_id)
+    assert body["parse_status"] == "pending"  # 事件已推：异步执行，占坑 pending
+    assert body["parse_error"] is None
+
+    async with SessionLocal() as db:
+        row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
+        assert row.parse_status == "pending"  # 占坑防并发双跑
+        assert row.parse_error is None
+
+
+async def test_fetch_fulltext_already_also_triggers_parse(client, monkeypatch):
+    """幂等 already（文件已存在）同样触发解析：从未解析（none）→ 占坑 pending。"""
+    pid = await _make_paper(url="https://oa.example/ft.pdf")
+    await _add_to_library(pid)
+    spy = SpyStorage()
+    spy.seed_pdf(pid)  # 全文已就绪：本次走 already，不重新下载
+    _patch_storage(monkeypatch, spy)
+    monkeypatch.setattr(pipeline, "push_parse_event", lambda pid_, uid: True)
+    headers = await login(client)
+
+    r = await client.post(f"/papers/{pid}/fetch-fulltext", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True and body["already"] is True
+    assert body["parse_status"] == "pending"  # already 不再下载，但解析照旧自动触发
+
+    async with SessionLocal() as db:
+        row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
+        assert row.parse_status == "pending"
+
+
+async def test_fetch_fulltext_parse_failure_still_ok(client, monkeypatch):
+    """解析失败不回溯获取成功：ok=true、fulltext_status=oa，parse_status=failed 携原因。"""
+    # 不配 MinerU key：进程内解析必失败（MinerUConfigError → failed 态）
+    pid = await _make_paper(url="https://oa.example/ft.pdf")
+    await _add_to_library(pid)
+    spy = SpyStorage()
+    fake = FakeHttpClient({
+        ("GET", "https://oa.example/ft.pdf"): _FakeResp(content=_FAKE_PDF),
+    })
+    monkeypatch.setattr(paper_parse, "get_http_client", lambda: fake)
+    _patch_storage(monkeypatch, spy)
+    headers = await login(client)
+
+    r = await client.post(f"/papers/{pid}/fetch-fulltext", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True  # 全文获取成功不被解析失败污染
+    assert body["fulltext_status"] == "oa"
+    assert body["parse_status"] == "failed"
+    assert "MinerU" in (body["parse_error"] or "")
+
+    async with SessionLocal() as db:
+        row = (await db.execute(select(Paper).where(Paper.id == pid))).scalar_one()
+        assert row.parse_status == "failed"
+        assert "MinerU" in (row.parse_error or "")
+        assert row.fulltext_status == "oa"
+
+
+async def _admin_uid() -> int:
+    from sqlalchemy import select as _select
+
+    from app.models.user import User
+
+    async with SessionLocal() as db:
+        return (await db.execute(
+            _select(User.id).where(User.username == "admin")
+        )).scalar_one()
 
 
 async def _paper_row(pid: int):

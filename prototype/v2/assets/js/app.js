@@ -5044,13 +5044,38 @@
       });
       return;
     }
-    /* P30 独立动作一：行尾「获取全文/重试获取」→ fetch-fulltext（失败原因落库可见） */
+    /* P30 独立动作一：行尾「获取全文/重试获取」→ fetch-fulltext（失败原因落库可见）。
+     * 获取成功即自动触发解析（与导入路对齐）：parse_status=pending → toast +
+     * 自动切「解析中」tab（复用导入成功后的跳转逻辑）；done → 已完成提示；
+     * failed → 行内解析失败态照旧可见原因。 */
     var libFetch = el.closest("[data-lib-fetch]");
     if (libFetch) {
       var fetchPid = parseInt(libFetch.getAttribute("data-lib-fetch"), 10);
       libFetch.disabled = true;
       API.post("/papers/" + fetchPid + "/fetch-fulltext", {}).then(function (r) {
         if (r && r.ok) {
+          if (r.parse_status === "pending" || r.parse_status === "running") {
+            toast("已获取全文，开始解析");
+            libraryState.tab = "parsing";
+            loadLibrary().then(function () {
+              qsa("[data-lib-tab]").forEach(function (b) {
+                b.classList.toggle("active", b.getAttribute("data-lib-tab") === "parsing");
+              });
+              refreshParsingTab();
+            });
+            return;
+          }
+          if (r.parse_status === "done") {
+            toast(r.already ? "全文已存在，解析已完成" : "已获取全文，解析完成");
+            loadLibrary();
+            return;
+          }
+          if (r.parse_status === "failed") {
+            /* 全文已获取但解析失败：行内解析失败态（loadLibrary 刷新）可见原因 */
+            toast("全文已获取，但解析失败：" + (r.parse_error || "未知原因"));
+            loadLibrary();
+            return;
+          }
           toast(r.already ? "全文已存在，无需重复获取" : "全文获取成功，可发起解析");
         } else {
           toast("获取全文失败：" + ((r && r.reason) || "未知原因"));

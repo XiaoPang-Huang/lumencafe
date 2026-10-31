@@ -187,33 +187,101 @@ async def find_pdf_key(storage: Storage, paper_id: int) -> str | None:
 
 
 # ── P30：全文与解析解耦——两个独立动作（获取 / 上传），各自落 fulltext_status ──
-async def fetch_fulltext(db: AsyncSession, paper: Paper, storage: Storage) -> dict:
+async def fetch_fulltext(
+    db: AsyncSession, paper: Paper, storage: Storage, user_id: int | None = None
+) -> dict:
     """获取全文（拍板 P30 独立动作一）：直链 → Unpaywall 补链 → 存 COS。
 
     - 幂等：已有全文文件 → ``{"ok": True, "already": True}`` 不再下载；
     - 成功：fulltext_status=oa、fulltext_error 清 None；
     - 失败：fulltext_status 保持 none、fulltext_error 记原因（截断 500），
       返回 ``{"ok": False, "reason": ...}``（前端失败态可见可重试，不抛异常）；
-    - 不触发解析——解析是独立动作（POST /{id}/collect-parse）。
+    - **获取成功即自动触发解析**（拍板：与导入路行为对齐）：文件就绪（本函数刚存
+      或幂等已存在）→ :func:`trigger_parse_after_fulltext`——push Hatchet 事件，
+      失败回落进程内同步执行；响应携 parse_status/parse_error 供前端即时反映。
+
+    user_id 为触发解析所需（事件体带用户归属）；None 时跳过自动解析（旧调用方兼容）。
     """
     key = await find_pdf_key(storage, paper.id)
     if key is not None:
-        return {"ok": True, "already": True, "source": None, "reason": None}
-    try:
-        pdf_bytes, source = await download_oa_pdf(db, paper)
-        await store_pdf(storage, paper, pdf_bytes)
-    except Exception as exc:  # noqa: BLE001 - 失败落状态不外抛（前端要 reason）
-        reason = (str(exc) or exc.__class__.__name__)[:_FULLTEXT_ERROR_MAX]
-        logger.warning("获取全文失败：paper_id=%s：%s", paper.id, reason)
-        paper.fulltext_status = "none"
-        paper.fulltext_error = reason
+        result: dict = {"ok": True, "already": True, "source": None, "reason": None}
+    else:
+        try:
+            pdf_bytes, source = await download_oa_pdf(db, paper)
+            await store_pdf(storage, paper, pdf_bytes)
+        except Exception as exc:  # noqa: BLE001 - 失败落状态不外抛（前端要 reason）
+            reason = (str(exc) or exc.__class__.__name__)[:_FULLTEXT_ERROR_MAX]
+            logger.warning("获取全文失败：paper_id=%s：%s", paper.id, reason)
+            paper.fulltext_status = "none"
+            paper.fulltext_error = reason
+            await db.commit()
+            return {
+                "ok": False,
+                "already": False,
+                "source": None,
+                "reason": reason,
+                "parse_status": paper.parse_status or "none",
+                "parse_error": paper.parse_error,
+            }
+        paper.fulltext_status = "oa"
+        paper.fulltext_error = None
         await db.commit()
-        return {"ok": False, "already": False, "source": None, "reason": reason}
-    paper.fulltext_status = "oa"
-    paper.fulltext_error = None
+        logger.info("获取全文成功：paper_id=%s（source=%s）", paper.id, source)
+        result = {"ok": True, "already": False, "source": source, "reason": None}
+
+    if user_id is not None:
+        try:
+            triggered = await trigger_parse_after_fulltext(db, paper, user_id)
+        except Exception as exc:  # 解析触发失败不回溯全文获取成功（响应仍 200）
+            logger.exception(
+                "获取全文后自动解析触发异常：paper_id=%s（全文已就绪，解析可再手动发起）",
+                paper.id,
+            )
+            triggered = {
+                "parse_status": paper.parse_status or "none",
+                "parse_error": (str(exc) or exc.__class__.__name__)[:_PARSE_ERROR_MAX],
+            }
+        result["parse_status"] = triggered["parse_status"]
+        result["parse_error"] = triggered.get("parse_error")
+    return result
+
+
+async def trigger_parse_after_fulltext(
+    db: AsyncSession, paper: Paper, user_id: int
+) -> dict:
+    """获取全文成功后的自动解析（与导入路 ``run_import_pipeline`` 同一出口逻辑）。
+
+    前置：全文文件已在 COS（fetch_fulltext 刚存或幂等已存在）——顺序纪律天然满足
+    （先存后推，b83e37c / QA 金丝雀教训）。出口：
+    1. done 直返不再跑；pending/running 已在解析中，不重复触发（携原状态直返）；
+    2. 其余（none/failed）→ 置 pending 占坑（与 collect-parse 同口径，防并发双跑）
+       → ``pipeline.push_parse_event`` 推 Hatchet 事件（工作体从 COS 读全文）；
+    3. 引擎未接线/推送失败 → 回落进程内
+       :func:`run_parse_pipeline`（``pdf_bytes=None``，只读 COS 不下载）。
+
+    返回 ``{"parse_status": ..., "parse_error": ...}``（进程内路径为管线终态字典）。
+    """
+    from app.services import pipeline  # 延迟导入：pipeline 反向加载 papers_crawl，防环
+
+    status = paper.parse_status or "none"
+    if status == "done":
+        return {"parse_status": "done", "parse_error": paper.parse_error}
+    if status in ("pending", "running"):
+        logger.info(
+            "获取全文后自动解析跳过：paper_id=%s 已在解析中（%s）", paper.id, status
+        )
+        return {"parse_status": status, "parse_error": paper.parse_error}
+
+    # 置 pending 占坑（第二个并发请求到此即 409/跳过，与 collect-parse 同口径）
+    paper.parse_status = "pending"
+    paper.parse_error = None
+    paper.reparse_pending = False  # P30：解析发起即清「需重新解析」标志
     await db.commit()
-    logger.info("获取全文成功：paper_id=%s（source=%s）", paper.id, source)
-    return {"ok": True, "already": False, "source": source, "reason": None}
+
+    if pipeline.push_parse_event(paper.id, user_id):
+        return {"parse_status": "pending", "parse_error": None}
+    # 引擎未接线/推送失败：进程内同步执行（读 COS → MinerU → 状态机），即时返回终态
+    return await run_parse_pipeline(db, paper.id, user_id, pdf_bytes=None)
 
 
 async def upload_fulltext(db: AsyncSession, paper: Paper, storage: Storage, data: bytes) -> dict:
@@ -601,5 +669,6 @@ __all__ = [
     "run_parse_pipeline",
     "store_parsed",
     "store_pdf",
+    "trigger_parse_after_fulltext",
     "upload_fulltext",
 ]

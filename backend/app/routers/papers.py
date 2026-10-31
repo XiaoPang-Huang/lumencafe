@@ -35,7 +35,8 @@
   （note_kind='note' 每篇至多一条的部分唯一索引约束不变）。
 - 论文域 P30（全文与解析解耦，Alembic 0014）：papers 加 fulltext_status(none|oa|
   uploaded)/fulltext_error/reparse_pending 三列；三独立动作——POST /{pid}/fetch-fulltext
-  （获取：直链→Unpaywall→COS，失败原因可见可重试，幂等 already）、POST /{pid}/fulltext
+  （获取：直链→Unpaywall→COS，失败原因可见可重试，幂等 already；获取成功自动触发
+  解析，与导入路对齐，响应携 parse_status/parse_error）、POST /{pid}/fulltext
   （上传/替换：≤30MB base64，done/解析中触发四清+「需重新解析」标志）、collect-parse
   去下载步（前置校验 COS 全文存在，否则 409；只读 COS → MinerU）；library 与
   parsing 列表带 fulltext_status/fulltext_error/needs_reparse。
@@ -857,12 +858,14 @@ async def fetch_fulltext(
     - 幂等：COS 已有全文文件 → ``{ok: true, already: true}`` 不再下载；
     - 成功 → fulltext_status=oa、错误清；失败 → 保持 none + fulltext_error 记原因
       （截断 500），200 返回 ``{ok: false, reason}``（前端失败态可见可重试）；
-    - 不触发解析——解析是独立动作（POST /{pid}/collect-parse）。
+    - **获取成功即自动触发解析**（拍板：与导入路行为对齐）——文件已在 COS，
+      push Hatchet 事件、失败回落进程内同步执行；响应携 parse_status/parse_error
+      供前端即时反映（pending → 跳「解析中」tab；failed → 行内失败态可见原因）。
     """
     paper = await _get_mine(db, user.id, pid)
     await _ensure_library(db, user.id, pid)
     storage = await get_storage(db)
-    result = await paper_parse.fetch_fulltext(db, paper, storage)
+    result = await paper_parse.fetch_fulltext(db, paper, storage, user.id)
     return FulltextFetchOut(
         **result,
         fulltext_status=paper.fulltext_status or "none",

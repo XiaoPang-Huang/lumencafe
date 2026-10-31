@@ -100,7 +100,11 @@ class FulltextUploadRequest(BaseModel):
 
 
 class FulltextFetchOut(BaseModel):
-    """POST /papers/{id}/fetch-fulltext 回执（失败也 200，reason 可见可重试）。"""
+    """POST /papers/{id}/fetch-fulltext 回执（失败也 200，reason 可见可重试）。
+
+    获取成功即自动触发解析（与导入路对齐）：parse_status 为触发后的即时状态
+    （pending = Hatchet 事件已推；done/failed = 进程内同步执行的终态）。
+    """
 
     ok: bool  # true = 全文已在 COS（本次下载成功 / 本就已存在）
     already: bool = False  # true = 幂等直返（此前已有文件，未重新下载）
@@ -108,6 +112,8 @@ class FulltextFetchOut(BaseModel):
     reason: str | None = None  # 失败原因（ok=false 时有值，同 fulltext_error）
     fulltext_status: str = "none"  # 动作后全文状态
     fulltext_error: str | None = None
+    parse_status: str = "none"  # 自动解析触发后状态（pending/done/failed/none）
+    parse_error: str | None = None  # 解析失败原因（parse_status=failed 时有值）
 
 
 class FulltextUploadOut(BaseModel):
