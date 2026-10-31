@@ -643,7 +643,15 @@
     /* 定位 + 视口监听；rAF 再校一次——click 触发的 :active transform 回弹动画会短暂改变坐标系 */
     xselectPlacePop(root, pop);
     if (window.requestAnimationFrame) window.requestAnimationFrame(function () { if (!pop.classList.contains("hide")) xselectPlacePop(root, pop); });
-    xselectBindViewport(true);
+    /* 小改版②修复：视口收起监听延迟一帧绑定——下方 scrollIntoView 对齐当前项时，Chrome
+     * 会对可滚祖先（如我的文献长列表的 .main）派发无位移 scroll 事件；同步绑定会把
+     * 刚打开的弹层立即收起（文献页排序 xselect 所在页 .main 不可滚，故旧代码未暴露）。
+     * 打开动作自身派发的 scroll 落在绑定之前，之后用户真实滚动仍即关。 */
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () { if (!pop.classList.contains("hide")) xselectBindViewport(true); });
+    } else {
+      xselectBindViewport(true);
+    }
     /* 高亮当前选中项（无则首项），并对齐到可视区 */
     qsa(".xselect-opt", pop).forEach(function (o) { o.classList.remove("active"); });
     var cur = qs(".xselect-opt.selected", pop) || qs(".xselect-opt", pop);
@@ -1458,9 +1466,9 @@
        P29 改版：导航式重排（参考 Zotero 平板端「库列表→点行进阅读→返回」、Notion
        「全宽列表 vs 阅读」切换）——默认单列全宽文献列表（无选中时不再有大片空白），
        点行进整页阅读视图（左上角「← 返回」回列表并恢复滚动位置）；
-       小改版：「全部/解析中」tab → 状态筛选 chips（全部/已解析/解析中/解析失败/未解析，
-       借鉴 Linear 看板筛选 pill / Notion database filter chip），解析中筛选保留
-       四段阶段条（P30 解耦：上传→排队→解析中→完成）。 ---------- */
+       小改版②：状态筛选改 xselect 下拉（全部/已解析/解析中/失败/未解析；「失败」同时
+       收解析失败 + 获取全文失败两类行），解析中筛选保留四段阶段条
+       （P30 解耦：上传→排队→解析中→完成）。 ---------- */
     library: function () {
       return '' +
         '<div class="pp-page lib-page">' +
@@ -1471,14 +1479,11 @@
             "</div>" +
             '<div class="pp-actions">' +
               '<button class="btn btn-sm" type="button" data-lib-import><i data-ic="plus"></i>导入文献</button>' +
-              /* 小改版：tab → 状态筛选 chips（少量枚举值平铺、单击切换、当前项高亮；
-               * 不选 xselect 下拉：5 个选项平铺更省一步操作） */
-              '<div class="lib-filter" role="group" aria-label="按解析状态筛选">' +
-                LIB_FILTER_OPTS.map(function (o) {
-                  return '<button class="lib-chip' + (libraryState.filter === o.value ? " active" : "") +
-                    '" type="button" data-lib-filter="' + o.value + '">' + o.label + "</button>";
-                }).join("") +
-              "</div>" +
+              /* 小改版②：状态筛选 chips → xselect 下拉（复用项目现成组件，与文献页排序
+               * 同一交互语言）；「失败」选项同时收两类行——解析失败 + 获取全文失败
+               * （语义见 LIB_FILTER_OPTS / _libFilterItems） */
+              xselectHtml({ value: libraryState.filter, placeholder: "全部",
+                options: LIB_FILTER_OPTS, attrs: "data-lib-filter-xs", cls: "lib-filter-xs" }) +
               '<button class="icon-btn" type="button" data-lib-settings title="我的文献设置" aria-label="我的文献设置"><i data-ic="gear"></i></button>' +
             "</div>" +
             /* 轮③ P27：设置小项（自动翻译开关，存 papers_prefs） */
@@ -2637,15 +2642,22 @@
   };
   function _libStText(st) { return LIB_ST_TEXT[st] || st || "未解析"; }
 
-  /* 小改版：状态筛选器选项（借鉴 Linear 看板筛选 pill / Notion database filter chip）。
-   * parsing = pending + running；none = parse_status 缺省/none（未解析）。 */
+  /* 小改版②：状态筛选器选项（chips → xselect 下拉）。parsing = pending + running；
+   * 「失败」同时收两类失败行——① parse_status=failed（解析失败，徽标「解析失败」）
+   * ② 获取全文失败：fulltext_status=none 且 fulltext_error 非空（徽标「获取失败」）；
+   * 「未解析」= parse_status 缺省/none 且无 fulltext_error（干干净净还没处理，
+   * 含已有全文待解析的行）。 */
   var LIB_FILTER_OPTS = [
     { value: "all", label: "全部" },
     { value: "done", label: "已解析" },
     { value: "parsing", label: "解析中" },
-    { value: "failed", label: "解析失败" },
+    { value: "failed", label: "失败" },
     { value: "none", label: "未解析" }
   ];
+  /* 行是否「获取全文失败」（无全文 + 有失败原因）——筛选 / 徽标共用判定 */
+  function _libFtFailed(p) {
+    return (p.fulltext_status || "none") === "none" && !!(p.fulltext_error || "");
+  }
   /* 全量数据源 → 按筛选值过滤（前端渲染侧过滤，行结构与按钮五态逻辑不变） */
   function _libFilterItems(items, filter) {
     if (filter === "all") return items;
@@ -2654,7 +2666,33 @@
         return p.parse_status === "pending" || p.parse_status === "running";
       });
     }
+    if (filter === "failed") {
+      /* 两类失败行都进「失败」筛选：解析失败 + 获取全文失败 */
+      return items.filter(function (p) {
+        return p.parse_status === "failed" || _libFtFailed(p);
+      });
+    }
+    if (filter === "none") {
+      /* 未解析 = 解析未开始且没有任何失败原因（获取失败行已归入「失败」筛选） */
+      return items.filter(function (p) {
+        return (p.parse_status || "none") === "none" && !_libFtFailed(p);
+      });
+    }
     return items.filter(function (p) { return (p.parse_status || "none") === filter; });
+  }
+
+  /* 小改版③：获取失败原因小字——单行省略 + 悬停 title 看全文；原因命中「不是 PDF」
+   * 特征（后端 PdfDownloadError 文案「xxx 返回的不是 PDF 内容」，如 PubMed 直链返回
+   * 网页 / Unpaywall 落地页）时追加一行提示：可尝试 PMC 免费版或上传本地 PDF。
+   * 不做泛化匹配，仅此特征。 */
+  function _libFtErrHtml(fterr) {
+    if (!fterr) return "";
+    var tip = "获取失败：" + fterr + "（可重试获取并解析，或上传本地 PDF）";
+    var html = '<div class="lib-ft-err" title="' + esc(tip) + '">' + esc(fterr) + "</div>";
+    if (/不是\s*PDF/.test(fterr)) {
+      html += '<div class="lib-ft-tip">可尝试 PMC 免费版或上传本地 PDF</div>';
+    }
+    return html;
   }
 
   /* 在库态底账：GET /papers/library 一次，之后加/删本地增量维护（按钮态不闪烁） */
@@ -2782,10 +2820,12 @@
     if (!box) return;
     var items = _libVisibleItems();
     var filter = libraryState.filter;
-    /* 筛选 chips 高亮回显（路由重进 / 动作跳筛选后同步） */
-    qsa("[data-lib-filter]").forEach(function (b) {
-      b.classList.toggle("active", b.getAttribute("data-lib-filter") === filter);
-    });
+    /* 筛选下拉回显（动作跳筛选后静默同步选中项与 label，不触发 change 双加载） */
+    var xs = qs("[data-lib-filter-xs]");
+    if (xs) {
+      var curOpt = LIB_FILTER_OPTS.filter(function (o) { return o.value === filter; })[0];
+      _xselectSetSilent(xs, filter, curOpt ? curOpt.label : "全部");
+    }
     var hint = qs("[data-lib-tabhint]");
     if (hint) {
       hint.textContent = filter === "all" ? "" : (items.length ? items.length + " 篇" : "");
@@ -2795,7 +2835,7 @@
         all: "还没有文献：点右上角「导入文献」上传 PDF / 粘贴 arXiv ID 或 DOI，或到文献页点「＋ 我的文献」把论文加进来",
         done: "没有已解析的文献",
         parsing: "没有解析中的文献",
-        failed: "没有解析失败的文献 ✓",
+        failed: "没有失败的文献 ✓",
         none: "没有未解析的文献"
       };
       box.innerHTML = '<div class="muted" style="padding:18px 6px;font-size:13px;">' +
@@ -2814,10 +2854,20 @@
       var cnt = p.annotations_count || 0;
       /* P30 全文与解析解耦：行尾按钮按「全文状态 × 解析状态」演化（五态）——
        * ③ 解析中/排队 → 四段阶段条（不变）；④ failed → 恒显 [重试解析]：有文件时
-       * 跟 [替换文件]，无文件时跟 [获取全文/重试获取][上传]（点获取成功会自动接解析）；
-       * ⑤ done → 照旧（无操作钮）。上传/替换走同一文件选择弹窗。 */
+       * 跟 [替换文件]，无文件时跟 [获取并解析/重试获取并解析][上传]（点获取成功会
+       * 自动接解析）；⑤ done → 照旧（无操作钮）。上传/替换走同一文件选择弹窗。 */
       var ft = p.fulltext_status || "none";
       var fterr = p.fulltext_error || "";
+      /* 小改版②：徽标语义——parse_status=failed 优先显「解析失败」；其次获取全文失败
+       * （无全文 + 有失败原因）显「获取失败」（不再误显「未解析」）；其余照旧 */
+      var ftFailed = ft === "none" && !!fterr;
+      var badgeCls = st === "failed" || ftFailed ? "failed" : st;
+      var badgeText = st === "failed" ? "解析失败" : (ftFailed ? "获取失败" : _libStText(st));
+      /* 小改版②：无文件态的获取钮改名「获取并解析/重试获取并解析」——title 说明
+       * 「获取成功自动接解析」的现有行为，消除「获取全文不附带解析」的误解 */
+      var fetchBtn = '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id +
+        '" title="自动下载开放获取全文并立即开始解析；失败可上传本地 PDF">' +
+        '<i data-ic="dl"></i>' + (fterr ? "重试获取并解析" : "获取并解析") + "</button>";
       var parseBtn = "";
       var ftErrHtml = "";
       var busy = st === "pending" || st === "running";
@@ -2828,30 +2878,20 @@
          * fulltext_status=none 时也显示，避免失败行无路可重试） */
         parseBtn = retryParseBtn;
         if (ft === "none") {
-          parseBtn +=
-            '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id + '">' +
-              '<i data-ic="dl"></i>' + (fterr ? "重试获取" : "获取全文") + "</button>" +
+          parseBtn += fetchBtn +
             '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
               '<i data-ic="doc"></i>上传</button>';
-          if (fterr) {
-            ftErrHtml = '<div class="lib-ft-err" title="获取失败：' + esc(fterr) +
-              '（可重试获取，或上传自有 PDF）">' + esc(fterr) + "</div>";
-          }
+          ftErrHtml = _libFtErrHtml(fterr);
         } else {
           parseBtn += '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
             '<i data-ic="doc"></i>替换文件</button>';
         }
       } else if (ft === "none") {
-        /* ① 无文件 → [获取全文][上传]（获取失败过 → [重试获取][上传] + 原因小字） */
-        parseBtn =
-          '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id + '">' +
-            '<i data-ic="dl"></i>' + (fterr ? "重试获取" : "获取全文") + "</button>" +
+        /* ① 无文件 → [获取并解析][上传]（获取失败过 → [重试获取并解析][上传] + 原因小字） */
+        parseBtn = fetchBtn +
           '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
             '<i data-ic="doc"></i>上传</button>';
-        if (fterr) {
-          ftErrHtml = '<div class="lib-ft-err" title="获取失败：' + esc(fterr) +
-            '（可重试获取，或上传自有 PDF）">' + esc(fterr) + "</div>";
-        }
+        ftErrHtml = _libFtErrHtml(fterr);
       } else if (!busy && st === "none") {
         parseBtn = p.needs_reparse
           ? '<button class="btn btn-primary btn-sm lib-act lib-reparse" type="button" data-lib-parse="' + p.id + '">' +
@@ -2871,7 +2911,7 @@
           ftErrHtml +
         "</div>" +
         '<div class="lib-item-side">' +
-          '<span class="lib-st lib-st-' + esc(st) + '">' + _libStText(st) + "</span>" +
+          '<span class="lib-st lib-st-' + esc(badgeCls) + '">' + esc(badgeText) + "</span>" +
           '<span class="muted lib-item-ann">' + (cnt > 0 ? cnt + " 条批注" : "无批注") + "</span>" +
           parseBtn +
           '<button class="icon-btn lib-del" type="button" data-lib-del="' + p.id +
@@ -2882,8 +2922,9 @@
     injectIcons(box);
   }
 
-  /* 小改版：切换状态筛选——筛选值会话内记忆（libraryState.filter，刷新回落「全部」）；
-   * 切换后保留当前滚动位置（滚动容器探测复用 P29 的 _libScrollBox）。 */
+  /* 小改版：切换状态筛选（chips → xselect 后语义不变）——筛选值会话内记忆
+   * （libraryState.filter，刷新回落「全部」）；切换后保留当前滚动位置
+   * （滚动容器探测复用 P29 的 _libScrollBox）。 */
   function setLibraryFilter(value) {
     if (LIB_FILTER_OPTS.every(function (o) { return o.value !== value; })) return;
     libraryState.filter = value;
@@ -3132,7 +3173,7 @@
         "</div>" +
         /* 路标识符 */
         '<div class="imp-pane hide" data-import-pane="identifier">' +
-          '<label class="imp-field"><span class="muted">粘贴 arXiv ID（如 2401.12345）或 DOI（如 10.1000/xyz）——自动拉元数据并下载开放获取全文（下载失败可在列表点[获取全文]重试或[上传]本地文件）</span>' +
+          '<label class="imp-field"><span class="muted">粘贴 arXiv ID（如 2401.12345）或 DOI（如 10.1000/xyz）——自动拉元数据并下载开放获取全文，下载成功立即开始解析（下载失败可在列表点[重试获取并解析]或[上传]本地文件）</span>' +
           '<input type="text" data-import-ident placeholder="2401.12345 或 10.1000/xyz.2026"></label>' +
         "</div>" +
         '<div class="imp-err hide" data-import-err></div>' +
@@ -3226,7 +3267,7 @@
        * 文件后手动点，绝不自动触发 */
       closeImportModal();
       toast("文献已添加，但自动下载全文失败：" + r.fulltext_error +
-        "，可点[获取全文]重试或[上传]本地文件");
+        "，可点[重试获取并解析]或[上传]本地文件");
       loadLibrary();
       return;
     }
@@ -5072,12 +5113,7 @@
     if (el.hasAttribute && el.hasAttribute("data-lib-importmask")) { closeImportModal(); return; }
     /* 轮② P26：检索进度弹层手动关闭 */
     if (el.closest("[data-crawl-close]")) { closeCrawlProgress(); return; }
-    /* 小改版：状态筛选 chips 单击切换（保留滚动位置；轮询启停随筛选值走） */
-    var libFilterChip = el.closest("[data-lib-filter]");
-    if (libFilterChip) {
-      setLibraryFilter(libFilterChip.getAttribute("data-lib-filter"));
-      return;
-    }
+    /* 小改版②：状态筛选改走 xselect:change 全局监听（见文件底部），此处不再处理 */
     var libDelBtn = el.closest("[data-lib-del]");
     if (libDelBtn) {
       var delPid = parseInt(libDelBtn.getAttribute("data-lib-del"), 10);
@@ -5106,18 +5142,18 @@
       }).catch(function (e2) {
         libParse.disabled = false;
         loadLibrary();  // P30：409「请先获取或上传全文」等态刷新可见
-        /* 409（无全文可解析）：toast 后端信息 + 引导走行内「获取全文/上传」入口，
+        /* 409（无全文可解析）：toast 后端信息 + 引导走行内「获取并解析/上传」入口，
          * 获取成功会自动接解析，不走错误栈 */
         var detail = (e2 && e2.detail) || "发起解析失败";
         toast(e2 && e2.status === 409
-          ? detail + "：点本行「获取全文」或「上传」提供 PDF，获取成功会自动开始解析"
+          ? detail + "：点本行「获取并解析」或「上传」提供 PDF，获取成功会自动开始解析"
           : detail);
       });
       return;
     }
-    /* P30 独立动作一：行尾「获取全文/重试获取」→ fetch-fulltext（失败原因落库可见）。
-     * 获取成功即自动触发解析（与导入路对齐）：parse_status=pending → toast +
-     * 自动切「解析中」tab（复用导入成功后的跳转逻辑）；done → 已完成提示；
+    /* P30 独立动作一：行尾「获取并解析/重试获取并解析」（小改版②改名，行为不变）
+     * → fetch-fulltext（失败原因落库可见）。获取成功即自动触发解析（与导入路对齐）：
+     * parse_status=pending → toast + 自动切「解析中」筛选；done → 已完成提示；
      * failed → 行内解析失败态照旧可见原因。 */
     var libFetch = el.closest("[data-lib-fetch]");
     if (libFetch) {
@@ -5707,6 +5743,13 @@
     paperState.prefs.sort = e.detail.value;
     savePapersPrefs();
     loadPapersNav();
+  });
+
+  /* 小改版②：我的文献状态筛选 xselect——选中即切换（保留滚动位置；轮询启停随筛选值走） */
+  document.addEventListener("xselect:change", function (e) {
+    var root = e.target.closest ? e.target.closest("[data-lib-filter-xs]") : null;
+    if (!root || !e.detail) return;
+    setLibraryFilter(e.detail.value);
   });
   document.addEventListener("change", function (e) {
     var t = e.target;

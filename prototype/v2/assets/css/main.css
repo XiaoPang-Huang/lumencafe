@@ -2048,22 +2048,14 @@ h1.pp-rh, h2.pp-rh { border-bottom: 1px solid var(--line); padding-bottom: 6px; 
 /* 小改版：无全文行的红色失败原因截断到单行 ellipsis，悬停 title 看全文（原 2 行 clamp） */
 .lib-ft-err { margin-top: 6px; font-size: 11.5px; color: var(--danger); line-height: 1.5;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 小改版③：「不是 PDF」特征失败原因的追加提示（PMC 免费版 / 上传本地 PDF）——
+ * 琥珀色与红色原因区分层级，浅/深主题下均可读（Ant Gold-6 同源） */
+.lib-ft-tip { margin-top: 3px; font-size: 11.5px; line-height: 1.5; color: #d48806; }
 .lib-reparse { font-weight: 600; }
 
-/* 小改版：状态筛选 chips（借鉴 Linear 看板筛选 pill / Notion database filter chip——
- * 少量枚举值平铺成圆角小 pill、单击即切、当前项品牌色高亮；顶栏 flex-wrap 窄屏自然换行） */
-.lib-filter { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
-.lib-chip {
-  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
-  background: var(--bg); color: var(--ink-2); font-size: 12.5px; font-weight: 500;
-  white-space: nowrap; cursor: pointer; font-family: var(--sans);
-  transition: background .15s var(--ease-out), color .15s, border-color .15s;
-}
-.lib-chip:hover { background: var(--hover); color: var(--ink); }
-.lib-chip.active {
-  background: var(--brand-soft); border-color: transparent;
-  color: var(--brand-strong); font-weight: 600;
-}
+/* 小改版②：状态筛选 chips → xselect 下拉（复用通用组件）；触发器固定最小宽度，
+ * 五个选项 label 长度相近，切换时宽度不跳动 */
+.lib-filter-xs .xselect-trigger { min-width: 88px; }
 
 /* 立即检索进度弹层：右下角悬浮卡片（P26 阶段式进度） */
 .crawl-prog-mask {
