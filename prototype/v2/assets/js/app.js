@@ -1458,7 +1458,9 @@
        P29 改版：导航式重排（参考 Zotero 平板端「库列表→点行进阅读→返回」、Notion
        「全宽列表 vs 阅读」切换）——默认单列全宽文献列表（无选中时不再有大片空白），
        点行进整页阅读视图（左上角「← 返回」回列表并恢复滚动位置）；
-       「解析中」tab 保留四段阶段条（P30 解耦：上传→排队→解析中→完成）。 ---------- */
+       小改版：「全部/解析中」tab → 状态筛选 chips（全部/已解析/解析中/解析失败/未解析，
+       借鉴 Linear 看板筛选 pill / Notion database filter chip），解析中筛选保留
+       四段阶段条（P30 解耦：上传→排队→解析中→完成）。 ---------- */
     library: function () {
       return '' +
         '<div class="pp-page lib-page">' +
@@ -1469,8 +1471,14 @@
             "</div>" +
             '<div class="pp-actions">' +
               '<button class="btn btn-sm" type="button" data-lib-import><i data-ic="plus"></i>导入文献</button>' +
-              '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="all">全部</button>' +
-              '<button class="pp-nav-item' + (libraryState.tab === "parsing" ? " active" : "") + '" type="button" data-lib-tab="parsing">解析中</button>' +
+              /* 小改版：tab → 状态筛选 chips（少量枚举值平铺、单击切换、当前项高亮；
+               * 不选 xselect 下拉：5 个选项平铺更省一步操作） */
+              '<div class="lib-filter" role="group" aria-label="按解析状态筛选">' +
+                LIB_FILTER_OPTS.map(function (o) {
+                  return '<button class="lib-chip' + (libraryState.filter === o.value ? " active" : "") +
+                    '" type="button" data-lib-filter="' + o.value + '">' + o.label + "</button>";
+                }).join("") +
+              "</div>" +
               '<button class="icon-btn" type="button" data-lib-settings title="我的文献设置" aria-label="我的文献设置"><i data-ic="gear"></i></button>' +
             "</div>" +
             /* 轮③ P27：设置小项（自动翻译开关，存 papers_prefs） */
@@ -2129,9 +2137,8 @@
    * 阅读/批注/翻译的唯一入口（拍板 P22）；三栏 = 左文献列表 / 中阅读器（复用 P8
    * 批注阅读器，挂载态）/ 右批注栏（阅读器内建）。删除 = 级联删（拍板 P24）。 */
   var libraryState = {
-    items: [],          // GET /papers/library 条目（LibraryItemOut）
-    parsingItems: [],   // 轮② P26：GET /papers/library/parsing（解析中 tab 数据源）
-    tab: "all",         // all | parsing（解析中 tab：四段阶段条）
+    items: [],          // GET /papers/library 条目（LibraryItemOut；小改版后唯一数据源 = 全量）
+    filter: "all",      // 小改版：状态筛选值（all|done|parsing|failed|none），会话内记忆，刷新回落「全部」
     currentId: 0,       // 当前在阅读视图中打开的文献
     scrollY: 0          // P29：进入阅读视图前保存的列表滚动位置（返回时恢复）
   };
@@ -2630,6 +2637,26 @@
   };
   function _libStText(st) { return LIB_ST_TEXT[st] || st || "未解析"; }
 
+  /* 小改版：状态筛选器选项（借鉴 Linear 看板筛选 pill / Notion database filter chip）。
+   * parsing = pending + running；none = parse_status 缺省/none（未解析）。 */
+  var LIB_FILTER_OPTS = [
+    { value: "all", label: "全部" },
+    { value: "done", label: "已解析" },
+    { value: "parsing", label: "解析中" },
+    { value: "failed", label: "解析失败" },
+    { value: "none", label: "未解析" }
+  ];
+  /* 全量数据源 → 按筛选值过滤（前端渲染侧过滤，行结构与按钮五态逻辑不变） */
+  function _libFilterItems(items, filter) {
+    if (filter === "all") return items;
+    if (filter === "parsing") {
+      return items.filter(function (p) {
+        return p.parse_status === "pending" || p.parse_status === "running";
+      });
+    }
+    return items.filter(function (p) { return (p.parse_status || "none") === filter; });
+  }
+
   /* 在库态底账：GET /papers/library 一次，之后加/删本地增量维护（按钮态不闪烁） */
   function ensureLibMap(force) {
     if (paperState.libLoaded && !force) return Promise.resolve(paperState.lib);
@@ -2651,15 +2678,16 @@
       renderLibraryList();
       var cnt = qs("[data-lib-count]");
       if (cnt) cnt.textContent = String(libraryState.items.length);
-      /* 轮②：解析中 tab 下刷新列表后同步拉取任务进度 */
-      if (libraryState.tab === "parsing") refreshParsingTab();
+      /* 小改版：数据源已是全量，轮询调度统一走 syncParsingPoll（仅「全部/解析中」
+       * 且仍有 pending/running 任务时续轮） */
+      syncParsingPoll();
     }).catch(function (e) { toast(e.detail || "我的文献加载失败"); });
   }
 
   function _libVisibleItems() {
-    if (libraryState.tab !== "parsing") return libraryState.items;
-    /* 轮② P26：解析中 tab 数据源 = GET /papers/library/parsing（非 done 任务，含 phase） */
-    return libraryState.parsingItems;
+    /* 小改版：单一数据源 = GET /papers/library 全量，前端按筛选值过滤渲染
+     * （/papers/library/parsing 后端保留，前端不再调用） */
+    return _libFilterItems(libraryState.items, libraryState.filter);
   }
 
   /* 轮② P26→P30：解析四段阶段条（上传→排队→解析中→完成；P30 解耦后流水线不再含「下载」）。
@@ -2695,25 +2723,36 @@
       '<div class="lps-labels">' + labels + "</div>" + err + "</div>";
   }
 
-  /* 解析中 tab：拉取未完成任务并 2s 轮询（仍有 pending/running 才续轮；离开页面自动停） */
+  /* 小改版：阶段条轮询——数据源统一到 GET /papers/library 全量（parsing 接口后端保留、
+   * 前端不再调用）；仅「全部/解析中」筛选下、且仍有 pending/running 任务时 2s 续轮，
+   * 其余筛选下四段条静止渲染。离开 #/library（列表 DOM 不存在）链条自然终止。 */
   var _parsingTimer = null;
-  function refreshParsingTab() {
-    if (libraryState.tab !== "parsing") return;
+  function _libPollWanted() {
+    var f = libraryState.filter;
+    if (f !== "all" && f !== "parsing") return false;
+    return libraryState.items.some(function (p) {
+      return p.parse_status === "pending" || p.parse_status === "running";
+    });
+  }
+  function syncParsingPoll() {
+    if (!qs("[data-lib-list]")) { scheduleParsingPoll(0); return; }
+    scheduleParsingPoll(_libPollWanted() ? 2000 : 0);
+  }
+  function refreshParsingPoll() {
     if (!qs("[data-lib-list]")) return;  // 已离开 #/library
-    API.get("/papers/library/parsing").then(function (items) {
-      libraryState.parsingItems = items || [];
+    API.get("/papers/library").then(function (items) {
+      libraryState.items = items || [];
       renderLibraryList();
-      var active = libraryState.parsingItems.some(function (p) {
-        return p.parse_status === "pending" || p.parse_status === "running";
-      });
-      scheduleParsingPoll(active ? 2000 : 0);
+      var cnt = qs("[data-lib-count]");
+      if (cnt) cnt.textContent = String(libraryState.items.length);
+      syncParsingPoll();
     }).catch(function () { scheduleParsingPoll(4000); });
   }
   function scheduleParsingPoll(delay) {
     clearTimeout(_parsingTimer);
     _parsingTimer = null;
     if (!delay) return;
-    _parsingTimer = setTimeout(refreshParsingTab, delay);
+    _parsingTimer = setTimeout(refreshParsingPoll, delay);
   }
 
   /* 轮③ P27：我的文献设置小项——「导入/解析后自动翻译」开关（存 papers_prefs）。
@@ -2742,25 +2781,33 @@
     var box = qs("[data-lib-list]");
     if (!box) return;
     var items = _libVisibleItems();
+    var filter = libraryState.filter;
+    /* 筛选 chips 高亮回显（路由重进 / 动作跳筛选后同步） */
+    qsa("[data-lib-filter]").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-lib-filter") === filter);
+    });
     var hint = qs("[data-lib-tabhint]");
     if (hint) {
-      hint.textContent = libraryState.tab === "parsing"
-        ? (items.length ? items.length + " 个解析任务" : "")
-        : "";
+      hint.textContent = filter === "all" ? "" : (items.length ? items.length + " 篇" : "");
     }
     if (!items.length) {
+      var LIB_EMPTY_TEXT = {
+        all: "还没有文献：点右上角「导入文献」上传 PDF / 粘贴 arXiv ID 或 DOI，或到文献页点「＋ 我的文献」把论文加进来",
+        done: "没有已解析的文献",
+        parsing: "没有解析中的文献",
+        failed: "没有解析失败的文献 ✓",
+        none: "没有未解析的文献"
+      };
       box.innerHTML = '<div class="muted" style="padding:18px 6px;font-size:13px;">' +
-        (libraryState.tab === "parsing"
-          ? "没有解析中的文献"
-          : (libraryState.items.length
-              ? "全部文献都已解析完成 ✓"
-              : "还没有文献：点右上角「导入文献」上传 PDF / 粘贴 arXiv ID 或 DOI，或到文献页点「＋ 我的文献」把论文加进来")) +
-        "</div>";
+        (LIB_EMPTY_TEXT[filter] || LIB_EMPTY_TEXT.all) + "</div>";
       return;
     }
-    var showPhase = libraryState.tab === "parsing";
     box.innerHTML = items.map(function (p) {
       var st = p.parse_status || "none";
+      /* 小改版：四段阶段条渲染范围——busy/failed 行在「全部/解析中」筛选下渲染并随
+       * 轮询流动（全部筛选下解析中任务一眼可见），「解析失败」筛选下静止渲染（红段 +
+       * 原因小字可见）；done/none 行与「已解析/未解析」筛选一律不渲染 */
+      var showPhase = filter !== "done" && filter !== "none" && st !== "done" && st !== "none";
       var meta = [];
       if (p.journal) meta.push(esc(p.journal));
       if (p.pub_date) meta.push(esc(String(p.pub_date).slice(0, 4)));
@@ -2833,6 +2880,23 @@
       "</div>";
     }).join("");
     injectIcons(box);
+  }
+
+  /* 小改版：切换状态筛选——筛选值会话内记忆（libraryState.filter，刷新回落「全部」）；
+   * 切换后保留当前滚动位置（滚动容器探测复用 P29 的 _libScrollBox）。 */
+  function setLibraryFilter(value) {
+    if (LIB_FILTER_OPTS.every(function (o) { return o.value !== value; })) return;
+    libraryState.filter = value;
+    var scroller = _libScrollBox();
+    var y = scroller ? scroller.scrollTop : (window.scrollY || 0);
+    renderLibraryList();
+    syncParsingPoll();
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(function () {
+        if (scroller) scroller.scrollTop = y;
+        else window.scrollTo(0, y);
+      });
+    }
   }
 
   /* P29：滚动容器探测——桌面端内容区在 .main 内滚（overflow-y:auto），移动端整页滚。
@@ -3168,14 +3232,9 @@
     }
     closeImportModal();
     toast("导入成功：" + (r.title || ("文献 #" + r.paper_id)));
-    /* 成功后跳「解析中」tab 看四段阶段条（r.parse_status pending/running/done 均可见） */
-    libraryState.tab = "parsing";
-    loadLibrary().then(function () {
-      qsa("[data-lib-tab]").forEach(function (b) {
-        b.classList.toggle("active", b.getAttribute("data-lib-tab") === "parsing");
-      });
-      refreshParsingTab();
-    });
+    /* 成功后跳「解析中」筛选看四段阶段条（r.parse_status pending/running/done 均可见） */
+    libraryState.filter = "parsing";
+    loadLibrary();
   }
 
   /* ================= P8 批注式笔记阅读器（论文域后批①）
@@ -5013,13 +5072,10 @@
     if (el.hasAttribute && el.hasAttribute("data-lib-importmask")) { closeImportModal(); return; }
     /* 轮② P26：检索进度弹层手动关闭 */
     if (el.closest("[data-crawl-close]")) { closeCrawlProgress(); return; }
-    var libTab = el.closest("[data-lib-tab]");
-    if (libTab) {
-      libraryState.tab = libTab.getAttribute("data-lib-tab");
-      qsa("[data-lib-tab]").forEach(function (b) { b.classList.toggle("active", b === libTab); });
-      renderLibraryList();
-      if (libraryState.tab === "parsing") refreshParsingTab();
-      else scheduleParsingPoll(0);
+    /* 小改版：状态筛选 chips 单击切换（保留滚动位置；轮询启停随筛选值走） */
+    var libFilterChip = el.closest("[data-lib-filter]");
+    if (libFilterChip) {
+      setLibraryFilter(libFilterChip.getAttribute("data-lib-filter"));
       return;
     }
     var libDelBtn = el.closest("[data-lib-del]");
@@ -5045,13 +5101,8 @@
         toast("已发起解析：" + ((r && r.parse_status) === "done"
           ? "已完成，回到「全部」点行进入阅读"
           : "可在「解析中」看四段进度"));
-        libraryState.tab = "parsing";
-        loadLibrary().then(function () {
-          qsa("[data-lib-tab]").forEach(function (b) {
-            b.classList.toggle("active", b.getAttribute("data-lib-tab") === "parsing");
-          });
-          refreshParsingTab();
-        });
+        libraryState.filter = "parsing";
+        loadLibrary();
       }).catch(function (e2) {
         libParse.disabled = false;
         loadLibrary();  // P30：409「请先获取或上传全文」等态刷新可见
@@ -5076,13 +5127,8 @@
         if (r && r.ok) {
           if (r.parse_status === "pending" || r.parse_status === "running") {
             toast("已获取全文，开始解析");
-            libraryState.tab = "parsing";
-            loadLibrary().then(function () {
-              qsa("[data-lib-tab]").forEach(function (b) {
-                b.classList.toggle("active", b.getAttribute("data-lib-tab") === "parsing");
-              });
-              refreshParsingTab();
-            });
+            libraryState.filter = "parsing";
+            loadLibrary();
             return;
           }
           if (r.parse_status === "done") {
