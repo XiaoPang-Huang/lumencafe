@@ -2766,16 +2766,36 @@
       if (p.pub_date) meta.push(esc(String(p.pub_date).slice(0, 4)));
       var cnt = p.annotations_count || 0;
       /* P30 全文与解析解耦：行尾按钮按「全文状态 × 解析状态」演化（五态）——
-       * ① 无文件 → [获取全文][上传]（获取失败过 → [重试获取][上传] + 原因小字）；
-       * ② 有文件未解析 → [解析][替换文件]（「需重新解析」标志 → ⟳ 高亮主按钮）；
-       * ③ 解析中/排队 → 四段阶段条（不变）；④ failed → [重试解析][替换文件]；
+       * ③ 解析中/排队 → 四段阶段条（不变）；④ failed → 恒显 [重试解析]：有文件时
+       * 跟 [替换文件]，无文件时跟 [获取全文/重试获取][上传]（点获取成功会自动接解析）；
        * ⑤ done → 照旧（无操作钮）。上传/替换走同一文件选择弹窗。 */
       var ft = p.fulltext_status || "none";
       var fterr = p.fulltext_error || "";
       var parseBtn = "";
       var ftErrHtml = "";
       var busy = st === "pending" || st === "running";
-      if (ft === "none") {
+      var retryParseBtn = '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-parse="' + p.id + '">' +
+        '<i data-ic="refresh"></i>重试解析</button>';
+      if (st === "failed") {
+        /* 解析态优先：parse_status=failed 的行恒有重试解析入口（历史遗留条目
+         * fulltext_status=none 时也显示，避免失败行无路可重试） */
+        parseBtn = retryParseBtn;
+        if (ft === "none") {
+          parseBtn +=
+            '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id + '">' +
+              '<i data-ic="dl"></i>' + (fterr ? "重试获取" : "获取全文") + "</button>" +
+            '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
+              '<i data-ic="doc"></i>上传</button>';
+          if (fterr) {
+            ftErrHtml = '<div class="lib-ft-err" title="获取失败：' + esc(fterr) +
+              '（可重试获取，或上传自有 PDF）">' + esc(fterr) + "</div>";
+          }
+        } else {
+          parseBtn += '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
+            '<i data-ic="doc"></i>替换文件</button>';
+        }
+      } else if (ft === "none") {
+        /* ① 无文件 → [获取全文][上传]（获取失败过 → [重试获取][上传] + 原因小字） */
         parseBtn =
           '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-fetch="' + p.id + '">' +
             '<i data-ic="dl"></i>' + (fterr ? "重试获取" : "获取全文") + "</button>" +
@@ -2792,11 +2812,6 @@
           : '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-parse="' + p.id + '">' +
             '<i data-ic="refresh"></i>解析</button>';
         parseBtn += '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
-          '<i data-ic="doc"></i>替换文件</button>';
-      } else if (st === "failed") {
-        parseBtn = '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-parse="' + p.id + '">' +
-          '<i data-ic="refresh"></i>重试解析</button>' +
-          '<button class="btn btn-ghost btn-sm lib-act" type="button" data-lib-upload="' + p.id + '">' +
           '<i data-ic="doc"></i>替换文件</button>';
       }
       /* 解析中/排队（busy）与 done：无行尾动作钮（阶段条照旧 / done 照旧） */
@@ -5040,7 +5055,12 @@
       }).catch(function (e2) {
         libParse.disabled = false;
         loadLibrary();  // P30：409「请先获取或上传全文」等态刷新可见
-        toast((e2 && e2.detail) || "发起解析失败");
+        /* 409（无全文可解析）：toast 后端信息 + 引导走行内「获取全文/上传」入口，
+         * 获取成功会自动接解析，不走错误栈 */
+        var detail = (e2 && e2.detail) || "发起解析失败";
+        toast(e2 && e2.status === 409
+          ? detail + "：点本行「获取全文」或「上传」提供 PDF，获取成功会自动开始解析"
+          : detail);
       });
       return;
     }
