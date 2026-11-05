@@ -23,6 +23,7 @@ mock 记 0），费用快照固化在 meter_service。
 """
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -57,10 +58,15 @@ class UpstreamError(Exception):
 
 @dataclass(frozen=True)
 class StreamChunk:
-    """双流协议帧（R3）：delta=正文增量，reasoning_delta=思维增量，二者至多一非空。"""
+    """双流协议帧（R3）：delta=正文增量，reasoning_delta=思维增量，二者至多一非空。
+
+    pi-runner 步 1 增补：tool_delta=OpenAI tool_calls 增量帧（delta.tool_calls 原样），
+    finish=上游 finish_reason（末帧携带，原样透传）。"""
 
     delta: str = ""
     reasoning_delta: str = ""
+    tool_delta: Any = None
+    finish: str = ""
 
 
 @dataclass(frozen=True)
@@ -128,11 +134,16 @@ async def chat_once(
     messages: list[dict[str, Any]],
     timeout: float = 30.0,
     usage_out: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any = None,
+    message_out: dict[str, Any] | None = None,
 ) -> str:
     """一次性（非流式）对话，返回完整文本。
 
     步 3 记账：传 usage_out（dict）时回填 {"input_tokens": x, "output_tokens": y}；
     mock 模式回填 0。费用不在此算（单价快照由 meter_service 记账时固化）。
+    pi-runner 步 1 增补：tools/tool_choice 原样透传（OpenAI 兼容协议）；
+    message_out 回填上游完整 message（含 tool_calls，网关非流式端点用）。
     """
     if cfg.is_mock:
         await asyncio.sleep(0.05)
@@ -141,6 +152,10 @@ async def chat_once(
         return _MOCK_PARSE_TEMPLATE.format(today=datetime.now().date().isoformat())
 
     payload: dict[str, Any] = {"model": cfg.model, "messages": messages}
+    if tools:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
     try:
         resp = await _post_chat_completions(
             get_http_client(), cfg, payload, httpx.Timeout(timeout, connect=10.0)
@@ -154,7 +169,10 @@ async def chat_once(
                     "output_tokens": int(usage.get("completion_tokens") or 0),
                 }
             )
-        return str(data["choices"][0]["message"]["content"]).strip()
+        message = data["choices"][0]["message"]
+        if message_out is not None:
+            message_out.update(message)
+        return str(message.get("content") or "").strip()
     except (httpx.HTTPError, KeyError, IndexError, ValueError) as exc:
         raise UpstreamError(str(exc)[:300]) from exc
 
@@ -165,6 +183,8 @@ async def chat_stream(
     thinking: str | None = None,
     timeout: float = 120.0,
     usage_out: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any = None,
 ) -> AsyncIterator[StreamChunk]:
     """SSE 流式对话，逐段 yield 双流帧（正文 delta / 思维 reasoning_delta）。
 
@@ -192,6 +212,10 @@ async def chat_stream(
         "stream": True,
         "stream_options": {"include_usage": True},
     }
+    if tools:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
     payload.update(build_thinking_params(cfg.vendor, thinking))
     try:
         client = get_http_client()
@@ -202,7 +226,12 @@ async def chat_stream(
             headers={"Authorization": f"Bearer {cfg.api_key}"},
             timeout=httpx.Timeout(timeout, connect=10.0),
         ) as resp:
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                # 在流上下文内读错误体：退出上下文后流即关闭，异常处理器里读不到
+                await resp.aread()
+                raise UpstreamError(
+                    f"HTTP {resp.status_code}: {resp.text[:300]} | req={json.dumps(payload, ensure_ascii=False)[:6000]}"
+                )
             async for line in resp.aiter_lines():
                 if not line.startswith("data:"):
                     continue
@@ -228,11 +257,126 @@ async def chat_stream(
                 delta = choices[0].get("delta", {})
                 content = delta.get("content")
                 reasoning_content = delta.get("reasoning_content")
+                tool_calls = delta.get("tool_calls")
+                finish_reason = choices[0].get("finish_reason")
                 # 双流透传：思维帧先于正文帧到达（DeepSeek R1 协议，R3）
                 if reasoning_content:
                     yield StreamChunk(reasoning_delta=str(reasoning_content))
                 if content:
                     yield StreamChunk(delta=str(content))
+                # pi-runner 步 1 增补：tool_calls 增量与 finish_reason 原样透传
+                if tool_calls:
+                    yield StreamChunk(tool_delta=tool_calls)
+                if finish_reason:
+                    yield StreamChunk(finish=str(finish_reason))
+    except httpx.HTTPError as exc:
+        raise UpstreamError(str(exc)[:300]) from exc
+
+
+async def chat_stream_passthrough(
+    cfg: ClientCfg,
+    messages: list[dict[str, Any]],
+    *,
+    thinking: str | None = None,
+    timeout: float = 120.0,
+    usage_out: dict[str, Any] | None = None,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any = None,
+    extra: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """网关对外流式透传（pi-runner 步 1 增补）：上游 SSE 帧原样下发，仅过滤思维帧。
+
+    与 chat_stream 的区别：不重序列化上游帧（chunk id、字段集合、帧顺序完全保真），
+    消除重组引入的协议漂移——实测 Pi 客户端对重组后的 tool_calls 流会静默丢失
+    工具状态（follow-up 请求缺 tool_calls/tool_call_id，上游 422）。
+    仅按 N-增1 协议要求过滤「纯思维帧」（delta 只有 reasoning_content）。
+
+    每帧 yield {"raw": 完整 SSE 行（含 data: 前缀与换行）, "finish": finish_reason 或 None}；
+    上游 [DONE] 不透传（由调用方统一收尾）。usage 帧透传并回填 usage_out。
+    """
+    if cfg.is_mock:
+        for delta, finish in (
+            ({"content": MOCK_STREAM_REPLY}, None),
+            ({}, "stop"),
+        ):
+            frame = {
+                "id": "chatcmpl-mock",
+                "object": "chat.completion.chunk",
+                "created": 0,
+                "model": cfg.model,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+            }
+            yield {"raw": f"data: {json.dumps(frame, ensure_ascii=False)}\n\n", "finish": finish}
+        if usage_out is not None:
+            usage_out.update({"input_tokens": 0, "output_tokens": 0})
+        return
+
+    payload: dict[str, Any] = {
+        "model": cfg.model,
+        "messages": messages,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if tools:
+        payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+    if extra:
+        payload.update(extra)
+    logging.getLogger(__name__).debug(
+        "流式透传请求摘要：messages=%s tools=%s",
+        [
+            (m.get("role"), bool(m.get("tool_calls")), m.get("tool_call_id"))
+            for m in messages
+        ],
+        len(tools or []),
+    )
+    payload.update(build_thinking_params(cfg.vendor, thinking))
+    try:
+        client = get_http_client()
+        async with client.stream(
+            "POST",
+            f"{cfg.api_base}/chat/completions",
+            json=payload,
+            headers={"Authorization": f"Bearer {cfg.api_key}"},
+            timeout=httpx.Timeout(timeout, connect=10.0),
+        ) as resp:
+            if resp.status_code >= 400:
+                # 在流上下文内读错误体：退出上下文后流即关闭，异常处理器里读不到
+                await resp.aread()
+                raise UpstreamError(
+                    f"HTTP {resp.status_code}: {resp.text[:300]} | req={json.dumps(payload, ensure_ascii=False)[:6000]}"
+                )
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[len("data:") :].strip()
+                if data == "[DONE]":
+                    return
+                try:
+                    chunk = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                # usage 帧（无 choices）透传，同时回填计量
+                usage = chunk.get("usage")
+                if usage_out is not None and usage:
+                    usage_out.update(
+                        {
+                            "input_tokens": int(usage.get("prompt_tokens") or 0),
+                            "output_tokens": int(usage.get("completion_tokens") or 0),
+                        }
+                    )
+                choices = chunk.get("choices") or []
+                finish: str | None = None
+                if choices:
+                    delta = choices[0].get("delta") or {}
+                    finish = choices[0].get("finish_reason")
+                    # N-增1：纯思维帧不透出（同时含正文/工具调用的帧原样放行）
+                    if delta.get("reasoning_content") and not (
+                        delta.get("content") or delta.get("tool_calls")
+                    ):
+                        continue
+                yield {"raw": f"data: {data}\n\n", "finish": finish}
     except httpx.HTTPError as exc:
         raise UpstreamError(str(exc)[:300]) from exc
 

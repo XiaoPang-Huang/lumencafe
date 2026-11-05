@@ -1,0 +1,13 @@
+{
+  "$schema": "https://pi.dev/schemas/models.schema.json",
+  "providers": {
+    "lumen-gateway": {
+      "name": "流光网关",
+      "baseUrl": "http://caddy/gw/v1",
+      "api": "openai-completions",
+      "apiKey": "$LUMEN_PI_TOKEN",
+      "authHeader": true,
+      "models": [{ "id": "deepseek-flash" }]
+    }
+  }
+}

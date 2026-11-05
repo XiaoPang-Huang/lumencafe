@@ -8,6 +8,7 @@
 """
 import hashlib
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -15,7 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,9 +25,15 @@ from app.models.llm import GatewayToken, LLMModel, Provider
 from app.services import llm_gateway, route_service
 
 router = APIRouter(prefix="/gw/v1", tags=["gateway"])
+logger = logging.getLogger(__name__)
 
 
 class ChatMessage(BaseModel):
+    # extra="allow"：网关是透传层，消息上的 tool_calls/tool_call_id/name 等
+    # 扩展字段必须原样保留（pi-runner 步 1 排障：pydantic 默认丢弃 extra 字段，
+    # 导致 follow-up 请求缺 tool_call_id，上游 422）
+    model_config = ConfigDict(extra="allow")
+
     role: str
     content: Any = ""
 
@@ -35,6 +42,19 @@ class ChatCompletionsRequest(BaseModel):
     model: str
     messages: list[ChatMessage]
     stream: bool = False
+    # pi-runner 步 1 增补：工具透传（OpenAI 兼容协议；此前缺失导致客户端工具调用
+    # 被静默丢弃，模型退化为纯文本输出伪工具标记）
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: Any = None
+    # 其余调用参数原样透传（此前被 pydantic 静默丢弃；实测丢参数会改变上游
+    # 响应行为并触发客户端跟进请求异常，pi-runner 步 1 排障增补）
+    max_completion_tokens: int | None = None
+    max_tokens: int | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    store: bool | None = None
+    parallel_tool_calls: bool | None = None
+    response_format: dict[str, Any] | None = None
 
 
 def _token_hash(token: str) -> str:
@@ -100,7 +120,19 @@ def _check_scope(token: GatewayToken, model_name: str) -> None:
         raise HTTPException(status_code=403, detail="该模型不在令牌可用范围内")
 
 
-def _chunk(model: str, delta: str, *, finish: bool = False) -> str:
+def _chunk(
+    model: str,
+    delta: str,
+    *,
+    finish_reason: str | None = None,
+    tool_calls: list[Any] | None = None,
+) -> str:
+    if tool_calls is not None:
+        delta_payload: dict[str, Any] = {"tool_calls": tool_calls}
+    elif delta:
+        delta_payload = {"content": delta}
+    else:
+        delta_payload = {}
     payload = {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion.chunk",
@@ -109,8 +141,8 @@ def _chunk(model: str, delta: str, *, finish: bool = False) -> str:
         "choices": [
             {
                 "index": 0,
-                "delta": {} if finish else {"content": delta},
-                "finish_reason": "stop" if finish else None,
+                "delta": delta_payload,
+                "finish_reason": finish_reason,
             }
         ],
     }
@@ -118,14 +150,30 @@ def _chunk(model: str, delta: str, *, finish: bool = False) -> str:
 
 
 async def _stream_reply(
-    cfg: llm_gateway.ClientCfg, model_name: str, messages: list[dict[str, Any]]
+    cfg: llm_gateway.ClientCfg,
+    model_name: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: Any = None,
+    extra: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
+    finish_sent = False
     try:
-        async for chunk in llm_gateway.chat_stream(cfg, messages):
-            # 对外 /gw/v1 协议不变（N-增1）：reasoning 双流帧不透出，仅转发正文
-            if chunk.delta:
-                yield _chunk(model_name, chunk.delta)
-    except llm_gateway.UpstreamError:
+        # 原样透传上游帧（chat_stream_passthrough）：不重序列化，避免协议漂移
+        # （pi-runner 步 1 实测：重组 tool_calls 流会导致 Pi 丢失工具状态）
+        async for frame in llm_gateway.chat_stream_passthrough(
+            cfg, messages, tools=tools, tool_choice=tool_choice, extra=extra
+        ):
+            yield frame["raw"]
+            if frame["finish"]:
+                finish_sent = True
+        if not finish_sent:
+            # 兜底补 finish_reason：个别上游不发 finish 帧时，保证流以
+            # 带 finish_reason 的 chunk 收尾（OpenAI 协议要求；Pi 客户端依赖）
+            yield _chunk(model_name, "", finish_reason="stop")
+    except llm_gateway.UpstreamError as exc:
+        # 落日志留排障线索（上游错误体已由 chat_stream 拼进异常消息）
+        logger.warning("网关流式调用上游失败：%s", exc)
         yield f"data: {json.dumps({'error': '上游模型调用失败'}, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"
 
@@ -144,14 +192,38 @@ async def chat_completions(
     )
     messages = [m.model_dump() for m in request.messages]
 
+    # 其余调用参数原样透传上游（None 值不入 payload）
+    extra = {
+        k: v
+        for k, v in {
+            "max_completion_tokens": request.max_completion_tokens,
+            "max_tokens": request.max_tokens,
+            "temperature": request.temperature,
+            "top_p": request.top_p,
+            "store": request.store,
+            "parallel_tool_calls": request.parallel_tool_calls,
+            "response_format": request.response_format,
+        }.items()
+        if v is not None
+    }
+
     if request.stream:
         return StreamingResponse(
-            _stream_reply(cfg, model.name, messages),
+            _stream_reply(
+                cfg, model.name, messages, request.tools, request.tool_choice, extra
+            ),
             media_type="text/event-stream",
         )
 
+    message_out: dict[str, Any] = {}
     try:
-        content = await llm_gateway.chat_once(cfg, messages)
+        content = await llm_gateway.chat_once(
+            cfg,
+            messages,
+            tools=request.tools,
+            tool_choice=request.tool_choice,
+            message_out=message_out,
+        )
     except llm_gateway.UpstreamError as exc:
         raise HTTPException(status_code=502, detail="上游模型调用失败") from exc
     return {
@@ -162,7 +234,7 @@ async def chat_completions(
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": content},
+                "message": {"role": "assistant", "content": content, **message_out},
                 "finish_reason": "stop",
             }
         ],

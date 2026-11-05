@@ -1,5 +1,7 @@
 """对外模型网关测试（架构设计 §4.9/§5.6/Q13/Q17）。"""
 
+import json
+
 from app.services import llm_gateway
 from tests.conftest import login
 
@@ -82,6 +84,62 @@ async def test_gw_stream_sse(client):
     assert '"object": "chat.completion.chunk"' in body
 
 
+async def test_gw_stream_tool_calls_and_finish_passthrough(client, monkeypatch):
+    """pi-runner 步 1：tools 透传 + tool_calls 增量帧 + finish_reason 原样下发。"""
+    admin = await login(client)
+    token = await _mk_token(client, admin)
+    captured: dict = {}
+
+    def _frame(delta: dict, finish: str | None) -> dict:
+        return {
+            "id": "chatcmpl-test",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "mock",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }
+
+    async def fake_stream(cfg, messages, **kwargs):
+        captured.update(kwargs)
+        yield {
+            "raw": "data: "
+            + json.dumps(
+                _frame(
+                    {
+                        "tool_calls": [
+                            {"index": 0, "id": "call_1", "type": "function",
+                             "function": {"name": "bash", "arguments": "{}"}}
+                        ]
+                    },
+                    None,
+                )
+            )
+            + "\n\n",
+            "finish": None,
+        }
+        yield {
+            "raw": "data: " + json.dumps(_frame({}, "tool_calls")) + "\n\n",
+            "finish": "tool_calls",
+        }
+
+    monkeypatch.setattr(llm_gateway, "chat_stream_passthrough", fake_stream)
+    resp = await client.post(
+        "/gw/v1/chat/completions",
+        json={
+            "model": "mock",
+            "messages": _MSGS,
+            "stream": True,
+            "tools": [{"type": "function", "function": {"name": "bash"}}],
+        },
+        headers=_mk_headers(token),
+    )
+    assert resp.status_code == 200
+    assert captured.get("tools") == [{"type": "function", "function": {"name": "bash"}}]
+    assert '"tool_calls"' in resp.text
+    assert '"finish_reason": "tool_calls"' in resp.text
+    assert "data: [DONE]" in resp.text
+
+
 async def test_gw_model_resolution_and_scope(client):
     admin = await login(client)
     token = await _mk_token(client, admin, scope=["mock"])
@@ -142,15 +200,55 @@ async def test_gw_zero_key_principle(client):
     assert "sk-real-key-topsecret" not in resp.text
 
 
+async def test_gw_message_tool_fields_preserved(client, monkeypatch):
+    """pi-runner 步 1 回归：消息上的 tool_calls/tool_call_id 必须原样透传。
+
+    pydantic 默认丢弃 extra 字段，曾导致 follow-up 请求缺 tool_call_id 被上游 422。
+    """
+    admin = await login(client)
+    token = await _mk_token(client, admin)
+    captured: dict = {}
+
+    async def fake_stream(cfg, messages, **kwargs):
+        captured["messages"] = messages
+        yield {"raw": "data: {}\n\n", "finish": "stop"}
+
+    monkeypatch.setattr(llm_gateway, "chat_stream_passthrough", fake_stream)
+    resp = await client.post(
+        "/gw/v1/chat/completions",
+        json={
+            "model": "mock",
+            "stream": True,
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function",
+                         "function": {"name": "bash", "arguments": "{}"}}
+                    ],
+                },
+                {"role": "tool", "content": "out", "tool_call_id": "call_1"},
+            ],
+        },
+        headers=_mk_headers(token),
+    )
+    assert resp.status_code == 200
+    msgs = captured["messages"]
+    assert msgs[1]["tool_calls"][0]["id"] == "call_1"
+    assert msgs[2]["tool_call_id"] == "call_1"
+
+
 async def test_gw_upstream_failure_502(client, monkeypatch):
     admin = await login(client)
     token = await _mk_token(client, admin)
 
-    async def boom(cfg, messages):
+    async def boom(cfg, messages, **kwargs):
         raise llm_gateway.UpstreamError("boom")
         yield  # pragma: no cover  # 使其成为异步生成器
 
-    monkeypatch.setattr(llm_gateway, "chat_stream", boom)
+    monkeypatch.setattr(llm_gateway, "chat_stream_passthrough", boom)
     resp = await client.post(
         "/gw/v1/chat/completions",
         json={"model": "mock", "messages": _MSGS, "stream": True},
