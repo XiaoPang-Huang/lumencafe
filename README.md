@@ -7,7 +7,7 @@
 ## 快速开始（本地）
 
 ```bash
-cp .env.example .env   # 修改其中的密码与密钥
+cp .env.example .env   # 修改其中的密码、密钥与 LUMEN_PI_TOKEN
 docker compose up -d --build
 ```
 
@@ -25,7 +25,7 @@ docker compose up -d --build
 
 ```bash
 git clone <仓库地址> lumencafe && cd lumencafe
-cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / N8N_BASIC_AUTH_PASSWORD
+cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / LUMEN_PI_TOKEN
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
 ```
 
@@ -38,7 +38,9 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --b
 ## 目录结构
 
 ```
-backend/    FastAPI 后端（第一期：环境地基）
+backend/    FastAPI 后端（业务 API + /gw/v1 模型网关）
+pi-runner/  Pi Agent 沙箱服务（Node 薄层 + Pi SDK，执行主体派发任务）
+deploy/     部署层（prod 覆盖、备份、pi 基础镜像配置）
 docs/       架构定稿 v1、PRD v1、架构设计 v1、团队协作规范 v1
 old/        旧版后端（本地参考，不入版本库）
 prototype/  前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）

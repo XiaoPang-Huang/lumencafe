@@ -521,11 +521,43 @@
   </form>
 </dialog>
 
+<!-- Pi Agent 任务（开发计划-pi-runner-v1 步 5：中央弹窗，事件流参照 Langfuse trace / GitHub Actions log） -->
+<dialog class="modal-mask" id="modal-agent">
+  <div class="modal modal-lg">
+    <div class="modal-head">
+      <h3>Agent 任务</h3>
+      <button class="icon-btn" type="button" data-modal-close aria-label="关闭"><i data-ic="close"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>任务说明</label>
+        <textarea rows="4" maxlength="8000" placeholder="例如：用 papers 工具下载 arXiv 1706.03762，并把 PDF 保存到输出目录" data-agent-task></textarea>
+        <div class="hint">任务在隔离沙箱执行；结果校验后写入对象存储，模型调用走 pi-runner 专用网关令牌。</div>
+      </div>
+      <div class="agent-run-row">
+        <button class="btn" type="button" data-agent-submit><i data-ic="send"></i>开始执行</button>
+        <button class="btn btn-ghost hide" type="button" data-agent-abort>中止</button>
+        <span class="agent-run-status muted" data-agent-status>就绪</span>
+      </div>
+      <div class="agent-recent">
+        <div class="agent-recent-head"><span>最近任务</span><button class="icon-btn xs" type="button" data-agent-refresh aria-label="刷新任务列表"><i data-ic="refresh"></i></button></div>
+        <div class="agent-recent-list muted" data-agent-recent>加载中…</div>
+      </div>
+      <div class="agent-log" data-agent-log>
+        <div class="agent-log-empty muted">事件流将在这里显示</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" type="button" data-modal-close>关闭</button>
+    </div>
+  </div>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/js/data.js?v=20261024a"></script>
 <script src="assets/js/icons.js?v=20261020a"></script>
-<script src="assets/js/api.js?v=20261026b"></script>
-<script src="assets/js/app.js?v=20261104g"></script>
+<script src="assets/js/api.js?v=20261107a"></script>
+<script src="assets/js/app.js?v=20261107a"></script>
 </body>
 </html>

@@ -20,9 +20,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.models.llm import GatewayToken, LLMModel, Provider
-from app.services import llm_gateway, route_service
+from app.services import llm_gateway, meter_service, route_service
 
 router = APIRouter(prefix="/gw/v1", tags=["gateway"])
 logger = logging.getLogger(__name__)
@@ -120,6 +120,37 @@ def _check_scope(token: GatewayToken, model_name: str) -> None:
         raise HTTPException(status_code=403, detail="该模型不在令牌可用范围内")
 
 
+async def _write_gateway_log(
+    model: LLMModel,
+    *,
+    app_key: str,
+    usage_out: dict[str, Any],
+    latency_ms: int,
+    success: bool,
+    error: str | None = None,
+) -> None:
+    """对外网关调用记账：按 gateway token 名作为 app_key 单独核算（pi-runner 步 5）。
+
+    独立 SessionLocal：流式生成器不能使用请求级 get_db 会话；记账失败只告警，
+    不影响网关响应（与内网 model_caller 的记账纪律一致，但此处是透传边界）。
+    """
+    try:
+        async with SessionLocal() as log_db:
+            await meter_service.write_call_log(
+                log_db,
+                app_key=app_key,
+                model_id=model.id,
+                model_name=model.name,
+                model_meta=model.meta,
+                usage=meter_service.Usage.from_mapping(usage_out),
+                latency_ms=latency_ms,
+                success=success,
+                error=error,
+            )
+    except Exception:  # noqa: BLE001 - 记账是观测面，不能反过来打断模型调用
+        logger.warning("网关调用记账失败 app_key=%s model=%s", app_key, model.name)
+
+
 def _chunk(
     model: str,
     delta: str,
@@ -151,18 +182,21 @@ def _chunk(
 
 async def _stream_reply(
     cfg: llm_gateway.ClientCfg,
-    model_name: str,
+    model: LLMModel,
+    token: GatewayToken,
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     tool_choice: Any = None,
     extra: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     finish_sent = False
+    usage_out: dict[str, Any] = {}
+    start = time.perf_counter()
     try:
         # 原样透传上游帧（chat_stream_passthrough）：不重序列化，避免协议漂移
         # （pi-runner 步 1 实测：重组 tool_calls 流会导致 Pi 丢失工具状态）
         async for frame in llm_gateway.chat_stream_passthrough(
-            cfg, messages, tools=tools, tool_choice=tool_choice, extra=extra
+            cfg, messages, tools=tools, tool_choice=tool_choice, extra=extra, usage_out=usage_out
         ):
             yield frame["raw"]
             if frame["finish"]:
@@ -170,10 +204,25 @@ async def _stream_reply(
         if not finish_sent:
             # 兜底补 finish_reason：个别上游不发 finish 帧时，保证流以
             # 带 finish_reason 的 chunk 收尾（OpenAI 协议要求；Pi 客户端依赖）
-            yield _chunk(model_name, "", finish_reason="stop")
+            yield _chunk(model.name, "", finish_reason="stop")
+        await _write_gateway_log(
+            model,
+            app_key=token.name,
+            usage_out=usage_out,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            success=True,
+        )
     except llm_gateway.UpstreamError as exc:
         # 落日志留排障线索（上游错误体已由 chat_stream 拼进异常消息）
         logger.warning("网关流式调用上游失败：%s", exc)
+        await _write_gateway_log(
+            model,
+            app_key=token.name,
+            usage_out=usage_out,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            success=False,
+            error=str(exc),
+        )
         yield f"data: {json.dumps({'error': '上游模型调用失败'}, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"
 
@@ -210,22 +259,40 @@ async def chat_completions(
     if request.stream:
         return StreamingResponse(
             _stream_reply(
-                cfg, model.name, messages, request.tools, request.tool_choice, extra
+                cfg, model, token, messages, request.tools, request.tool_choice, extra
             ),
             media_type="text/event-stream",
         )
 
     message_out: dict[str, Any] = {}
+    usage_out: dict[str, Any] = {}
+    start = time.perf_counter()
     try:
         content = await llm_gateway.chat_once(
             cfg,
             messages,
             tools=request.tools,
             tool_choice=request.tool_choice,
+            usage_out=usage_out,
             message_out=message_out,
         )
     except llm_gateway.UpstreamError as exc:
+        await _write_gateway_log(
+            model,
+            app_key=token.name,
+            usage_out=usage_out,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            success=False,
+            error=str(exc),
+        )
         raise HTTPException(status_code=502, detail="上游模型调用失败") from exc
+    await _write_gateway_log(
+        model,
+        app_key=token.name,
+        usage_out=usage_out,
+        latency_ms=int((time.perf_counter() - start) * 1000),
+        success=True,
+    )
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:24]}",
         "object": "chat.completion",

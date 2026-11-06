@@ -2,6 +2,10 @@
 
 import json
 
+from sqlalchemy import select
+
+from app.db import SessionLocal
+from app.models.llm import LLMCallLog
 from app.services import llm_gateway
 from tests.conftest import login
 
@@ -54,7 +58,7 @@ async def test_gw_auth_errors(client):
 
 async def test_gw_non_stream_default_alias(client):
     admin = await login(client)
-    token = await _mk_token(client, admin)
+    token = await _mk_token(client, admin, name="gw-meter-test")
     resp = await client.post(
         "/gw/v1/chat/completions",
         json={"model": "default", "messages": _MSGS},
@@ -67,10 +71,20 @@ async def test_gw_non_stream_default_alias(client):
     assert data["choices"][0]["message"]["role"] == "assistant"
     assert data["choices"][0]["finish_reason"] == "stop"
 
+    # 对外网关同样落 llm_call_logs：按 gateway token 名单独核算（pi-runner 步 5）
+    async with SessionLocal() as db:
+        row = (
+            await db.execute(
+                select(LLMCallLog).where(LLMCallLog.app_key == "gw-meter-test")
+            )
+        ).scalar_one()
+        assert row.success is True
+        assert row.model_name == "mock"
+
 
 async def test_gw_stream_sse(client):
     admin = await login(client)
-    token = await _mk_token(client, admin)
+    token = await _mk_token(client, admin, name="gw-stream-meter")
     resp = await client.post(
         "/gw/v1/chat/completions",
         json={"model": "mock", "messages": _MSGS, "stream": True},
@@ -82,6 +96,16 @@ async def test_gw_stream_sse(client):
     assert 'data: {"' in body
     assert "data: [DONE]" in body
     assert '"object": "chat.completion.chunk"' in body
+
+    # 流式调用也按 gateway token 名记账（pi-runner 实际走 stream=true）
+    async with SessionLocal() as db:
+        row = (
+            await db.execute(
+                select(LLMCallLog).where(LLMCallLog.app_key == "gw-stream-meter")
+            )
+        ).scalar_one()
+        assert row.success is True
+        assert row.model_name == "mock"
 
 
 async def test_gw_stream_tool_calls_and_finish_passthrough(client, monkeypatch):

@@ -175,7 +175,14 @@ async def test_permissions_list(client):
     resp = await client.get("/admin/permissions", headers=admin)
     assert resp.status_code == 200
     codes = {p["code"] for p in resp.json()}
-    assert codes == {"app:chat", "app:money", "app:papers", "admin:users", "admin:models"}
+    assert codes == {
+        "app:chat",
+        "app:money",
+        "app:papers",
+        "app:agent",
+        "admin:users",
+        "admin:models",
+    }
 
 
 async def test_me_settings_upsert(client):

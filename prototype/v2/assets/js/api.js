@@ -69,35 +69,46 @@
         Authorization: token ? "Bearer " + token : ""
       },
       body: JSON.stringify(body || {})
-    }).then(function (resp) {
-      if (!resp.ok) {
-        return resp.text().then(function (t) {
-          var d = null;
-          try { d = JSON.parse(t); } catch (e) {}
-          throw { status: resp.status, detail: (d && d.detail) || ("请求失败（" + resp.status + "）") };
+    }).then(function (resp) { return consumeSse(resp, onEvent); });
+  }
+
+  /* GET 版 SSE（pi-runner 事件流）：/agent/runs/:id/events 透传 pi-runner。 */
+  function streamGet(path, onEvent) {
+    var token = getToken();
+    return fetch(BASE + path, {
+      method: "GET",
+      headers: { Authorization: token ? "Bearer " + token : "" }
+    }).then(function (resp) { return consumeSse(resp, onEvent); });
+  }
+
+  function consumeSse(resp, onEvent) {
+    if (!resp.ok) {
+      return resp.text().then(function (t) {
+        var d = null;
+        try { d = JSON.parse(t); } catch (e) {}
+        throw { status: resp.status, detail: (d && d.detail) || ("请求失败（" + resp.status + "）") };
+      });
+    }
+    var reader = resp.body.getReader();
+    var dec = new TextDecoder();
+    var buf = "";
+    function pump() {
+      return reader.read().then(function (r) {
+        if (r.done) return null;
+        buf += dec.decode(r.value, { stream: true });
+        var parts = buf.split("\n\n");
+        buf = parts.pop();
+        parts.forEach(function (block) {
+          var line = block.trim();
+          if (line.indexOf("data:") !== 0) return;
+          var data = line.slice(5).trim();
+          if (data === "[DONE]") { onEvent({ done: true }); return; }
+          try { onEvent(JSON.parse(data)); } catch (e) {}
         });
-      }
-      var reader = resp.body.getReader();
-      var dec = new TextDecoder();
-      var buf = "";
-      function pump() {
-        return reader.read().then(function (r) {
-          if (r.done) return null;
-          buf += dec.decode(r.value, { stream: true });
-          var parts = buf.split("\n\n");
-          buf = parts.pop();
-          parts.forEach(function (block) {
-            var line = block.trim();
-            if (line.indexOf("data:") !== 0) return;
-            var data = line.slice(5).trim();
-            if (data === "[DONE]") { onEvent({ done: true }); return; }
-            try { onEvent(JSON.parse(data)); } catch (e) {}
-          });
-          return pump();
-        });
-      }
-      return pump();
-    });
+        return pump();
+      });
+    }
+    return pump();
   }
 
   /* 增量 v1：AI 润色（P1-2，POST /chat/polish {text} → {polished}） */
@@ -152,5 +163,14 @@
   }
   skills.upload = uploadSkill;
 
-  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, polish: polish, status: status, papers: papers, skills: skills };
+  /* Pi Agent 任务（主体 /agent 代理 → pi-runner 三端点） */
+  var agent = {
+    createRun: function (task) { return post("/agent/runs", { task: task }); },
+    runs: function () { return get("/agent/runs"); },
+    run: function (runId) { return get("/agent/runs/" + encodeURIComponent(runId)); },
+    events: function (runId, onEvent) { return streamGet("/agent/runs/" + encodeURIComponent(runId) + "/events", onEvent); },
+    abort: function (runId) { return post("/agent/runs/" + encodeURIComponent(runId) + "/abort"); }
+  };
+
+  window.LC_API = { BASE: BASE, getToken: getToken, setToken: setToken, clearToken: clearToken, request: request, get: get, post: post, put: put, del: del, stream: stream, streamGet: streamGet, polish: polish, status: status, papers: papers, skills: skills, agent: agent };
 })();

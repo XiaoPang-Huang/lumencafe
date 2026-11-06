@@ -47,6 +47,7 @@ logger = logging.getLogger("lumencafe.pipeline")
 CRAWL_TASK_NAME = "papers-daily-crawl"
 CLEANUP_TASK_NAME = "papers-daily-cleanup"
 PARSE_TASK_NAME = "papers-parse"
+PI_RUN_TASK_NAME = "pi-run"
 
 _hatchet: "Hatchet | None" = None
 _worker: Any = None  # hatchet_sdk Worker（ Any：未装 SDK 时不引入类型依赖）
@@ -109,11 +110,10 @@ def _event_task(
     timeout: timedelta,
     body: Callable[[Any, dict[str, Any]], Awaitable[dict[str, Any]]],
 ) -> Any:
-    """声明一个事件触发的任务（on_events，输入为事件 payload 字典）。
+    """声明 papers-parse 事件任务（输入模型固定为 ParseInput）。
 
-    与 _session_task 同样的问题：worker 在 SDK 独占事件循环，任务内自建专用引擎
-    （NullPool，随任务 dispose）。输入模型用 pydantic BaseModel（SDK 1.x 校验），
-    字段全带缺省——payload 缺键不炸，由执行体兜底判空。
+    Hatchet SDK 1.x 从函数注解推导输入模型：注解不能写成变量（否则按 EmptyModel
+    注入并在属性访问时炸）。pi-run 使用下方独立的 _pi_event_task。
     """
     from hatchet_sdk import Context
     from pydantic import BaseModel
@@ -145,9 +145,47 @@ def _event_task(
     return _task
 
 
+def _pi_event_task(
+    hatchet: "Hatchet",
+    *,
+    name: str,
+    timeout: timedelta,
+    body: Callable[[Any, dict[str, Any]], Awaitable[dict[str, Any]]],
+) -> Any:
+    """声明 pi-run 事件任务（输入模型固定为 PiRunInput；原因见 _event_task docstring）。"""
+    from hatchet_sdk import Context
+    from pydantic import BaseModel
+
+    class PiRunInput(BaseModel):
+        run_id: str = ""
+        user_id: int = 0
+
+    @hatchet.task(
+        name=name,
+        on_events=[name],
+        execution_timeout=timeout,
+        retries=1,  # execute_run 幂等：非 pending/终态直返
+    )
+    async def _task(input: PiRunInput, ctx: Context) -> dict[str, Any]:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+        from sqlalchemy.pool import NullPool
+
+        from app.config import settings as app_settings
+
+        logger.info("Hatchet 事件触发 %s：run_id=%s", name, input.run_id)
+        engine = create_async_engine(app_settings.database_url, poolclass=NullPool)
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as db:
+                return await body(db, input.model_dump())
+        finally:
+            await engine.dispose()
+
+    return _task
+
+
 def _build_tasks(hatchet: "Hatchet") -> list[Any]:
-    """注册论文域 workflow：每日抓取 cron + 每日清理 cron（P14）+ 解析事件（P16）。"""
-    from app.services import paper_parse, papers_crawl
+    """注册论文域 workflow 与 pi-runner 事件任务（开发计划-pi-runner-v1 步 5）。"""
+    from app.services import paper_parse, papers_crawl, pi_runner
 
     async def _crawl_body(db: Any) -> dict[str, Any]:
         added = await papers_crawl.run_daily_crawl(db, trigger="schedule")
@@ -164,6 +202,11 @@ def _build_tasks(hatchet: "Hatchet") -> list[Any]:
             db, int(payload.get("paper_id") or 0), int(payload.get("user_id") or 0)
         )
         logger.info("papers-parse 完成：%s", result)
+        return result
+
+    async def _pi_run_body(db: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        result = await pi_runner.execute_run(db, str(payload.get("run_id") or ""))
+        logger.info("pi-run 完成：%s", result)
         return result
 
     crawl_task = _session_task(
@@ -186,7 +229,13 @@ def _build_tasks(hatchet: "Hatchet") -> list[Any]:
         timeout=timedelta(minutes=15),  # 下载 + 排队 + MinerU 解析 + 拆存，给足余量
         body=_parse_body,
     )
-    return [crawl_task, cleanup_task, parse_task]
+    pi_run_task = _pi_event_task(
+        hatchet,
+        name=PI_RUN_TASK_NAME,
+        timeout=timedelta(seconds=settings.pi_runner_timeout_seconds + 60),
+        body=_pi_run_body,
+    )
+    return [crawl_task, cleanup_task, parse_task, pi_run_task]
 
 
 def push_parse_event(paper_id: int, user_id: int) -> bool:
@@ -205,6 +254,19 @@ def push_parse_event(paper_id: int, user_id: int) -> bool:
         logger.exception(
             "Hatchet 事件推送失败（papers-parse 转进程内执行）：paper_id=%s", paper_id
         )
+        return False
+
+
+def push_pi_run(run_id: str, user_id: int) -> bool:
+    """推 Hatchet 事件触发 pi-run；未接线/推送失败返回 False（路由回落进程内任务）。"""
+    hatchet = _hatchet
+    if hatchet is None:
+        return False
+    try:
+        hatchet.event.push(PI_RUN_TASK_NAME, {"run_id": run_id, "user_id": user_id})
+        return True
+    except Exception:
+        logger.exception("Hatchet 事件推送失败（pi-run 转进程内执行）：run_id=%s", run_id)
         return False
 
 
@@ -233,10 +295,11 @@ def start() -> bool:
     )
     _worker_thread.start()
     logger.info(
-        "Hatchet worker 已启动（tasks=%s/%s/%s crons=%s/%s）",
+        "Hatchet worker 已启动（tasks=%s/%s/%s/%s crons=%s/%s）",
         CRAWL_TASK_NAME,
         CLEANUP_TASK_NAME,
         PARSE_TASK_NAME,
+        PI_RUN_TASK_NAME,
         settings.papers_crawl_cron,
         settings.papers_cleanup_cron,
     )

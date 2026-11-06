@@ -82,6 +82,7 @@ async def clean(client):
         "money_categories, money_transactions, "
         "papers, paper_users, paper_library, paper_favorites, paper_notes, paper_explanations, "
         "papers_crawl_runs, "
+        "pi_runs, "
         "user_skills"
     )
     async with SessionLocal() as db:

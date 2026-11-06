@@ -1238,6 +1238,153 @@
     loadServiceKeys();       // 底座小件：服务 Key 表
   }
 
+  /* ================= Pi Agent 任务（pi-runner 步 5；中央弹窗事件流） =================
+   * 交互参照：Langfuse「一次 run 一条 trace」、Open WebUI 长任务事件、GitHub Actions 日志。
+   * 前端只消费主体 /agent 代理；浏览器不直连沙箱 pi-runner。 */
+  var agentState = { currentRunId: "", streaming: false };
+
+  function agentStatus(text, kind) {
+    var el = qs("[data-agent-status]");
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle("is-err", kind === "error");
+  }
+
+  function agentResetLog() {
+    var log = qs("[data-agent-log]");
+    if (!log) return;
+    log.innerHTML = '<div class="agent-log-empty muted">等待事件…</div>';
+  }
+
+  function agentAppendEvent(ev) {
+    var log = qs("[data-agent-log]");
+    if (!log) return;
+    var empty = qs(".agent-log-empty", log);
+    if (empty) empty.parentNode.removeChild(empty);
+    var type = ev && ev.type ? ev.type : "event";
+    var text = "";
+    var cls = "";
+    if (type === "tool_execution_start") {
+      var args = ev.args || {};
+      text = (ev.toolName || "tool") + "：" + (args.command || args.url || args.query || JSON.stringify(args)).slice(0, 180);
+      cls = "is-tool";
+    } else if (type === "tool_execution_end") {
+      var result = ev.result || {};
+      var content = result.content && result.content[0] && result.content[0].text ? result.content[0].text : "";
+      text = (ev.toolName || "tool") + " 结束：" + (ev.isError ? "失败" : "成功") + (content ? " · " + content.slice(0, 180) : "");
+      cls = ev.isError ? "is-error" : "is-tool";
+    } else if (type === "turn_start") {
+      text = "新一轮推理开始"; cls = "is-tool";
+    } else if (type === "turn_end") {
+      var msg = ev.message || {};
+      var usage = msg.usage || {};
+      text = "本轮结束：" + (msg.stopReason || "") + (usage.totalTokens ? " · tokens " + usage.totalTokens : "");
+      cls = "is-end";
+    } else if (type === "run_end") {
+      text = "任务结束：" + (ev.status || "") + (ev.error ? " · " + ev.error : "");
+      cls = ev.status === "completed" ? "is-end" : "is-error";
+      agentStatus(ev.status === "completed" ? "已完成" : "已结束：" + (ev.status || ""), ev.status === "completed" ? "" : "error");
+    } else if (type === "sse_close") {
+      text = "事件流关闭"; cls = "is-end";
+    } else {
+      return; /* message_update 等高频帧不逐条渲染，避免刷爆日志面板 */
+    }
+    var line = document.createElement("div");
+    line.className = "agent-event " + cls;
+    line.innerHTML = '<span class="e-type">' + esc(type) + '</span><span class="e-text">' + esc(text) + "</span>";
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function agentSyncButtons() {
+    var abortBtn = qs("[data-agent-abort]");
+    if (abortBtn) abortBtn.classList.toggle("hide", !agentState.streaming);
+  }
+
+  function agentStartStream(runId) {
+    agentState.currentRunId = runId;
+    agentState.streaming = true;
+    agentStatus("执行中 · " + runId.slice(0, 8), "");
+    agentSyncButtons();
+    API.agent.events(runId, agentAppendEvent).catch(function (e) {
+      agentStatus("事件流失败：" + ((e && e.detail) || "未知错误"), "error");
+    }).then(function () {
+      agentState.streaming = false;
+      agentSyncButtons();
+      agentLoadRecent();
+      API.agent.run(runId).then(function (r) {
+        agentStatus((r.status === "completed" ? "已完成" : "状态：" + r.status) + (r.result_key ? " · 已入库" : ""), r.status === "failed" ? "error" : "");
+      }).catch(function () {});
+    });
+  }
+
+  function agentRenderRecent(runs) {
+    var box = qs("[data-agent-recent]");
+    if (!box) return;
+    if (!runs || !runs.length) {
+      box.innerHTML = '<div class="muted" style="padding:10px;">暂无任务</div>';
+      return;
+    }
+    box.innerHTML = runs.map(function (r) {
+      return '<button class="agent-recent-item is-' + esc(r.status) + '" type="button" data-agent-open-run="' + esc(r.run_id) + '">' +
+        '<span class="r-title">' + esc(r.task) + '</span><span class="r-status">' + esc(r.status) + "</span></button>";
+    }).join("");
+  }
+
+  function agentLoadRecent() {
+    var box = qs("[data-agent-recent]");
+    if (box) box.innerHTML = '<div class="muted" style="padding:10px;">加载中…</div>';
+    API.agent.runs().then(agentRenderRecent).catch(function (e) {
+      if (box) box.innerHTML = '<div class="muted" style="padding:10px;">' + esc((e && e.detail) || "加载失败") + "</div>";
+    });
+  }
+
+  function agentSubmit() {
+    var input = qs("[data-agent-task]");
+    var btn = qs("[data-agent-submit]");
+    var task = input ? input.value.trim() : "";
+    if (!task) { toast("先填写任务说明"); return; }
+    if (btn) btn.disabled = true;
+    agentResetLog();
+    agentStatus("正在创建任务…", "");
+    API.agent.createRun(task).then(function (r) {
+      if (input) input.value = "";
+      agentAppendEvent({ type: "turn_start" });
+      agentStartStream(r.run_id);
+      agentLoadRecent();
+    }).catch(function (e) {
+      agentStatus("创建失败：" + ((e && e.detail) || "未知错误"), "error");
+      toast((e && e.detail) || "创建 Agent 任务失败");
+    }).then(function () {
+      if (btn) btn.disabled = false;
+    });
+  }
+
+  function agentAbort() {
+    if (!agentState.currentRunId) return;
+    API.agent.abort(agentState.currentRunId).then(function () {
+      agentStatus("已请求中止", "");
+    }).catch(function (e) {
+      toast((e && e.detail) || "中止失败");
+    });
+  }
+
+  function agentOpenRun(runId) {
+    agentResetLog();
+    agentState.currentRunId = runId;
+    API.agent.run(runId).then(function (r) {
+      agentAppendEvent({ type: "run_end", status: r.status, error: r.error });
+      if (r.status === "pending" || r.status === "running") agentStartStream(runId);
+      else {
+        agentStatus(r.status + (r.result_key ? " · 已入库" : ""), r.status === "failed" ? "error" : "");
+        agentState.streaming = false;
+        agentSyncButtons();
+      }
+    }).catch(function (e) {
+      toast((e && e.detail) || "任务加载失败");
+    });
+  }
+
   var PAGES = {
     /* ---------- 每日看板 v2（2026-10-24 改版）：信息优先，卡片即跳板 ----------
      * 定位：按应用划分信息板块（板块注册表）；每板块只放「每天值得一眼的信息」（信息纪律）；
@@ -1308,7 +1455,8 @@
         '<div class="greet"><h1 data-ws-greet>你好</h1>' +
         '<span class="date" data-ws-date></span></div>' +
         '<div class="sec-head"><span class="sec-title">每日看板</span>' +
-        '<span class="muted" style="font-size:12.5px;">拖拽调整顺序</span></div>' +
+        '<span class="muted" style="font-size:12.5px;">拖拽调整顺序</span>' +
+        '<button class="btn btn-sm" type="button" data-modal-open="#modal-agent" style="margin-left:auto;"><i data-ic="spark"></i>Agent 任务</button></div>' +
         '<div class="bento-grid">' + cards.join("") + "</div>";
     },
 
@@ -4158,6 +4306,7 @@
     { icon: "plus", label: "记一笔", hint: "动作", run: function () { go("money"); afterRender(function () { openModal("#modal-tx"); }); } },
     { icon: "spark", label: "AI 记一笔", hint: "动作", run: function () { go("money"); afterRender(function () { openModal("#modal-ai"); }); } },
     { icon: "chat", label: "新建对话", hint: "动作", run: function () { go("chat"); afterRender(function () { var b = qs("[data-new-conv]"); if (b) b.click(); }); } },
+    { icon: "spark", label: "Agent 任务", hint: "动作", run: function () { openModal("#modal-agent"); agentLoadRecent(); } },
     { icon: "gear", label: "通用设置", hint: "设置", run: function () { openModal("#modal-set-general"); } },
     { icon: "grid", label: "应用设置", hint: "设置", run: function () { openModal("#modal-set-apps"); } },
     { icon: "shield", label: "管理设置", hint: "设置", run: function () { go("admin"); } },
@@ -4293,8 +4442,15 @@
       /* 我的技能：打开弹窗/应用设置时刷新已安装列表（含条数徽标） */
       if (targetSel === "#modal-set-apps") loadMySkills();
       if (targetSel === "#modal-skillhub") loadMySkills();
+      if (targetSel === "#modal-agent") { agentLoadRecent(); agentSyncButtons(); }
       return;
     }
+    /* Pi Agent 任务弹窗（提交/中止/刷新/打开最近任务） */
+    if (el.closest("[data-agent-submit]")) { agentSubmit(); return; }
+    if (el.closest("[data-agent-abort]")) { agentAbort(); return; }
+    if (el.closest("[data-agent-refresh]")) { agentLoadRecent(); return; }
+    var agentOpen = el.closest("[data-agent-open-run]");
+    if (agentOpen) { agentOpenRun(agentOpen.getAttribute("data-agent-open-run")); return; }
     /* 头像设置（#modal-set-general 内，data-* 事件委托） */
     var avatarDot = el.closest("[data-avatar-color]");
     if (avatarDot) {

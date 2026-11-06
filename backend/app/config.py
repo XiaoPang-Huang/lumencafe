@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     papers_cleanup_cron: str = "30 8 * * *"  # 每日 7 天滚动清理 cron（抓取后 1 小时，本地 8:30）
     papers_retention_days: int = 7  # P14：未收藏且无笔记的论文入库保留天数
 
+    # pi-runner（开发计划-pi-runner-v1 步 5）：主体经容器网调用沙箱内三端点；
+    # output_dir 与 compose 的 pi-output 命名卷挂载点保持一致（api 只读）。
+    pi_runner_url: str = "http://pi-runner:8787"
+    pi_runner_output_dir: str = "/var/lib/pi-output"
+    pi_runner_timeout_seconds: int = 900
+
     # 系统状态（底座步 5）：/api/status 返回值；发版时手动 bump
     app_version: str = "1.0.0"
 

@@ -36,6 +36,8 @@ services:
         # 国内构建走清华镜像加速；服务器/CI 可在 .env 覆盖为官方源
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
     restart: unless-stopped
+    # 加入 sandbox 网：pi-runner 走容器网内调主体（步 5 主体接入的前提）
+    networks: [default, sandbox]
     # .env 缺失时不拒绝启动（compose >= 2.24），由 config.py 的默认值兜底
     env_file:
       - path: .env
@@ -65,6 +67,8 @@ services:
       - ./skills:/app/skills
       # 备份状态共享卷（backup 容器写、api 只读）：/api/status 的 backup 灯数据源
       - backup_state:/var/lib/backup-state:ro
+      # pi-output 共享卷（pi-runner 写、api 只读）：步 5 主体校验 result.md/PDF 后入库
+      - pi-output:/var/lib/pi-output:ro
     # 启动即迁移（Alembic 替代 create_all）
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
@@ -103,6 +107,70 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  # pi-runner：Pi Agent 执行沙箱（开发计划-pi-runner-v1 步 3 沙箱收紧 + 步 4 MCP 生态）。
+  # 网络隔离：只通网关（caddy）与主体（api）——db/hatchet/backup 均不在 sandbox 网上，
+  # 容器内够不到 PostgreSQL；出口仍走 NAT（步 3 默认档，收紧档见落地方案 §2 步 3）。
+  # 文件系统：根只读 + /tmp 可写（tmpfs）；/output 与 /root/.pi/agent 用命名卷；
+  # models.json / mcp.json 从宿主机只读挂入（单一来源 deploy/pi/）。
+  pi-runner:
+    build:
+      context: .   # 仓库根（Dockerfile 需 COPY pi-runner/ 与 deploy/pi/）
+      dockerfile: pi-runner/Dockerfile
+    image: lumencafe-pi-runner:0.2.0
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      # 只绑宿主 loopback（管理面约束：不另开端口给外网；主体 api 走容器网内调用）
+      - "127.0.0.1:8787:8787"
+    networks: [sandbox]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: Asia/Shanghai
+      # 专用最小权限网关 token（gateway_tokens 表，只许 deepseek-flash；缺失即拒起）
+      LUMEN_PI_TOKEN: ${LUMEN_PI_TOKEN:?请在 .env 配置 LUMEN_PI_TOKEN（pi-runner 专用网关 token）}
+      # paper-search-mcp 走 uvx 运行时装包：国内镜像 + 缓存进 /tmp（根只读）
+      UV_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+      UV_CACHE_DIR: /tmp/uv-cache
+      UV_TOOL_DIR: /tmp/uv-tools   # uvx 工具安装目录（根只读，须进 /tmp）
+      NPM_CONFIG_CACHE: /tmp/npm-cache
+      # Chromium 在只读根文件系统 + passwd HOME=/root 场景下需要可写 XDG 目录；
+      # 否则 Playwright 启动浏览器会触发 crashpad 缺 --database 后 SIGTRAP。
+      XDG_CONFIG_HOME: /tmp/.config
+      XDG_CACHE_HOME: /tmp/.cache
+      XDG_DATA_HOME: /tmp/.local/share
+      XDG_STATE_HOME: /tmp/.local/state
+      # Playwright 默认跟随 XDG_CACHE_HOME 找浏览器；显式钉到镜像层，避免运行时装包。
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
+    volumes:
+      - pi-output:/output
+      - pi-agent-home:/root/.pi/agent
+      - ./deploy/pi/models.json:/root/.pi/agent/models.json:ro
+      - ./deploy/pi/mcp.json:/root/.pi/agent/mcp.json:ro
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      # exec 必须：uvx 的 venv 落在 /tmp（UV_CACHE_DIR），noexec 会挡 venv 可执行文件
+      # 与 .so 的 PROT_EXEC mmap（2026-11-07 实测 Permission denied）。nosuid/nodev 保留。
+      # 威胁模型内可接受：agent 本就有 bash/codemode 任意执行能力，noexec 无额外增益。
+      - /tmp:exec,nosuid,nodev
+      - /run
+      - /workspace:exec,nosuid,nodev   # agent 的工作目录（scratch，结果一律落 /output 卷）
+      # Playwright MCP 的用户数据/临时配置目录：包内硬编码 ~/.cache/ms-playwright-mcp；
+      # /tmp 在运行时会被 tmpfs 覆盖，镜像里预建目录不可见，必须单独挂可写 tmpfs。
+      - /root/.cache/ms-playwright-mcp:exec,nosuid,nodev
+    mem_limit: 1g   # 落地方案 §2 步 3：比早前估的 512m 宽裕，实测后再降
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Hatchet 定时引擎（论文域步 B 拍板：lite 单容器，组件选型 §三）。
   # 引擎/控制台/API 一体（镜像内 8888=控制台+REST，7070=gRPC worker 接入）；
@@ -154,6 +222,8 @@ services:
     # 远端 2-alpine 浮动 tag 已前移，钉 digest 保可复现；升级须走 D13 影响面评估。
     image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     restart: unless-stopped
+    # 加入 sandbox 网：pi-runner 经 http://caddy/gw/v1 走网关（db 不在该网上）
+    networks: [default, sandbox]
     environment:
       # 仅域名模式（DNS-01）需要：DNSPod API 令牌，格式「ID,Key」，在 .env 配置。
       # IP 模式下不使用，留着备用
@@ -172,9 +242,17 @@ services:
       api:
         condition: service_healthy
 
+networks:
+  # pi-runner 沙箱网（开发计划-pi-runner-v1 步 3）：成员 = pi-runner + caddy + api。
+  # db/hatchet/backup 不在其上 → 沙箱内够不到 PostgreSQL；带 NAT 可出公网
+  # （默认档；收紧档「出口域名白名单」见落地方案 §6，按需另起 egress 代理）。
+  sandbox: {}
+
 volumes:
   pgdata:
   caddy_data:
   caddy_config:
   backup_state:
   hatchet_config:
+  pi-output:
+  pi-agent-home:

@@ -22,6 +22,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("app:chat", "使用 AI 对话", "通用对话应用"),
     ("app:money", "记账", "记账应用（v1.1 新增）"),
     ("app:papers", "文献", "文献应用（批次 2 有接口，先 seed 权限点）"),
+    ("app:agent", "个人 Agent", "Pi Agent 任务入口（pi-runner 步 5 最小接口）"),
     ("admin:users", "用户/角色管理", "平台管理-成员"),
     ("admin:models", "模型管理", "平台管理-模型与网关"),
 ]

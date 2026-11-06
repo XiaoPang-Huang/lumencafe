@@ -1,0 +1,22 @@
+{
+	"mcpServers": {
+		"papers": {
+			"command": "uvx",
+			"args": [
+				"--from",
+				"paper-search-mcp@0.1.4",
+				"--with",
+				"mcp<2",
+				"paper-search-mcp"
+			],
+			"description": "学术论文检索与 OA 论文下载（22 学术源，OA-First 换源兜底）",
+			"exposure": "deferred"
+		},
+		"browser": {
+			"command": "npx",
+			"args": ["@playwright/mcp@0.0.84", "--headless", "--browser", "chromium", "--no-sandbox"],
+			"description": "浏览器自动化（反爬/登录墙场景，容器内 headless）",
+			"exposure": "deferred"
+		}
+	}
+}

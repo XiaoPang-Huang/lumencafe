@@ -24,6 +24,7 @@ from app.models.papers import (
     PaperNote,
     PaperUser,
 )
+from app.models.pi import PiRun
 from app.models.service_key import ServiceKey
 from app.models.skill import UserSkill
 from app.models.user import Permission, Role, RolePermission, User, UserRole
@@ -49,6 +50,7 @@ __all__ = [
     "PaperNote",
     "PaperUser",
     "Permission",
+    "PiRun",
     "Provider",
     "Role",
     "RolePermission",
