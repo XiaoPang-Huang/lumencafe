@@ -157,7 +157,7 @@ code{font-family:"JetBrains Mono Local",Consolas,monospace;font-size:.92em;
   <h2><span class="no">01</span>整体架构图</h2>
   <div class="sub">从下往上看是「建造顺序」，从上往下看是「一次请求的旅程」。带圈数字 ①–⑦ 是连线上标注的说明，对照图下方清单阅读。</div>
   <div class="fig">
-  <svg viewBox="0 0 680 668" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <svg viewBox="0 0 680 704" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
     <title>整体分层架构</title>
     <desc>L1 用户层经 L2 Caddy 接入 L3 FastAPI 应用层；应用层向下连接 L4 PostgreSQL 与 pi-runner 沙箱；L5 为备份与外部依赖。连线标注 1 至 7 对应图下方说明。</desc>
     <defs>
@@ -180,97 +180,97 @@ code{font-family:"JetBrains Mono Local",Consolas,monospace;font-size:.92em;
       <text class="th" x="538" y="55" text-anchor="middle" dominant-baseline="central">外部 API 调用方</text>
       <text class="ts" x="538" y="74" text-anchor="middle" dominant-baseline="central">第三方程序 · 持钥匙通行</text>
     </g>
-    <path class="arr" d="M290 94 V136" marker-end="url(#ar1)"/>
-    <path class="arr" d="M538 94 V136" marker-end="url(#ar1)"/>
-    <g class="mk"><circle cx="308" cy="117" r="8.5"/><text x="308" y="117" text-anchor="middle" dominant-baseline="central">1</text></g>
-    <text class="mono" x="321" y="117" dominant-baseline="central">HTTPS / SSE</text>
-    <g class="mk"><circle cx="520" cy="117" r="8.5"/><text x="520" y="117" text-anchor="middle" dominant-baseline="central">2</text></g>
-    <text class="mono" x="507" y="117" text-anchor="end" dominant-baseline="central">OpenAI 兼容</text>
+    <path class="arr" d="M290 94 V148" marker-end="url(#ar1)"/>
+    <path class="arr" d="M538 94 V148" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="308" cy="121" r="8.5"/><text x="308" y="121" text-anchor="middle" dominant-baseline="central">1</text></g>
+    <text class="mono" x="321" y="121" dominant-baseline="central">HTTPS / SSE</text>
+    <g class="mk"><circle cx="520" cy="121" r="8.5"/><text x="520" y="121" text-anchor="middle" dominant-baseline="central">2</text></g>
+    <text class="mono" x="507" y="121" text-anchor="end" dominant-baseline="central">OpenAI 兼容</text>
 
     <!-- ===== L2 接入层 ===== -->
-    <rect x="20" y="128" width="640" height="76" rx="10" class="band b2"/>
-    <g class="chip"><rect x="36" y="138" width="104" height="22" rx="11" fill="#0F6E56"/><text x="88" y="149" text-anchor="middle" dominant-baseline="central">L2 · 接入层</text></g>
-    <text class="ld" x="36" y="178" dominant-baseline="central">所有请求的统一入口</text>
+    <rect x="20" y="140" width="640" height="76" rx="10" class="band b2"/>
+    <g class="chip"><rect x="36" y="152" width="104" height="22" rx="11" fill="#0F6E56"/><text x="88" y="163" text-anchor="middle" dominant-baseline="central">L2 · 接入层</text></g>
+    <text class="ld" x="36" y="192" dominant-baseline="central">所有请求的统一入口</text>
     <g class="nd">
-      <rect x="170" y="140" width="470" height="56" rx="8" stroke-width="1"/>
-      <text class="th" x="405" y="161" text-anchor="middle" dominant-baseline="central">Caddy 接入层</text>
-      <text class="ts" x="405" y="181" text-anchor="middle" dominant-baseline="central">:80 / :443 / :8443（IP 直连自签）· 前端静态 · /api 反代 · /admin/hatchet</text>
+      <rect x="170" y="152" width="470" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="405" y="173" text-anchor="middle" dominant-baseline="central">Caddy 接入层</text>
+      <text class="ts" x="405" y="193" text-anchor="middle" dominant-baseline="central">:80 / :443 / :8443（IP 直连自签）· 前端静态 · /api 反代 · /admin/hatchet</text>
     </g>
-    <path class="arr" d="M405 196 V224" marker-end="url(#ar1)"/>
-    <g class="mk"><circle cx="423" cy="220" r="8.5"/><text x="423" y="220" text-anchor="middle" dominant-baseline="central">3</text></g>
-    <text class="mono" x="436" y="220" dominant-baseline="central">reverse proxy</text>
+    <path class="arr" d="M405 208 V248" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="423" cy="230" r="8.5"/><text x="423" y="230" text-anchor="middle" dominant-baseline="central">3</text></g>
+    <text class="mono" x="436" y="230" dominant-baseline="central">reverse proxy</text>
 
     <!-- ===== L3 应用层 ===== -->
-    <rect x="20" y="228" width="640" height="210" rx="10" class="band b3"/>
-    <g class="chip"><rect x="36" y="240" width="104" height="22" rx="11" fill="#185FA5"/><text x="88" y="251" text-anchor="middle" dominant-baseline="central">L3 · 应用层</text></g>
-    <text class="ld" x="36" y="280" dominant-baseline="central">系统的大脑</text>
-    <rect x="170" y="228" width="470" height="210" rx="8" class="frame"/>
-    <text class="mono" x="624" y="246" text-anchor="end" dominant-baseline="central">api 容器 · FastAPI + Alembic</text>
+    <rect x="20" y="252" width="640" height="210" rx="10" class="band b3"/>
+    <g class="chip"><rect x="36" y="264" width="104" height="22" rx="11" fill="#185FA5"/><text x="88" y="275" text-anchor="middle" dominant-baseline="central">L3 · 应用层</text></g>
+    <text class="ld" x="36" y="304" dominant-baseline="central">系统的大脑</text>
+    <rect x="170" y="252" width="470" height="210" rx="8" class="frame"/>
+    <text class="mono" x="624" y="270" text-anchor="end" dominant-baseline="central">api 容器 · FastAPI + Alembic</text>
     <g class="nd">
-      <rect x="190" y="262" width="210" height="48" rx="8" stroke-width="1"/>
-      <text class="th" x="295" y="281" text-anchor="middle" dominant-baseline="central">业务路由</text>
-      <text class="ts" x="295" y="298" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent</text>
+      <rect x="190" y="286" width="210" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="295" y="305" text-anchor="middle" dominant-baseline="central">业务路由</text>
+      <text class="ts" x="295" y="322" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent</text>
     </g>
     <g class="nd">
-      <rect x="420" y="262" width="200" height="48" rx="8" stroke-width="1"/>
-      <text class="th" x="520" y="281" text-anchor="middle" dominant-baseline="central">服务层</text>
-      <text class="ts" x="520" y="298" text-anchor="middle" dominant-baseline="central">模型编排 · 流水线 · 存储</text>
+      <rect x="420" y="286" width="200" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="520" y="305" text-anchor="middle" dominant-baseline="central">服务层</text>
+      <text class="ts" x="520" y="322" text-anchor="middle" dominant-baseline="central">模型编排 · 流水线 · 存储</text>
     </g>
     <g class="nd">
-      <rect x="190" y="318" width="210" height="48" rx="8" stroke-width="1"/>
-      <text class="th" x="295" y="337" text-anchor="middle" dominant-baseline="central">管理面</text>
-      <text class="ts" x="295" y="354" text-anchor="middle" dominant-baseline="central">用户 / 模型 / 服务 Key</text>
+      <rect x="190" y="342" width="210" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="295" y="361" text-anchor="middle" dominant-baseline="central">管理面</text>
+      <text class="ts" x="295" y="378" text-anchor="middle" dominant-baseline="central">用户 / 模型 / 服务 Key</text>
     </g>
     <g class="nd">
-      <rect x="420" y="318" width="200" height="48" rx="8" stroke-width="1"/>
-      <text class="th" x="520" y="337" text-anchor="middle" dominant-baseline="central">Hatchet worker</text>
-      <text class="ts" x="520" y="354" text-anchor="middle" dominant-baseline="central">定时与事件任务</text>
+      <rect x="420" y="342" width="200" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="520" y="361" text-anchor="middle" dominant-baseline="central">Hatchet worker</text>
+      <text class="ts" x="520" y="378" text-anchor="middle" dominant-baseline="central">定时与事件任务</text>
     </g>
     <g class="gwnode">
-      <rect x="190" y="382" width="430" height="36" rx="8" stroke-width="1"/>
-      <text class="th" x="405" y="400" text-anchor="middle" dominant-baseline="central">模型网关 /gw/v1 · 令牌鉴权 · 计费 · 熔断</text>
+      <rect x="190" y="406" width="430" height="36" rx="8" stroke-width="1"/>
+      <text class="th" x="405" y="424" text-anchor="middle" dominant-baseline="central">模型网关 /gw/v1 · 令牌鉴权 · 计费 · 熔断</text>
     </g>
-    <path class="arr" d="M280 438 V470" marker-end="url(#ar1)"/>
-    <path class="arr" d="M525 438 V470" marker-end="url(#ar1)"/>
-    <g class="mk"><circle cx="298" cy="458" r="8.5"/><text x="298" y="458" text-anchor="middle" dominant-baseline="central">4</text></g>
-    <text class="mono" x="311" y="458" dominant-baseline="central">SQL :5432</text>
-    <g class="mk"><circle cx="509" cy="458" r="8.5"/><text x="509" y="458" text-anchor="middle" dominant-baseline="central">5</text></g>
-    <text class="mono" x="496" y="458" text-anchor="end" dominant-baseline="central">HTTP :8787</text>
+    <path class="arr" d="M280 462 V506" marker-end="url(#ar1)"/>
+    <path class="arr" d="M525 462 V506" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="298" cy="482" r="8.5"/><text x="298" y="482" text-anchor="middle" dominant-baseline="central">4</text></g>
+    <text class="mono" x="311" y="482" dominant-baseline="central">SQL :5432</text>
+    <g class="mk"><circle cx="509" cy="482" r="8.5"/><text x="509" y="482" text-anchor="middle" dominant-baseline="central">5</text></g>
+    <text class="mono" x="496" y="482" text-anchor="end" dominant-baseline="central">HTTP :8787</text>
 
     <!-- ===== L4 数据与沙箱 ===== -->
-    <rect x="20" y="462" width="640" height="84" rx="10" class="band b4"/>
-    <g class="chip"><rect x="36" y="474" width="118" height="22" rx="11" fill="#534AB7"/><text x="95" y="485" text-anchor="middle" dominant-baseline="central">L4 · 数据与沙箱</text></g>
-    <text class="ld" x="36" y="520" dominant-baseline="central">仓库与 AI 工作室</text>
+    <rect x="20" y="498" width="640" height="84" rx="10" class="band b4"/>
+    <g class="chip"><rect x="36" y="510" width="118" height="22" rx="11" fill="#534AB7"/><text x="95" y="521" text-anchor="middle" dominant-baseline="central">L4 · 数据与沙箱</text></g>
+    <text class="ld" x="36" y="556" dominant-baseline="central">仓库与 AI 工作室</text>
     <g class="nd">
-      <rect x="170" y="474" width="220" height="56" rx="8" stroke-width="1"/>
-      <text class="th" x="280" y="494" text-anchor="middle" dominant-baseline="central">PostgreSQL 16</text>
-      <text class="ts" x="280" y="513" text-anchor="middle" dominant-baseline="central">lumencafe 业务库 · hatchet 库</text>
+      <rect x="170" y="510" width="220" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="280" y="530" text-anchor="middle" dominant-baseline="central">PostgreSQL 16</text>
+      <text class="ts" x="280" y="549" text-anchor="middle" dominant-baseline="central">lumencafe 业务库 · hatchet 库</text>
     </g>
     <g class="nd">
-      <rect x="410" y="474" width="230" height="56" rx="8" stroke-width="1"/>
-      <text class="th" x="525" y="494" text-anchor="middle" dominant-baseline="central">pi-runner 沙箱</text>
-      <text class="ts" x="525" y="513" text-anchor="middle" dominant-baseline="central">Pi SDK · MCP · 只读根</text>
+      <rect x="410" y="510" width="230" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="525" y="530" text-anchor="middle" dominant-baseline="central">pi-runner 沙箱</text>
+      <text class="ts" x="525" y="549" text-anchor="middle" dominant-baseline="central">Pi SDK · MCP · 只读根</text>
     </g>
-    <path class="arr" d="M280 530 V578" marker-end="url(#ar1)"/>
-    <path class="arr" d="M525 530 V578" marker-end="url(#ar1)"/>
-    <g class="mk"><circle cx="298" cy="560" r="8.5"/><text x="298" y="560" text-anchor="middle" dominant-baseline="central">6</text></g>
-    <text class="mono" x="311" y="560" dominant-baseline="central">pg_dump 每日</text>
-    <g class="mk"><circle cx="509" cy="560" r="8.5"/><text x="509" y="560" text-anchor="middle" dominant-baseline="central">7</text></g>
-    <text class="mono" x="496" y="560" text-anchor="end" dominant-baseline="central">模型出口</text>
+    <path class="arr" d="M280 566 V626" marker-end="url(#ar1)"/>
+    <path class="arr" d="M525 566 V626" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="298" cy="596" r="8.5"/><text x="298" y="596" text-anchor="middle" dominant-baseline="central">6</text></g>
+    <text class="mono" x="311" y="596" dominant-baseline="central">pg_dump 每日</text>
+    <g class="mk"><circle cx="509" cy="596" r="8.5"/><text x="509" y="596" text-anchor="middle" dominant-baseline="central">7</text></g>
+    <text class="mono" x="496" y="596" text-anchor="end" dominant-baseline="central">模型出口</text>
 
     <!-- ===== L5 基础设施 ===== -->
-    <rect x="20" y="570" width="640" height="76" rx="10" class="band b5"/>
-    <g class="chip"><rect x="36" y="582" width="104" height="22" rx="11" fill="#854F0B"/><text x="88" y="593" text-anchor="middle" dominant-baseline="central">L5 · 基础设施</text></g>
-    <text class="ld" x="36" y="624" dominant-baseline="central">后勤与供应商</text>
+    <rect x="20" y="618" width="640" height="76" rx="10" class="band b5"/>
+    <g class="chip"><rect x="36" y="630" width="104" height="22" rx="11" fill="#854F0B"/><text x="88" y="641" text-anchor="middle" dominant-baseline="central">L5 · 基础设施</text></g>
+    <text class="ld" x="36" y="672" dominant-baseline="central">后勤与供应商</text>
     <g class="nd">
-      <rect x="170" y="582" width="220" height="52" rx="8" stroke-width="1"/>
-      <text class="th" x="280" y="601" text-anchor="middle" dominant-baseline="central">backup</text>
-      <text class="ts" x="280" y="619" text-anchor="middle" dominant-baseline="central">restic 每日全量增量</text>
+      <rect x="170" y="630" width="220" height="52" rx="8" stroke-width="1"/>
+      <text class="th" x="280" y="649" text-anchor="middle" dominant-baseline="central">backup</text>
+      <text class="ts" x="280" y="667" text-anchor="middle" dominant-baseline="central">restic 每日全量增量</text>
     </g>
     <g class="nd">
-      <rect x="410" y="582" width="230" height="52" rx="8" stroke-width="1"/>
-      <text class="th" x="525" y="601" text-anchor="middle" dominant-baseline="central">外部依赖</text>
-      <text class="ts" x="525" y="619" text-anchor="middle" dominant-baseline="central">模型厂商 API · 文献源</text>
+      <rect x="410" y="630" width="230" height="52" rx="8" stroke-width="1"/>
+      <text class="th" x="525" y="649" text-anchor="middle" dominant-baseline="central">外部依赖</text>
+      <text class="ts" x="525" y="667" text-anchor="middle" dominant-baseline="central">模型厂商 API · 文献源</text>
     </g>
   </svg>
   </div>
