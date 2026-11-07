@@ -15,6 +15,8 @@
   --bg:#F5F6F8;--card:#FFFFFF;--border:#E6E8EC;
   --text:#1D2129;--text-2:#4E5969;--text-3:#86909C;
   --shadow:0 1px 2px rgba(29,33,41,.04),0 8px 24px rgba(29,33,41,.06);
+  --color-success:#1D9E75;--color-danger:#D85A30;
+  --color-border-secondary:#B4B2A9;
 }
 @media (prefers-color-scheme:dark){
   :root{
@@ -22,7 +24,38 @@
     --bg:#16181D;--card:#1F2229;--border:#2E323B;
     --text:#F2F3F5;--text-2:#C9CDD4;--text-3:#8A919E;
     --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+    --color-success:#5DCAA5;--color-danger:#F0997B;
+    --color-border-secondary:#5F5E5A;
   }
+}
+/* ============ 图元样式（独立于宿主，保证单文件渲染） ============ */
+.fig svg text{font-family:inherit}
+.fig svg text.th{fill:var(--text);font-size:13.5px;font-weight:600}
+.fig svg text.ts{fill:var(--text-2);font-size:12px;font-weight:400}
+.fig svg .arr{stroke:var(--text-3);stroke-width:1.2;fill:none}
+.fig svg .leader{stroke:var(--text-3);stroke-width:.9;fill:none;opacity:.65;stroke-dasharray:4 3}
+.fig svg .node rect{stroke-width:1}
+.fig svg .node{cursor:default}
+.fig svg .c-blue rect{fill:#E6F1FB;stroke:#185FA5}
+.fig svg .c-teal rect{fill:#E1F5EE;stroke:#0F6E56}
+.fig svg .c-purple rect{fill:#EEEDFE;stroke:#534AB7}
+.fig svg .c-amber rect{fill:#FAEEDA;stroke:#854F0B}
+.fig svg .c-green rect{fill:#EAF3DE;stroke:#3B6D11}
+.fig svg .c-coral rect{fill:#FAECE7;stroke:#993C1D}
+.fig svg .c-gray rect{fill:#F1EFE8;stroke:#5F5E5A}
+.fig svg rect.c-blue{fill:#E6F1FB;stroke:#185FA5}
+.fig svg rect.c-teal{fill:#E1F5EE;stroke:#0F6E56}
+.fig svg rect.c-purple{fill:#EEEDFE;stroke:#534AB7}
+.fig svg rect.c-green{fill:#EAF3DE;stroke:#3B6D11}
+.fig svg rect.c-coral{fill:#FAECE7;stroke:#993C1D}
+@media (prefers-color-scheme:dark){
+  .fig svg .c-blue rect,.fig svg rect.c-blue{fill:#0C447C;stroke:#85B7EB}
+  .fig svg .c-teal rect,.fig svg rect.c-teal{fill:#085041;stroke:#5DCAA5}
+  .fig svg .c-purple rect,.fig svg rect.c-purple{fill:#3C3489;stroke:#AFA9EC}
+  .fig svg .c-amber rect{fill:#633806;stroke:#FAC775}
+  .fig svg .c-green rect,.fig svg rect.c-green{fill:#27500A;stroke:#97C459}
+  .fig svg .c-coral rect,.fig svg rect.c-coral{fill:#712B13;stroke:#F0997B}
+  .fig svg .c-gray rect{fill:#444441;stroke:#B4B2A9}
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{
@@ -295,7 +328,8 @@ sequenceDiagram
 </div>
 <script src="https://fastly.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 <script>
-mermaid.initialize({startOnLoad:true, theme:"neutral", sequence:{showSequenceNumbers:true, actorMargin:20, boxMargin:10, messageMargin:14}});
+const darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({startOnLoad:true, theme: darkMode ? "dark" : "neutral", sequence:{showSequenceNumbers:true, actorMargin:20, boxMargin:10, messageMargin:14}});
 </script>
 </body>
 </html>
