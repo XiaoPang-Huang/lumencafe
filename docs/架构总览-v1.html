@@ -91,6 +91,45 @@ nav a:hover{color:var(--brand);border-color:var(--brand)}
 .note{font-size:12.5px;color:var(--text-2);border-left:3px solid var(--brand);padding:6px 12px;
   background:var(--brand-soft);border-radius:0 8px 8px 0}
 .mermaid{background:var(--card);border-radius:12px;font-size:13px}
+/* ---- 分层带 / 徽章 / 数字标注 ---- */
+.fig svg rect.band{stroke:none}
+.fig svg rect.b1{fill:#F4F4F1}.fig svg rect.b2{fill:#EDF7F3}.fig svg rect.b3{fill:#EDF3FB}.fig svg rect.b4{fill:#F0EFFB}.fig svg rect.b5{fill:#FBF4E7}
+.fig svg .chip rect{stroke:none}
+.fig svg .chip text{fill:#FFFFFF;font-size:11.5px;font-weight:600}
+.fig svg text.ld{fill:var(--text-3);font-size:11.5px}
+.fig svg .mk circle{fill:var(--brand);stroke:none}
+.fig svg .mk text{fill:#FFFFFF;font-size:10px;font-weight:600}
+@media (prefers-color-scheme:dark){
+  .fig svg rect.b1{fill:#2B2B28}.fig svg rect.b2{fill:#1B322A}.fig svg rect.b3{fill:#16283F}.fig svg rect.b4{fill:#262450}.fig svg rect.b5{fill:#3A2C12}
+}
+/* ---- 连线说明 ---- */
+.legend{list-style:none;margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:9px 26px}
+.legend li{display:flex;gap:10px;font-size:12.5px;color:var(--text-2);align-items:flex-start;line-height:1.55}
+.legend .n{flex:none;width:19px;height:19px;border-radius:50%;background:var(--brand);color:#fff;
+  font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;margin-top:1px}
+.legend b{color:var(--text);font-weight:600}
+@media (max-width:640px){.legend{grid-template-columns:1fr}}
+/* ---- 逐层讲解 ---- */
+.exp{margin-top:18px;display:flex;flex-direction:column;gap:10px}
+.exp-item{border:1px solid var(--border);border-left:4px solid;border-radius:10px;padding:12px 16px;background:var(--bg)}
+.exp-item h4{font-size:13.5px;font-weight:600}
+.exp-item h4 .lt{font-size:11.5px;color:var(--text-3);font-weight:500;margin-left:8px}
+.exp-item p{font-size:12.5px;color:var(--text-2);margin-top:5px}
+.exp-item.e1{border-left-color:#5F5E5A}.exp-item.e2{border-left-color:#0F6E56}
+.exp-item.e3{border-left-color:#185FA5}.exp-item.e4{border-left-color:#534AB7}
+.exp-item.e5{border-left-color:#854F0B}
+/* ---- 一句话看懂 ---- */
+.plain{font-size:13px;color:var(--text-2);background:var(--brand-soft);border-radius:10px;
+  padding:10px 14px;margin-bottom:16px;line-height:1.7}
+.plain b{color:var(--text)}
+/* ---- 术语速查 ---- */
+.g-group{margin-top:16px}
+.g-group h4{font-size:13px;font-weight:600;margin-bottom:2px}
+.g-group dl{border-top:1px solid var(--border)}
+.g-item{display:grid;grid-template-columns:180px 1fr;gap:12px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px;line-height:1.6}
+.g-item dt{font-weight:600;color:var(--text)}
+.g-item dd{color:var(--text-2)}
+@media (max-width:560px){.g-item{grid-template-columns:1fr;gap:2px}}
 footer{font-size:12.5px;color:var(--text-3);text-align:center;margin-top:8px}
 code{font-family:"JetBrains Mono Local",Consolas,monospace;font-size:.92em;
   background:var(--brand-soft);color:var(--brand);border-radius:5px;padding:1px 6px}
@@ -107,128 +146,178 @@ code{font-family:"JetBrains Mono Local",Consolas,monospace;font-size:.92em;
 
 <nav>
   <a href="#arch">① 整体架构图</a>
-  <a href="#seq">② Agent 任务时序图</a>
-  <a href="#topo">③ 容器拓扑图</a>
+  <a href="#exp">② 逐层讲解</a>
+  <a href="#seq">③ 任务时序图</a>
+  <a href="#topo">④ 容器拓扑图</a>
+  <a href="#glossary">⑤ 术语速查</a>
 </nav>
 
 <!-- ============ ① 整体架构图 ============ -->
 <section class="card" id="arch">
   <h2><span class="no">01</span>整体架构图</h2>
-  <div class="sub">L1–L5 严格分层 · 全部正交流线 · 网关为唯一模型出口 · 沙箱与数据层并列受控于应用层。</div>
+  <div class="sub">从下往上看是「建造顺序」，从上往下看是「一次请求的旅程」。带圈数字 ①–⑦ 是连线上标注的说明，对照图下方清单阅读。</div>
   <div class="fig">
-  <svg viewBox="0 0 680 600" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <svg viewBox="0 0 680 668" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
     <title>整体分层架构</title>
-    <desc>L1 用户层经 L2 Caddy 接入 L3 FastAPI 应用层；应用层向下连接 L4 PostgreSQL 与 pi-runner 沙箱；L5 为备份与外部依赖</desc>
+    <desc>L1 用户层经 L2 Caddy 接入 L3 FastAPI 应用层；应用层向下连接 L4 PostgreSQL 与 pi-runner 沙箱；L5 为备份与外部依赖。连线标注 1 至 7 对应图下方说明。</desc>
     <defs>
       <marker id="ar1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
         <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       </marker>
     </defs>
 
-    <rect x="42" y="52" width="10" height="10" rx="2" fill="#86909C"/>
-    <text class="ly" x="58" y="58" dominant-baseline="central">L1 · 用户层</text>
+    <!-- ===== L1 用户层 ===== -->
+    <rect x="20" y="16" width="640" height="88" rx="10" class="band b1"/>
+    <g class="chip"><rect x="36" y="26" width="104" height="22" rx="11" fill="#5F5E5A"/><text x="88" y="37" text-anchor="middle" dominant-baseline="central">L1 · 用户层</text></g>
+    <text class="ld" x="36" y="66" dominant-baseline="central">谁在使用</text>
     <g class="nd">
-      <rect x="170" y="36" width="250" height="44" rx="6" stroke-width="1"/>
-      <text class="th" x="295" y="55" text-anchor="middle" dominant-baseline="central">浏览器 · prototype SPA</text>
-      <text class="ts" x="295" y="72" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent 界面</text>
+      <rect x="170" y="34" width="240" height="60" rx="8" stroke-width="1"/>
+      <text class="th" x="290" y="55" text-anchor="middle" dominant-baseline="central">浏览器 · prototype SPA</text>
+      <text class="ts" x="290" y="74" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent 界面</text>
     </g>
     <g class="nd">
-      <rect x="440" y="36" width="200" height="44" rx="6" stroke-width="1"/>
-      <text class="th" x="540" y="55" text-anchor="middle" dominant-baseline="central">外部 API 调用方</text>
-      <text class="ts" x="540" y="72" text-anchor="middle" dominant-baseline="central">gateway token 鉴权</text>
+      <rect x="440" y="34" width="196" height="60" rx="8" stroke-width="1"/>
+      <text class="th" x="538" y="55" text-anchor="middle" dominant-baseline="central">外部 API 调用方</text>
+      <text class="ts" x="538" y="74" text-anchor="middle" dominant-baseline="central">第三方程序 · 持钥匙通行</text>
     </g>
-    <path class="arr" d="M295 80 V106" marker-end="url(#ar1)"/>
-    <path class="arr" d="M540 80 V106" marker-end="url(#ar1)"/>
-    <text class="mono" x="303" y="99" dominant-baseline="central">HTTPS / SSE</text>
-    <text class="mono" x="548" y="99" dominant-baseline="central">OpenAI 兼容</text>
+    <path class="arr" d="M290 94 V136" marker-end="url(#ar1)"/>
+    <path class="arr" d="M538 94 V136" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="308" cy="117" r="8.5"/><text x="308" y="117" text-anchor="middle" dominant-baseline="central">1</text></g>
+    <text class="mono" x="321" y="117" dominant-baseline="central">HTTPS / SSE</text>
+    <g class="mk"><circle cx="520" cy="117" r="8.5"/><text x="520" y="117" text-anchor="middle" dominant-baseline="central">2</text></g>
+    <text class="mono" x="507" y="117" text-anchor="end" dominant-baseline="central">OpenAI 兼容</text>
 
-    <rect x="42" y="136" width="10" height="10" rx="2" fill="#1D9E75"/>
-    <text class="ly" x="58" y="142" dominant-baseline="central">L2 · 接入层</text>
+    <!-- ===== L2 接入层 ===== -->
+    <rect x="20" y="128" width="640" height="76" rx="10" class="band b2"/>
+    <g class="chip"><rect x="36" y="138" width="104" height="22" rx="11" fill="#0F6E56"/><text x="88" y="149" text-anchor="middle" dominant-baseline="central">L2 · 接入层</text></g>
+    <text class="ld" x="36" y="178" dominant-baseline="central">所有请求的统一入口</text>
     <g class="nd">
-      <rect x="170" y="116" width="470" height="52" rx="6" stroke-width="1"/>
-      <text class="th" x="405" y="136" text-anchor="middle" dominant-baseline="central">Caddy 接入层</text>
-      <text class="ts" x="405" y="154" text-anchor="middle" dominant-baseline="central">:80 / :443 / :8443（IP 直连自签）· 前端静态 · /api 反代 · /admin/hatchet 子路径</text>
+      <rect x="170" y="140" width="470" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="405" y="161" text-anchor="middle" dominant-baseline="central">Caddy 接入层</text>
+      <text class="ts" x="405" y="181" text-anchor="middle" dominant-baseline="central">:80 / :443 / :8443（IP 直连自签）· 前端静态 · /api 反代 · /admin/hatchet</text>
     </g>
-    <path class="arr" d="M405 168 V198" marker-end="url(#ar1)"/>
-    <text class="mono" x="413" y="186" dominant-baseline="central">reverse proxy</text>
+    <path class="arr" d="M405 196 V224" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="423" cy="220" r="8.5"/><text x="423" y="220" text-anchor="middle" dominant-baseline="central">3</text></g>
+    <text class="mono" x="436" y="220" dominant-baseline="central">reverse proxy</text>
 
-    <rect x="42" y="292" width="10" height="10" rx="2" fill="#0064E0"/>
-    <text class="ly" x="58" y="298" dominant-baseline="central">L3 · 应用层</text>
-    <rect x="170" y="204" width="470" height="188" rx="8" class="frame"/>
-    <text class="ly" x="186" y="224" dominant-baseline="central">api 容器 · FastAPI + Alembic</text>
+    <!-- ===== L3 应用层 ===== -->
+    <rect x="20" y="228" width="640" height="210" rx="10" class="band b3"/>
+    <g class="chip"><rect x="36" y="240" width="104" height="22" rx="11" fill="#185FA5"/><text x="88" y="251" text-anchor="middle" dominant-baseline="central">L3 · 应用层</text></g>
+    <text class="ld" x="36" y="280" dominant-baseline="central">系统的大脑</text>
+    <rect x="170" y="228" width="470" height="210" rx="8" class="frame"/>
+    <text class="mono" x="624" y="246" text-anchor="end" dominant-baseline="central">api 容器 · FastAPI + Alembic</text>
     <g class="nd">
-      <rect x="190" y="236" width="210" height="46" rx="6" stroke-width="1"/>
-      <text class="th" x="295" y="254" text-anchor="middle" dominant-baseline="central">业务路由</text>
-      <text class="ts" x="295" y="270" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent</text>
+      <rect x="190" y="262" width="210" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="295" y="281" text-anchor="middle" dominant-baseline="central">业务路由</text>
+      <text class="ts" x="295" y="298" text-anchor="middle" dominant-baseline="central">对话 / 记账 / 文献 / Agent</text>
     </g>
     <g class="nd">
-      <rect x="420" y="236" width="200" height="46" rx="6" stroke-width="1"/>
-      <text class="th" x="520" y="254" text-anchor="middle" dominant-baseline="central">服务层</text>
-      <text class="ts" x="520" y="270" text-anchor="middle" dominant-baseline="central">模型编排 · 流水线 · 存储</text>
+      <rect x="420" y="262" width="200" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="520" y="281" text-anchor="middle" dominant-baseline="central">服务层</text>
+      <text class="ts" x="520" y="298" text-anchor="middle" dominant-baseline="central">模型编排 · 流水线 · 存储</text>
     </g>
     <g class="nd">
-      <rect x="190" y="292" width="210" height="46" rx="6" stroke-width="1"/>
-      <text class="th" x="295" y="310" text-anchor="middle" dominant-baseline="central">管理面</text>
-      <text class="ts" x="295" y="326" text-anchor="middle" dominant-baseline="central">用户 / 模型 / 服务 Key</text>
+      <rect x="190" y="318" width="210" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="295" y="337" text-anchor="middle" dominant-baseline="central">管理面</text>
+      <text class="ts" x="295" y="354" text-anchor="middle" dominant-baseline="central">用户 / 模型 / 服务 Key</text>
     </g>
     <g class="nd">
-      <rect x="420" y="292" width="200" height="46" rx="6" stroke-width="1"/>
-      <text class="th" x="520" y="310" text-anchor="middle" dominant-baseline="central">Hatchet worker</text>
-      <text class="ts" x="520" y="326" text-anchor="middle" dominant-baseline="central">pi-run · papers-parse 事件</text>
+      <rect x="420" y="318" width="200" height="48" rx="8" stroke-width="1"/>
+      <text class="th" x="520" y="337" text-anchor="middle" dominant-baseline="central">Hatchet worker</text>
+      <text class="ts" x="520" y="354" text-anchor="middle" dominant-baseline="central">定时与事件任务</text>
     </g>
     <g class="gwnode">
-      <rect x="190" y="348" width="430" height="34" rx="6" stroke-width="1"/>
-      <text class="th" x="405" y="365" text-anchor="middle" dominant-baseline="central">模型网关 /gw/v1 · 令牌鉴权 · 计费 · 熔断</text>
+      <rect x="190" y="382" width="430" height="36" rx="8" stroke-width="1"/>
+      <text class="th" x="405" y="400" text-anchor="middle" dominant-baseline="central">模型网关 /gw/v1 · 令牌鉴权 · 计费 · 熔断</text>
     </g>
-    <path class="arr" d="M280 392 V418" marker-end="url(#ar1)"/>
-    <path class="arr" d="M525 392 V418" marker-end="url(#ar1)"/>
-    <text class="mono" x="288" y="408" dominant-baseline="central">SQL :5432</text>
-    <text class="mono" x="533" y="408" dominant-baseline="central">HTTP :8787</text>
+    <path class="arr" d="M280 438 V470" marker-end="url(#ar1)"/>
+    <path class="arr" d="M525 438 V470" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="298" cy="458" r="8.5"/><text x="298" y="458" text-anchor="middle" dominant-baseline="central">4</text></g>
+    <text class="mono" x="311" y="458" dominant-baseline="central">SQL :5432</text>
+    <g class="mk"><circle cx="509" cy="458" r="8.5"/><text x="509" y="458" text-anchor="middle" dominant-baseline="central">5</text></g>
+    <text class="mono" x="496" y="458" text-anchor="end" dominant-baseline="central">HTTP :8787</text>
 
-    <rect x="42" y="448" width="10" height="10" rx="2" fill="#534AB7"/>
-    <text class="ly" x="58" y="454" dominant-baseline="central">L4 · 数据与沙箱</text>
+    <!-- ===== L4 数据与沙箱 ===== -->
+    <rect x="20" y="462" width="640" height="84" rx="10" class="band b4"/>
+    <g class="chip"><rect x="36" y="474" width="118" height="22" rx="11" fill="#534AB7"/><text x="95" y="485" text-anchor="middle" dominant-baseline="central">L4 · 数据与沙箱</text></g>
+    <text class="ld" x="36" y="520" dominant-baseline="central">仓库与 AI 工作室</text>
     <g class="nd">
-      <rect x="170" y="424" width="220" height="60" rx="6" stroke-width="1"/>
-      <text class="th" x="280" y="444" text-anchor="middle" dominant-baseline="central">PostgreSQL 16</text>
-      <text class="ts" x="280" y="462" text-anchor="middle" dominant-baseline="central">lumencafe 业务库 · hatchet 库</text>
+      <rect x="170" y="474" width="220" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="280" y="494" text-anchor="middle" dominant-baseline="central">PostgreSQL 16</text>
+      <text class="ts" x="280" y="513" text-anchor="middle" dominant-baseline="central">lumencafe 业务库 · hatchet 库</text>
     </g>
     <g class="nd">
-      <rect x="410" y="424" width="230" height="60" rx="6" stroke-width="1"/>
-      <text class="th" x="525" y="444" text-anchor="middle" dominant-baseline="central">pi-runner 沙箱</text>
-      <text class="ts" x="525" y="462" text-anchor="middle" dominant-baseline="central">Pi SDK · Fastify · MCP · 只读根</text>
+      <rect x="410" y="474" width="230" height="56" rx="8" stroke-width="1"/>
+      <text class="th" x="525" y="494" text-anchor="middle" dominant-baseline="central">pi-runner 沙箱</text>
+      <text class="ts" x="525" y="513" text-anchor="middle" dominant-baseline="central">Pi SDK · MCP · 只读根</text>
     </g>
-    <path class="arr" d="M280 484 V514" marker-end="url(#ar1)"/>
-    <path class="arr" d="M525 484 V514" marker-end="url(#ar1)"/>
-    <text class="mono" x="288" y="502" dominant-baseline="central">pg_dump 每日</text>
-    <text class="mono" x="533" y="502" dominant-baseline="central">模型出口 → 网关</text>
+    <path class="arr" d="M280 530 V578" marker-end="url(#ar1)"/>
+    <path class="arr" d="M525 530 V578" marker-end="url(#ar1)"/>
+    <g class="mk"><circle cx="298" cy="560" r="8.5"/><text x="298" y="560" text-anchor="middle" dominant-baseline="central">6</text></g>
+    <text class="mono" x="311" y="560" dominant-baseline="central">pg_dump 每日</text>
+    <g class="mk"><circle cx="509" cy="560" r="8.5"/><text x="509" y="560" text-anchor="middle" dominant-baseline="central">7</text></g>
+    <text class="mono" x="496" y="560" text-anchor="end" dominant-baseline="central">模型出口</text>
 
-    <rect x="42" y="538" width="10" height="10" rx="2" fill="#854F0B"/>
-    <text class="ly" x="58" y="544" dominant-baseline="central">L5 · 基础设施</text>
+    <!-- ===== L5 基础设施 ===== -->
+    <rect x="20" y="570" width="640" height="76" rx="10" class="band b5"/>
+    <g class="chip"><rect x="36" y="582" width="104" height="22" rx="11" fill="#854F0B"/><text x="88" y="593" text-anchor="middle" dominant-baseline="central">L5 · 基础设施</text></g>
+    <text class="ld" x="36" y="624" dominant-baseline="central">后勤与供应商</text>
     <g class="nd">
-      <rect x="170" y="520" width="220" height="48" rx="6" stroke-width="1"/>
-      <text class="th" x="280" y="538" text-anchor="middle" dominant-baseline="central">backup</text>
-      <text class="ts" x="280" y="556" text-anchor="middle" dominant-baseline="central">restic 每日全量增量</text>
+      <rect x="170" y="582" width="220" height="52" rx="8" stroke-width="1"/>
+      <text class="th" x="280" y="601" text-anchor="middle" dominant-baseline="central">backup</text>
+      <text class="ts" x="280" y="619" text-anchor="middle" dominant-baseline="central">restic 每日全量增量</text>
     </g>
     <g class="nd">
-      <rect x="410" y="520" width="230" height="48" rx="6" stroke-width="1"/>
-      <text class="th" x="525" y="538" text-anchor="middle" dominant-baseline="central">外部依赖</text>
-      <text class="ts" x="525" y="556" text-anchor="middle" dominant-baseline="central">模型厂商 API · 文献源</text>
+      <rect x="410" y="582" width="230" height="52" rx="8" stroke-width="1"/>
+      <text class="th" x="525" y="601" text-anchor="middle" dominant-baseline="central">外部依赖</text>
+      <text class="ts" x="525" y="619" text-anchor="middle" dominant-baseline="central">模型厂商 API · 文献源</text>
     </g>
-
-    <text class="ts" x="405" y="592" text-anchor="middle" dominant-baseline="central">正交流线 = 请求 / 数据流 · 模型统一经 L3 网关出口 · Agent 由 Hatchet 编排</text>
   </svg>
   </div>
-  <div class="notes">
-    <div class="note">网关是唯一模型出口：内部 app 按 app_key 路由，外部按 gateway token 鉴权。</div>
-    <div class="note">Hatchet worker 嵌在 api 进程（守护线程），pi-run 事件驱动 Agent 任务。</div>
-    <div class="note">沙箱两条通道：模型走网关管「钱」，结果走文件卷管「数据」。</div>
+  <ol class="legend">
+    <li><span class="n">1</span><span><b>HTTPS / SSE</b> —— 浏览器与服务器的加密通话；SSE 让服务器能持续「播报」进展（如 Agent 任务进度条），不用反复刷新。</span></li>
+    <li><span class="n">2</span><span><b>OpenAI 兼容</b> —— 接口格式与业界标准一致，第三方程序拿现成的工具就能接入，像电器用标准插头。</span></li>
+    <li><span class="n">3</span><span><b>reverse proxy（反向代理）</b> —— 总前台：所有请求先进这里，再按规则转给内部对应部门。</span></li>
+    <li><span class="n">4</span><span><b>SQL :5432</b> —— 应用读写数据库的标准方式；5432 是 PostgreSQL 的默认门牌号。</span></li>
+    <li><span class="n">5</span><span><b>HTTP :8787</b> —— 应用向 AI 沙箱派任务的内部电话线，8787 是沙箱服务的内线号码，只在内部网络可达。</span></li>
+    <li><span class="n">6</span><span><b>pg_dump 每日</b> —— 每天把数据库完整导出一次，交给备份程序存档。</span></li>
+    <li><span class="n">7</span><span><b>模型出口</b> —— 沙箱里的 AI 想调模型只能走这一条路，便于统一计费和管控。</span></li>
+  </ol>
+</section>
+
+<!-- ============ ①b 逐层讲解（非 IT 版） ============ -->
+<section class="card" id="exp">
+  <h2><span class="no">02</span>逐层讲解 · 咖啡馆类比</h2>
+  <div class="sub">把整套系统想象成一家咖啡馆：你是顾客，Caddy 是前台，api 是后厨，数据库是仓库，AI 沙箱是外包工作室。</div>
+  <div class="exp">
+    <div class="exp-item e1">
+      <h4>L1 用户层 —— 谁在使用<span class="lt">顾客</span></h4>
+      <p>你在浏览器里使用对话、记账、文献、Agent 四个功能；外部程序也可以凭「钥匙」（token）直接调用模型接口。就像顾客进店点单，或打电话来订餐。</p>
+    </div>
+    <div class="exp-item e2">
+      <h4>L2 接入层 · Caddy —— 前台<span class="lt">唯一的门</span></h4>
+      <p>所有流量只从一个门进来：看页面的请求发给前端文件，/api 开头的转给后厨，/admin/hatchet 转给排班室。前台不认识任何人，但谁都绕不开它；HTTPS 加密也是在这里完成的。</p>
+    </div>
+    <div class="exp-item e3">
+      <h4>L3 应用层 · api —— 后厨 + 收银台<span class="lt">系统的大脑</span></h4>
+      <p>四个工位：<b>业务路由</b>是点菜窗口，按功能把单分给对应档口；<b>服务层</b>是厨师，真正干活——调模型、跑流水线、存文件；<b>管理面</b>是店长办公室，管用户、模型、钥匙；<b>Hatchet worker</b>是排班经理，到点或有活时派任务。底部蓝色横条是<b>模型网关</b>：全店唯一收银台，验钥匙、按用量记账、出事自动拉闸。</p>
+    </div>
+    <div class="exp-item e4">
+      <h4>L4 数据与沙箱 —— 仓库 + 外包工作室<span class="lt">存数据 & 关 AI</span></h4>
+      <p>PostgreSQL 是仓库兼账本，所有数据只存这里。pi-runner 是外包 AI 的独立工作室：它干活时<b>碰不到仓库</b>，成果只能放到指定托盘（/output 卷），由后厨验收后才正式入库——这就是「沙箱」的意义。</p>
+    </div>
+    <div class="exp-item e5">
+      <h4>L5 基础设施 —— 后勤与供应商<span class="lt">兜底 & 外援</span></h4>
+      <p>backup 每晚把账本完整复印一份存进保险柜（另一目录，防误删）。外部依赖是供应商：模型公司（DeepSeek 等）和文献数据库——店里不生产它们，只按需采购。</p>
+    </div>
   </div>
 </section>
 
 <!-- ============ ② 时序图 ============ -->
 <section class="card" id="seq">
-  <h2><span class="no">02</span>Agent 任务时序图</h2>
+  <h2><span class="no">03</span>Agent 任务时序图</h2>
   <div class="sub">以「下载 OA 论文」为例：从提交任务到 SSE 关闭的完整链路（已按真实验收路径核对）。</div>
+  <div class="plain"><b>一句话看懂：</b>你在弹窗里「下单」，后厨（api）登记后喊排班经理（Hatchet）派活，临时工（沙箱里的 AI）开始干活——每做一步都实时播报进度，最后把成果放上托盘、后厨验收入库。</div>
   <div class="mermaid">
 sequenceDiagram
     autonumber
@@ -268,13 +357,15 @@ sequenceDiagram
   <div class="notes">
     <div class="note">SSE 建立早于沙箱建 run 时，pi_client 会对 404 短重试（30s 窗口）。</div>
     <div class="note">每轮模型调用经网关落 llm_call_logs，pi-runner 专用 token 单独核算成本。</div>
+    <div class="note">步骤 8–12 会循环多轮：AI「思考 → 调工具 → 看结果 → 再思考」，直到任务完成。</div>
   </div>
 </section>
 
 <!-- ============ ③ 容器拓扑图 ============ -->
 <section class="card" id="topo">
-  <h2><span class="no">03</span>容器拓扑图</h2>
+  <h2><span class="no">04</span>容器拓扑图</h2>
   <div class="sub">docker-compose 六个容器、两张网：default 业务网与 sandbox 隔离网；api / caddy 双网桥接。</div>
+  <div class="plain"><b>一句话看懂：</b>六个「集装箱」分两个房间办公。业务房间（绿框）大家互通；AI 工作室（红框，pi-runner）在隔离房间，只能通过前台（caddy）对外联系——数据库根本不在它的房间，想碰也碰不到。</div>
   <div class="fig">
   <svg viewBox="0 0 680 550" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
     <title>容器拓扑</title>
@@ -349,6 +440,56 @@ sequenceDiagram
     <div class="note">沙箱够不到 db：db 不在 sandbox 网，容器内实测 5432 不可达。</div>
     <div class="note">pi-runner 的模型出口只有一条：caddy → /gw/v1 → 专用最小权限 token。</div>
     <div class="note">hatchet 控制台不公网暴露，经 Caddy <code>/admin/hatchet</code> 子路径访问。</div>
+  </div>
+</section>
+
+<!-- ============ ⑤ 术语速查 ============ -->
+<section class="card" id="glossary">
+  <h2><span class="no">05</span>术语速查 · 非 IT 版</h2>
+  <div class="sub">三张图里出现的专业词，全部用一句话解释。按图分组，按需查找。</div>
+
+  <div class="g-group">
+    <h4>图 1 · 架构图</h4>
+    <dl>
+      <div class="g-item"><dt>SPA（单页应用）</dt><dd>整个网站只有一个网页，切换功能不刷新页面，体验像手机 App。</dd></div>
+      <div class="g-item"><dt>HTTPS</dt><dd>浏览器和服务器之间的加密通话，防止内容被窃听或篡改。</dd></div>
+      <div class="g-item"><dt>SSE</dt><dd>服务器主动持续「播报」的通道。Agent 任务的进度条就是靠它实时推到前端的。</dd></div>
+      <div class="g-item"><dt>OpenAI 兼容</dt><dd>接口格式与业界标准一致，第三方程序拿现成的客户端工具就能接入，像电器用标准插头。</dd></div>
+      <div class="g-item"><dt>token（令牌 / 钥匙）</dt><dd>一串密码，证明「你是谁、能用哪些功能」。沙箱里只发一把最小权限的钥匙——只能调白名单模型。</dd></div>
+      <div class="g-item"><dt>反向代理（reverse proxy）</dt><dd>总前台：接收所有请求，再按规则转给内部对应部门。对外只暴露它一个门。</dd></div>
+      <div class="g-item"><dt>端口（:80 等）</dt><dd>服务的门牌号。一台服务器上同时跑多个服务，靠门牌号区分谁接客。</dd></div>
+      <div class="g-item"><dt>IP 直连 / 自签</dt><dd>不配域名，直接用服务器 IP 访问；加密证书自己签发，浏览器会提示风险，但流量已经加密。</dd></div>
+      <div class="g-item"><dt>FastAPI</dt><dd>用 Python 写后端服务的框架。后端 = 跑在服务器上、响应请求的程序。</dd></div>
+      <div class="g-item"><dt>Alembic</dt><dd>数据库结构升级工具，相当于数据库的「更新补丁程序」，只新增不修改历史。</dd></div>
+      <div class="g-item"><dt>Hatchet / worker</dt><dd>任务调度器：到点（定时）或来活（事件）时派任务给 worker（干活的进程）执行。本项目里 worker 嵌在 api 进程内，不额外占容器。</dd></div>
+      <div class="g-item"><dt>模型网关 /gw/v1</dt><dd>所有 AI 调用的唯一出口兼收银台：验证钥匙 → 按规则选模型 → 记账 → 上游出故障时自动切断。</dd></div>
+      <div class="g-item"><dt>计费 · 熔断</dt><dd>计费 = 按 token（AI 用量的最小单位，约等于字数）记每笔账；熔断 = 模型服务出问题时自动拉闸，防止故障拖垮全站。</dd></div>
+      <div class="g-item"><dt>MCP</dt><dd>让 AI 使用外部工具的通用插口，如「查论文」「开浏览器」，本项目的两大 MCP 就是这两样。</dd></div>
+      <div class="g-item"><dt>SDK</dt><dd>开发工具包——别人封装好的功能，拿来即用。我们把 Pi 的 SDK 嵌进自己写的服务里。</dd></div>
+      <div class="g-item"><dt>沙箱（只读根）</dt><dd>AI 干活的隔离工作室：文件系统只允许读、成果只能写到指定托盘，防止它误伤或乱改系统文件。</dd></div>
+      <div class="g-item"><dt>pg_dump · restic</dt><dd>pg_dump 是数据库自带的「整库导出」工具；restic 是备份程序，把导出结果加密打包、保留历史版本。</dd></div>
+    </dl>
+  </div>
+
+  <div class="g-group">
+    <h4>图 3 · 时序图</h4>
+    <dl>
+      <div class="g-item"><dt>事件（push）</dt><dd>部门之间「喊一嗓子」：把活丢给调度器就继续干别的，不站在原地等回复。</dd></div>
+      <div class="g-item"><dt>轮询</dt><dd>每隔几秒去问一次「好了没」，直到拿到最终结果。</dd></div>
+      <div class="g-item"><dt>入库</dt><dd>文件正式存进对象存储，同时在数据库记一笔账，以后可检索、可追溯。</dd></div>
+      <div class="g-item"><dt>多轮推理</dt><dd>AI 反复「思考 → 调工具 → 看结果 → 再思考」，直到把任务做完，不是一问一答就结束。</dd></div>
+    </dl>
+  </div>
+
+  <div class="g-group">
+    <h4>图 4 · 容器拓扑</h4>
+    <dl>
+      <div class="g-item"><dt>容器（Docker）</dt><dd>把程序连同它的运行环境打包成标准「集装箱」：在哪台机器上跑都一模一样，互相隔离不干扰。</dd></div>
+      <div class="g-item"><dt>卷（volume）</dt><dd>容器之间共用的「共享文件夹」，容器删了数据还在。</dd></div>
+      <div class="g-item"><dt>网（network）</dt><dd>容器间的内部局域网。sandbox 是隔离网：只有 api、caddy、pi-runner 三个成员，数据库不在群里。</dd></div>
+      <div class="g-item"><dt>NAT 出公网</dt><dd>隔离网里的容器可以主动访问互联网（如下载论文），但外面的东西摸不进来。</dd></div>
+      <div class="g-item"><dt>prod 覆盖层</dt><dd>生产环境的附加配置，覆盖开发默认值——比如关掉数据库对外的门，只保留前台的三个门。</dd></div>
+    </dl>
   </div>
 </section>
 
