@@ -1,51 +1,38 @@
 # 流光咖啡馆（LumenCafe）
 
-自部署的两人 AI 应用面板。FastAPI + PostgreSQL + Caddy，打磨成熟后计划 MIT 开源。
+自部署的两人 AI 应用工作台。打磨成熟后计划 MIT 开源。
 
 > **协作硬性规定**：所有界面设计必须先搜索并参考业界成功案例（火山方舟控制台、LobeChat、Supabase、midday 等），禁止凭感觉自行设计。详见 [AGENTS.md](AGENTS.md)。
 
-## 快速开始（本地）
+## 当前状态：架构重构中
 
-```bash
-cp .env.example .env   # 修改其中的密码、密钥与 LUMEN_PI_TOKEN
-docker compose up -d --build
-```
+项目正从旧栈（Python：FastAPI + PostgreSQL + Hatchet + pi-runner）重构为新栈（Node：pi / chord）。
 
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/health
+- **旧栈代码已于 2026-11-11 删除**（备份在 `E:/backups/`，git 历史亦可恢复）。
+- 新栈的产品契约见 **[docs/白皮书-v3.md](docs/白皮书-v3.md)**，架构推演过程见 [docs/pi-workbench-architecture.html](docs/pi-workbench-architecture.html)。
+- 新栈代码尚未落地，将按白皮书 §13 的打磨顺序逐步实现。
 
-注意：
-- **compose 运行必须提供 `.env`**。缺失时 api 容器会因连不上数据库而重启循环（默认 `LUMEN_DATABASE_URL` 面向本机 venv 开发，指向 localhost）。
-- `POSTGRES_PASSWORD` 含 `$` `#` 等特殊字符时，`.env` 里的值要用单引号包住，如 `POSTGRES_PASSWORD='a@b#c$d'`。
-- Alembic 迁移在 api 容器启动时自动执行（`alembic upgrade head`）。
+## 新架构一句话
 
-## 服务器部署
-
-一台 2核4G VPS 即可。完整步骤见 [docs/部署指南-v1.md](docs/部署指南-v1.md)，核心三步：
-
-```bash
-git clone <仓库地址> lumencafe && cd lumencafe
-cp .env.example .env   # 改 JWT_SECRET / POSTGRES_PASSWORD / LUMEN_INTERNAL_TOKEN / LUMEN_PI_TOKEN
-docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
-```
-
-部署形态（**IP 直连**，2026-10-18 起；域名未备案被腾讯云拦截 80/443，故全程不用域名）：
-
-- 主站 `https://<服务器IP>:8443`——前端 + /api 同源反代，Caddy 自签证书，首次打开点「高级 → 继续访问」
-
-防火墙放行 80/443/8443。以后想要域名绿标（DNS-01，无需备案）或标准网址（ICP 备案），见部署指南 §1.1。
+一台 2C4G 服务器，装一个 Node 主程序，里面跑三个应用（对话、记账、论文），共用一套登录（chord），大模型全部调云端（pi-ai）。框架状态存 SQLite，业务数据和向量存 PostgreSQL + pgvector。详见白皮书。
 
 ## 目录结构
 
 ```
-backend/    FastAPI 后端（业务 API + /gw/v1 模型网关）
-pi-runner/  Pi Agent 沙箱服务（Node 薄层 + Pi SDK，执行主体派发任务）
-deploy/     部署层（prod 覆盖、备份、pi 基础镜像配置）
-docs/       架构定稿 v1、PRD v1、架构设计 v1、团队协作规范 v1
-old/        旧版后端（本地参考，不入版本库）
-prototype/  前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
+AGENTS.md    设计强制规则 + 工程约定（最高优先级）
+docs/        白皮书 v3（新架构契约）、架构讨论稿、团队协作规范、项目地图、论文数据源目录
+prototype/   前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
+skills/      Skill 文件夹库（运行期数据，Agent Skills 开放标准）
+```
+
+> 新栈的服务端代码目录尚未创建，落地时以白皮书为准。
+
+## 本地预览原型
+
+```bash
+cd prototype
+python -m http.server 4311
+# 浏览器打开 http://localhost:4311/v2/
 ```
 
 找不到要改的文件？先看 [docs/项目地图-v1.md](docs/项目地图-v1.md)（或浏览器打开 `docs/项目地图.html`，可搜索、点选复制路径）。
-
-详细设计见 [docs/架构定稿-v1.md](docs/架构定稿-v1.md)。

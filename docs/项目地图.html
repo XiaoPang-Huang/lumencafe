@@ -131,13 +131,13 @@
 
   <header>
     <h1><span class="cup">☕</span> 流光咖啡馆 · 项目地图</h1>
-    <span class="ver">v1 · 2026-10-18</span>
+    <span class="ver">v1 · 2026-11-11 重构期</span>
   </header>
-  <p class="sub">10 秒定位"要改的东西在哪"。点任意一行即可复制路径。Markdown 版：<a href="项目地图-v1.md">项目地图-v1.md</a> ｜ 协作流程：<a href="团队协作规范-v1.md">团队协作规范-v1.md</a></p>
+  <p class="sub">10 秒定位"要改的东西在哪"。点任意一行即可复制路径。<b>注意：旧 Python 栈已删除，项目重构中（新栈 Node：pi/chord），服务端代码尚未落地。</b>Markdown 版：<a href="项目地图-v1.md">项目地图-v1.md</a> ｜ 新架构契约：<a href="白皮书-v3.md">白皮书-v3.md</a></p>
 
   <div class="search">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-    <input id="q" type="text" placeholder="搜索：接口 / 迁移 / 样式 / 图标 / 模型 / 部署……" autocomplete="off">
+    <input id="q" type="text" placeholder="搜索：白皮书 / 样式 / 图标 / 原型 / 决策……" autocomplete="off">
     <button class="clear" id="clearBtn" title="清空">✕</button>
     <kbd>/</kbd>
   </div>
@@ -161,7 +161,7 @@
 
   <!-- ③ 文档契约 -->
   <section>
-    <div class="sec-title"><span class="dot"></span>文档契约<span class="sec-note">产品决策以这三份为准</span></div>
+    <div class="sec-title"><span class="dot"></span>文档契约<span class="sec-note">产品决策以白皮书 v3 为准</span></div>
     <div class="docs" id="docs"></div>
   </section>
 
@@ -172,105 +172,58 @@
 /* ============ 数据（改目录结构时同步这里 + 项目地图-v1.md） ============ */
 
 const TASKS = [
-  {t:"新增 / 改一个 API 接口", tag:"后端", p:"backend/app/routers/ + app/main.py", d:"接口定义先对架构设计 §4"},
-  {t:"改数据表结构", tag:"后端", p:"backend/alembic/versions/", d:"只新增迁移不改旧文件；DDL 对架构设计 §3"},
-  {t:"加 / 改配置项", tag:"后端", p:"backend/app/config.py", d:"同时更新 .env.example + README"},
-  {t:"改后端日志 / 启动行为", tag:"后端", p:"backend/app/logging_conf.py · app/main.py", d:"lifespan 钩子、敏感配置告警"},
+  {t:"看新架构怎么设计", tag:"文档", p:"docs/白皮书-v3.md", d:"新架构唯一产品契约；推演过程见 pi-workbench-architecture.html"},
+  {t:"产品决策 / 新应用立项", tag:"文档", p:"docs/白皮书-v3.md", d:"先更新白皮书再动手（决策清单见 §16）"},
   {t:"改页面结构 / 交互 / 路由", tag:"前端", p:"prototype/v2/assets/js/app.js", d:"改完 bump index.html 的 ?v= 版本号"},
   {t:"改样式", tag:"前端", p:"prototype/v2/assets/css/main.css", d:"同样记得 bump ?v="},
   {t:"改演示数据", tag:"前端", p:"prototype/v2/assets/js/data.js", d:"金额一律「分」"},
   {t:"加图标", tag:"前端", p:"prototype/v2/assets/icons/", d:"放 SVG → icons.js 注册 → data-ic 引用"},
   {t:"设计 / 改版界面", tag:"前端", p:"prototype/v2/", d:"先查 AGENTS.md §一参考池，拍板后再动代码"},
-  {t:"产品决策变更", tag:"文档", p:"docs/ 三份契约", d:"同步 PRD / 架构设计 / 架构定稿 + 修订记录"},
-  {t:"模型管理（Provider / 默认路由）", tag:"后端", p:"架构设计 §3.2 + §4.3", d:"实现落 routers/admin_models.py"},
-  {t:"网关对外接口 /gw/v1", tag:"后端", p:"架构设计 §4.9", d:"实现落 routers/gateway.py；按 gateway token 名写 llm_call_logs"},
-  {t:"Pi Agent / pi-runner", tag:"Agent", p:"routers/agent.py + services/pi_*.py + pi-runner/", d:"计划见 docs/开发计划-pi-runner-v1.md；compose 需 LUMEN_PI_TOKEN"},
-  {t:"部署 / 运维", tag:"运维", p:"docker-compose.yml + Caddyfile + deploy/", d:"docs/部署指南-v1.md；compose 必须提供 .env"},
-  {t:"参考旧版实现", tag:"参考", p:"old/app/", d:"只读参考，不入版本库，勿往里加新东西"},
-  {t:"查之前为什么这么定", tag:"记忆", p:".workbuddy/memory/MEMORY.md", d:"+ 每日日志；docs 修订记录"},
+  {t:"查旧栈怎么实现的", tag:"参考", p:"E:/backups/lumencafe-oldstack-*.tar.gz", d:"旧 Python 栈 2026-11-11 删除，备份在此 + git 历史"},
+  {t:"查之前为什么这么定", tag:"记忆", p:".workbuddy/memory/MEMORY.md", d:"+ 每日日志；白皮书修订记录"},
+  {t:"新栈代码落地后", tag:"待办", p:"（尚未创建）", d:"按白皮书 §13 打磨顺序实现，回来补本地图 §1/§5"},
 ];
 
 const TREES = [
-  {name:"backend/", desc:"FastAPI 后端", nodes:[
-    ["app/main.py","FastAPI 入口 + /health，挂新路由来这里"],
-    ["app/config.py","全部配置，LUMEN_ 前缀 → settings"],
-    ["app/db.py","引擎 + 会话 + ORM 基类 Base"],
-    ["app/logging_conf.py","日志"],
-    ["app/security.py","bcrypt 密码哈希 + JWT 签发/校验"],
-    ["app/deps.py","get_current_user / require_permission / internal_token_guard"],
-    ["app/models/","ORM 模型汇总（架构设计 §3；__init__ 供 Alembic；步 B 起含 papers_crawl_runs）"],
-    ["app/schemas/","请求/响应模型（auth / admin / me / llm / money / apps / papers）"],
-    ["app/services/","业务服务层（llm_gateway / route_service / money_service / rbac_service / seed / rate_limit / papers_crawl / pipeline（Hatchet：papers 双 cron + papers-parse/pi-run 事件任务）/ pi_client（pi-runner HTTP/SSE 客户端）/ pi_runner（pi_runs 执行编排+产物入库）/ paper_parse / paper_content / sources / storage（COS+Local，P11 按应用目录硬隔离））"],
-    ["app/routers/","全部已建：auth / admin_users / admin_models / admin_service_keys / me / money / apps / internal / gateway / chat / skills / papers / status / agent"],
-    ["tests/","pytest 独立测试库 lumencafe_test（全量 310 用例绿）"],
-    ["alembic/versions/","迁移文件，只新增不改旧（0001 全量 16 表 → 0015 pi_runs 任务记录表）"],
-    ["requirements.txt · requirements-dev.txt","运行时 / 开发依赖（ruff · pytest）"],
-    ["pyproject.toml","ruff 配置（FastAPI Depends 视为不可变调用）"],
-    [".env.example","环境变量完整清单"],
-    ["Dockerfile","api 镜像，启动自动 alembic upgrade head"],
-  ]},
-  {name:"pi-runner/", desc:"Pi Agent 沙箱服务（Node 薄层 + Pi SDK）", nodes:[
-    ["package.json · package-lock.json","依赖锁定（pi-coding-agent@1.5.0 + fastify，npm ci --ignore-scripts）"],
-    ["server.js","三端点：POST /api/runs、GET /api/runs/:id/events、POST /api/runs/:id/abort"],
-    ["Dockerfile","沙箱镜像：python/uv + paper-search-mcp + Playwright MCP/Chromium"],
-    ["deploy/pi/","步 1 基础镜像 Dockerfile + models.json + mcp.json（单一配置来源）"],
-  ]},
-  {name:"prototype/v2/", desc:"前端交互原型（拍板用，纯静态）", nodes:[
+  {name:"prototype/v2/", desc:"前端交互原型（拍板用，纯静态，新栈继续用）", nodes:[
     ["index.html","外壳 + 全局弹层 + ?v= 版本号"],
-    ["assets/js/app.js","路由 + 页面模板 + ⌘K 面板 + 全部事件委托（P8 批注阅读器：左原文/右批注栏、选中弹钮、互链、导出 Markdown）"],
+    ["assets/js/api.js","API 客户端层（token 存取 + fetch/SSE 封装 + 401 跳登录）"],
+    ["assets/js/app.js","路由 + 页面模板 + ⌘K 面板 + 全部事件委托"],
     ["assets/js/data.js","演示数据（金额单位：分）"],
     ["assets/js/icons.js","data-ic 图标注入"],
     ["assets/css/main.css","全部样式"],
     ["assets/icons/","SVG 源 + build-icons.js"],
     ["assets/fonts/","Manrope woff2（本地）"],
   ]},
-  {name:"docs/", desc:"产品契约与协作规范", nodes:[
-    ["架构定稿-v1.md","已拍板的架构决策"],
-    ["PRD-v1.md","需求、接口明细、需求池 P0/P1"],
-    ["架构设计-v1.md","实现方案、DDL、任务列表 T 编号"],
-    ["PRD-增量-对话思考与润色-v1.md · 架构设计-增量-对话思考与润色-v1.md","已交付增量规格（代码 docstring 锚点，独立保留）"],
-    ["架构设计-增量-模型路由与流水线-v2.md","网关路由升级+Hatchet 流水线+工程三小件（D1-D13 决策）"],
-    ["依赖锁定清单-v1.md","依赖锁定理由、CVE 审计结论、lockfile 机制"],
-    ["底座实施计划-v1.md","底座六步跟踪看板 + 各步技术引用"],
-    ["开发计划-pi-runner-v1.md","Pi Agent 沙箱落地线步 1-5+ 与验收链路"],
-    ["落地方案-pi-agent服务-v1.md · 选型分析-harness三强对比-v1.md","Pi 定案、配置样例、风险对策"],
-    ["归档-SuperAgent方案-v1.md","已放弃路线的研究结论存档（2026-11 被 Pi 选型取代）"],
-    ["论文域增量-订阅推送与界面骨架-v1.md","论文域拍板 P1-P10（页内推送/批注笔记/COS 目录）"],
-    ["团队协作规范-v1.md","交付流程、Git 规范、DoD"],
-    ["部署指南-v1.md","云服务器部署 + 从本地上云图文步骤"],
-    ["组件选型-v1.md","三层复用模型、候选触发点、Octop 深评、自研替换排查、网关调度详评"],
-    ["论文域组件参考与优化-v1.md","论文域组件参考、实现模式、代码与前端优化"],
-    ["论文域数据源目录-v1.md","34 个学术源选型清单（一期已接 5 个）"],
-    ["前端现代化体检-第三档评估-v1.md","前端缓行项与触发条件备忘"],
+  {name:"docs/", desc:"新架构契约 + 常备 + 旧栈历史 + 工具（2026-11-11 整理）", nodes:[
+    ["白皮书-v3.md","新架构唯一产品契约：pi 清单/官方不管的事/存储分层/六层/三应用/RAG/升级纪律/§16 决策清单"],
+    ["pi-workbench-architecture.html","新架构讨论稿（大白话版 v1.3）；正式结论以白皮书 v3 为准"],
+    ["团队协作规范-v1.md","交付流程、Git 规范、DoD（跟技术栈无关）"],
+    ["论文数据源目录-v1.md","34 个学术源选型清单（跟技术栈无关）"],
+    ["部署指南-v1.md","【旧栈·历史】对应代码已删；新栈部署方式待重写"],
+    ["依赖锁定清单-v1.md","【旧栈·历史】对应代码已删；锁定纪律仍有效（见白皮书 §14）"],
+    ["架构总览-v1.html","【旧栈·历史】FastAPI/Hatchet/pi-runner 架构图，仅留档"],
     ["项目地图-v1.md / .html","本文（目录结构变化时同步更新）"],
-    ["架构总览-v1.html","整体架构图 + Agent 时序图 + 容器拓扑图（可视化页面）"],
   ]},
-  {name:"根目录 & 其他", desc:"配置 · 编排 · 不入库目录", nodes:[
-    ["AGENTS.md","设计强制规则（最高优先级）"],
-    ["README.md","快速开始、目录说明"],
-    ["Caddyfile · Caddyfile.dev","生产（IP 直连+自签证书）/ 开发反代"],
-    ["deploy/","prod 覆盖层（IP/前端挂载）+ 备份 + pi 基础镜像配置"],
-    ["docker-compose.yml","db / api / backup / hatchet / caddy / pi-runner 编排"],
-    ["pi-runner/","Pi Agent 沙箱服务（Node 薄层 + Pi SDK）"],
+  {name:"根目录 & 其他", desc:"契约 · 许可 · 不入库目录", nodes:[
+    ["AGENTS.md","设计强制规则 + 工程约定 + 关键产品决策（最高优先级）"],
+    ["README.md","项目状态（重构中）、新架构一句话、目录说明"],
+    ["skills/","Skill 文件夹库（运行期数据，Agent Skills 开放标准）"],
     ["LICENSE","MIT 许可"],
-    ["old/","旧版后端（只读参考，不入库）"],
-    [".workbuddy/","AI 协作记忆（日志 + 长期笔记）"],
+    [".gitignore","环境与密钥不入库；旧栈 Python 段可在新栈落地后清理"],
+    [".workbuddy/","AI 协作记忆（日志 + 长期笔记，不入库）"],
   ]},
 ];
 
 const DOCS = [
-  {t:"架构定稿 v1", w:"已拍板的架构决策（模型纯网关 / 批次优先级 / 安全清单）", u:"架构定稿-v1.md"},
-  {t:"PRD v1.1", w:"产品需求：用户故事、接口明细、需求池 P0/P1", u:"PRD-v1.md"},
-  {t:"架构设计 v1.1", w:"实现方案：DDL、接口映射、时序图、任务列表", u:"架构设计-v1.md"},
-  {t:"团队协作规范 v1", w:"八步交付流程、Git 规范、完成定义 DoD", u:"团队协作规范-v1.md"},
-  {t:"部署指南 v1", w:"云服务器部署 + 从本地上云：IP 直连/Docker/运维/推送/克隆", u:"部署指南-v1.md"},
-  {t:"组件选型 v1", w:"三层复用模型、候选与触发点、Octop 深评、自研替换排查、网关与调度开源详评", u:"组件选型-v1.md"},
-  {t:"论文域组件参考与优化 v1", w:"推送/预览/笔记/问答组件参考 + 代码与前端优化清单", u:"论文域组件参考与优化-v1.md"},
-  {t:"归档·SuperAgent方案 v1", w:"已放弃路线的研究结论存档（11-06 被 Pi 取代）", u:"归档-SuperAgent方案-v1.md"},
-  {t:"底座实施计划 v1", w:"底座六步跟踪看板 + 各步技术引用索引", u:"底座实施计划-v1.md"},
-  {t:"pi-runner 开发计划 v1", w:"Pi Agent 沙箱落地线步 1-5+ 与验收链路", u:"开发计划-pi-runner-v1.md"},
-  {t:"Pi 落地方案 / Harness 选型", w:"Pi 定案、配置样例、风险对策与三强对比", u:"落地方案-pi-agent服务-v1.md"},
-  {t:"AGENTS.md", w:"设计强制规则 + 工程约定（最高优先级）", u:"../AGENTS.md"},
+  {t:"白皮书 v3 · 新架构产品契约", w:"pi 全家桶清单 / 官方不管的事 / 存储分层（SQLite+PG/pgvector）/ 六层 / 三应用 / 慢活 / RAG / 升级纪律 / 2C4G 增补裁剪 / §16 决策清单", u:"白皮书-v3.md"},
+  {t:"新架构讨论稿 v1.3", w:"白皮书 v3 的上游推演（大白话版）；正式结论以白皮书 v3 为准", u:"pi-workbench-architecture.html"},
+  {t:"团队协作规范 v1", w:"八步交付流程、Git 规范、完成定义 DoD（跟技术栈无关）", u:"团队协作规范-v1.md"},
+  {t:"论文数据源目录 v1", w:"34 个学术源选型清单（跟技术栈无关）", u:"论文数据源目录-v1.md"},
+  {t:"【旧栈·历史】部署指南 v1", w:"对应代码已删；旧 Docker Compose 部署方式，新栈部署待重写", u:"部署指南-v1.md"},
+  {t:"【旧栈·历史】依赖锁定清单 v1", w:"对应代码已删；锁定纪律本身仍有效（见白皮书 §14）", u:"依赖锁定清单-v1.md"},
+  {t:"【旧栈·历史】架构总览 v1.1", w:"FastAPI/Hatchet/pi-runner 架构图；代码已删，仅留档参考", u:"架构总览-v1.html"},
+  {t:"AGENTS.md", w:"设计强制规则 + 工程约定 + 关键产品决策（最高优先级）", u:"../AGENTS.md"},
 ];
 
 /* ============ 渲染 ============ */

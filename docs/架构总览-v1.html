@@ -149,7 +149,10 @@ code{font-family:"JetBrains Mono Local",Consolas,monospace;font-size:.92em;
   <a href="#exp">② 逐层讲解</a>
   <a href="#seq">③ 任务时序图</a>
   <a href="#topo">④ 容器拓扑图</a>
-  <a href="#glossary">⑤ 术语速查</a>
+  <a href="#acct">⑥ 多账号与数据归属</a>
+  <a href="#budget">⑦ 资源预算</a>
+  <a href="#appseq">⑧ 应用操作时序</a>
+  <a href="#glossary">⑨ 术语速查</a>
 </nav>
 
 <!-- ============ ① 整体架构图 ============ -->
@@ -443,9 +446,226 @@ sequenceDiagram
   </div>
 </section>
 
+<!-- ============ ⑥ 多账号与数据归属 ============ -->
+<section class="card" id="acct">
+  <h2><span class="no">06</span>多账号与数据归属图</h2>
+  <div class="sub">圈子产品（设计容量 10~100 账号）下「谁能看见什么、数据归谁」：共享 schema + user_id 列 + 应用层过滤；所有业务表级联删除，删账号即带走全部个人数据。</div>
+  <div class="plain"><b>一句话看懂：</b>一张大账本，每行数据都写着主人的名字。左半边是「人」——账号、角色、权限；右半边是「数据」——15/16 业务表已带 user_id（删账号自动级联清空）；管理员独占底部一排出纳与钥匙；唯一要补的是蓝色那张费用流水表，加上 user_id 才能按人算账。</div>
+  <div class="fig">
+  <svg viewBox="0 0 680 470" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>多账号数据归属</title>
+    <desc>users 经 RBAC 链授权；users 拥有全部业务表（user_id + 级联删除）；管理面表仅管理员可写；llm_call_logs 待补 user_id 后按月汇总清理</desc>
+    <defs>
+      <marker id="ar4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <g class="nd c-blue">
+      <rect x="30" y="30" width="150" height="52" rx="8" stroke-width="0.5"/>
+      <text class="th" x="105" y="50" text-anchor="middle" dominant-baseline="central">users</text>
+      <text class="ts" x="105" y="68" text-anchor="middle" dominant-baseline="central">账号 · username 全局唯一</text>
+    </g>
+
+    <text class="ly" x="30" y="112" dominant-baseline="central">RBAC 授权链</text>
+    <g class="nd c-teal">
+      <rect x="30" y="126" width="120" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="90" y="148" text-anchor="middle" dominant-baseline="central">user_roles</text>
+    </g>
+    <g class="nd c-teal">
+      <rect x="180" y="126" width="100" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="230" y="148" text-anchor="middle" dominant-baseline="central">roles</text>
+    </g>
+    <g class="nd c-teal">
+      <rect x="310" y="126" width="150" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="385" y="148" text-anchor="middle" dominant-baseline="central">role_permissions</text>
+    </g>
+    <g class="nd c-teal">
+      <rect x="490" y="126" width="130" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="555" y="148" text-anchor="middle" dominant-baseline="central">permissions</text>
+    </g>
+    <path class="arr" d="M150 148 H174" marker-end="url(#ar4)"/>
+    <path class="arr" d="M280 148 H304" marker-end="url(#ar4)"/>
+    <path class="arr" d="M460 148 H484" marker-end="url(#ar4)"/>
+    <path class="arr" d="M105 82 V120" marker-end="url(#ar4)"/>
+
+    <rect x="30" y="196" width="320" height="150" rx="10" class="frame"/>
+    <text class="ly" x="44" y="218" dominant-baseline="central">业务表 · 每行带 user_id · ON DELETE CASCADE</text>
+    <g class="nd c-green">
+      <rect x="44" y="232" width="140" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="114" y="248" text-anchor="middle" dominant-baseline="central">chat 域</text>
+      <text class="ts" x="114" y="264" text-anchor="middle" dominant-baseline="central">会话 / 消息</text>
+    </g>
+    <g class="nd c-green">
+      <rect x="196" y="232" width="140" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="266" y="248" text-anchor="middle" dominant-baseline="central">money 域</text>
+      <text class="ts" x="266" y="264" text-anchor="middle" dominant-baseline="central">流水 / 分类</text>
+    </g>
+    <g class="nd c-green">
+      <rect x="44" y="288" width="140" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="114" y="304" text-anchor="middle" dominant-baseline="central">papers 域</text>
+      <text class="ts" x="114" y="320" text-anchor="middle" dominant-baseline="central">订阅 / 收藏 / 笔记</text>
+    </g>
+    <g class="nd c-green">
+      <rect x="196" y="288" width="140" height="44" rx="8" stroke-width="0.5"/>
+      <text class="th" x="266" y="304" text-anchor="middle" dominant-baseline="central">pi_runs / 技能</text>
+      <text class="ts" x="266" y="320" text-anchor="middle" dominant-baseline="central">任务记录 / user_skills</text>
+    </g>
+    <path class="arr" d="M105 82 C105 150 190 170 190 196" marker-end="url(#ar4)"/>
+
+    <rect x="380" y="196" width="270" height="150" rx="10" class="frame"/>
+    <text class="ly" x="394" y="218" dominant-baseline="central">管理面 · 仅管理员可写</text>
+    <g class="nd c-gray">
+      <rect x="394" y="232" width="240" height="96" rx="8" stroke-width="0.5"/>
+      <text class="th" x="514" y="252" text-anchor="middle" dominant-baseline="central">providers · llm_models</text>
+      <text class="ts" x="514" y="272" text-anchor="middle" dominant-baseline="central">gateway_tokens · model_assignments</text>
+      <text class="ts" x="514" y="292" text-anchor="middle" dominant-baseline="central">service_keys · circuit_states</text>
+      <text class="ts" x="514" y="312" text-anchor="middle" dominant-baseline="central">全员共享，不按账号隔离</text>
+    </g>
+
+    <g class="nd gwnode">
+      <rect x="30" y="366" width="320" height="52" rx="8" stroke-width="0.5"/>
+      <text class="th" x="190" y="386" text-anchor="middle" dominant-baseline="central">llm_call_logs</text>
+      <text class="ts" x="190" y="404" text-anchor="middle" dominant-baseline="central">已有 app_key ｜ user_id 待补（评审唯一缺口）</text>
+    </g>
+    <g class="nd c-purple">
+      <rect x="380" y="366" width="270" height="52" rx="8" stroke-width="0.5"/>
+      <text class="th" x="515" y="386" text-anchor="middle" dominant-baseline="central">llm_cost_monthly</text>
+      <text class="ts" x="515" y="404" text-anchor="middle" dominant-baseline="central">月汇总（cron）· 明细 90 天清理</text>
+    </g>
+    <path class="arr" d="M350 392 H374" marker-end="url(#ar4)"/>
+    <text class="mono" x="362" y="382" text-anchor="middle" dominant-baseline="central">月结</text>
+
+    <text class="ld" x="30" y="446" dominant-baseline="central">例外：paper_explanations 全局共享缓存、crawl 轮次、categories/app_registry 属实例级配置，不带 user_id（评审拍板不动）</text>
+  </svg>
+  </div>
+  <div class="notes">
+    <div class="note">防漏过滤靠工程约定：service 层第一参强制 user_id、CI grep 扫描、每域一条越权测试（A 拿 B 的资源 id 必须 404）。</div>
+    <div class="note">RLS 与库级隔离均否决：连接池共享 + 1-2 人团队，应用层已够；&gt;500 用户再评估。</div>
+    <div class="note">唯一约束维持「用户内唯一」；users.username 全局唯一（登录标识）。</div>
+  </div>
+</section>
+
+<!-- ============ ⑦ 资源预算 ============ -->
+<section class="card" id="budget">
+  <h2><span class="no">07</span>资源预算（2核4G / 70G）</h2>
+  <div class="sub">设计容量 10~100 账号、实际负载轻度的口径测算（评审估算值）。PDF 与产物走 COS，不占本地盘。</div>
+  <div class="plain"><b>一句话看懂：</b>常态用掉不到一半内存，就算「早上抓取批 + 有人跑 Agent」撞车的最坏窗口也只到七成——余量充足，但 pi-runner 的 1G 封顶不能再上调。存储大头是系统与镜像，数据本身增长很慢。</div>
+  <div class="fig">
+  <svg viewBox="0 0 680 300" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+    <title>资源预算</title>
+    <desc>内存常态约1.8G、峰值约2.9G；存储已用约20G，余量40G以上</desc>
+    <defs>
+      <marker id="ar5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <text class="ly" x="30" y="34" dominant-baseline="central">内存 · 4GB（1 格 ≈ 512MB）</text>
+    <rect x="30" y="46" width="620" height="30" rx="6" fill="var(--bg)" stroke="var(--border)"/>
+    <rect x="30" y="46" width="78" height="30" class="c-gray" rx="6"/>
+    <rect x="108" y="46" width="61" height="30" fill="#E6F1FB" stroke="#185FA5"/>
+    <rect x="169" y="46" width="50" height="30" fill="#E1F5EE" stroke="#0F6E56"/>
+    <rect x="219" y="46" width="46" height="30" fill="#FAEEDA" stroke="#854F0B"/>
+    <rect x="265" y="46" width="31" height="30" fill="#EEEDFE" stroke="#534AB7"/>
+    <rect x="296" y="46" width="16" height="30" fill="#FAECE7" stroke="#993C1D"/>
+    <text class="mono" x="30" y="92" dominant-baseline="central">常态 ≈1.8GB（OS 0.5 + db 0.4 + api 0.3 + hatchet 0.3 + pi 闲时 0.2 + caddy/backup 0.1）</text>
+
+    <rect x="30" y="112" width="620" height="30" rx="6" fill="var(--bg)" stroke="var(--border)"/>
+    <rect x="30" y="112" width="78" height="30" class="c-gray" rx="6"/>
+    <rect x="108" y="112" width="77" height="30" fill="#E6F1FB" stroke="#185FA5"/>
+    <rect x="185" y="112" width="61" height="30" fill="#E1F5EE" stroke="#0F6E56"/>
+    <rect x="246" y="112" width="61" height="30" fill="#FAEEDA" stroke="#854F0B"/>
+    <rect x="307" y="112" width="154" height="30" fill="#EEEDFE" stroke="#534AB7"/>
+    <rect x="461" y="112" width="15" height="30" fill="#FAECE7" stroke="#993C1D"/>
+    <text class="mono" x="30" y="158" dominant-baseline="central">峰值 ≈2.9GB（OS 0.5 + db 0.5 + api 0.4 + hatchet 0.4 + pi 跑 Agent 1.0 封顶 + 0.1）</text>
+    <text class="mono" x="30" y="178" dominant-baseline="central">防呆两条：抓取批与用户活跃错峰 ｜ pi-runner mem_limit 1G 封顶不上调（OOM 概率低，盯而不扩）</text>
+
+    <text class="ly" x="30" y="216" dominant-baseline="central">存储 · 70GB（1 格 ≈ 7GB）</text>
+    <rect x="30" y="228" width="620" height="30" rx="6" fill="var(--bg)" stroke="var(--border)"/>
+    <rect x="30" y="228" width="89" height="30" class="c-gray" rx="6"/>
+    <rect x="119" y="228" width="53" height="30" fill="#E1F5EE" stroke="#0F6E56"/>
+    <rect x="172" y="228" width="18" height="30" fill="#E6F1FB" stroke="#185FA5"/>
+    <rect x="190" y="228" width="71" height="30" fill="#FAEEDA" stroke="#854F0B"/>
+    <rect x="261" y="228" width="9" height="30" fill="#EEEDFE" stroke="#534AB7"/>
+    <text class="mono" x="30" y="274" dominant-baseline="central">已用 ≈20GB（OS 10 + 镜像 6 + pgdata 2 + restic 8）｜ 余量 ≈40GB+，pgdata 年增长 1-3GB，5 年无忧</text>
+    <text class="mono" x="30" y="292" dominant-baseline="central">PDF / 产物 / 上传资料 → COS 对象存储（已配置），不占本地盘；restic 仓库待立异地副本</text>
+  </svg>
+  </div>
+  <div class="notes">
+    <div class="note">扩容触发只看用户可感知时延：Agent 排队 P95 &gt;10 分钟连续两周 → 先升 4c8g，再考虑 pi-runner 迁第二台 VPS。</div>
+    <div class="note">存储侧待办：pi-output 卷 GC 策略、llm_call_logs 90 天明细清理（月汇总已设计）。</div>
+  </div>
+</section>
+
+<!-- ============ ⑧ 应用操作时序 ============ -->
+<section class="card" id="appseq">
+  <h2><span class="no">08</span>应用操作时序</h2>
+  <div class="sub">对话 / 记账 / 文献三个域「一次操作怎么流转」。Agent 域见 ③。</div>
+
+  <h3 style="font-size:14px;margin:16px 0 8px">对话 · SSE 流式</h3>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant FE as 对话界面
+    participant API as api (FastAPI)
+    participant DB as PostgreSQL
+    participant GW as /gw/v1 网关
+    participant LLM as 模型厂商
+    U->>FE: 输入消息
+    FE->>API: POST /chat/completions (stream)
+    API->>DB: 载入会话上下文（仅本人会话）
+    API->>GW: /chat/completions（会话级模型选择）
+    GW->>LLM: 转发（注入 provider key）
+    LLM-->>API: SSE 增量 token
+    API-->>FE: 逐帧转发 + 写 llm_call_logs
+    API->>DB: 落 user/assistant 两条消息
+    FE-->>U: 流式呈现
+  </div>
+
+  <h3 style="font-size:14px;margin:20px 0 8px">记账 · 事务写入</h3>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant FE as 记账界面
+    participant API as api (FastAPI)
+    participant DB as PostgreSQL
+    U->>FE: 记一笔（金额/分类/日期）
+    FE->>API: POST /money/transactions
+    API->>API: 校验（金额以分存储、日期不越界）
+    API->>DB: INSERT（单事务）
+    API-->>FE: 201 成功
+    Note over FE,DB: AI 记一笔 = 同一端点；自然语言先经 LLM 结构化再入库
+  </div>
+
+  <h3 style="font-size:14px;margin:20px 0 8px">文献 · crawl → parse → 入库（定时流水线）</h3>
+  <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant H as Hatchet（cron 7:30）
+    participant API as api (FastAPI)
+    participant SRC as 文献源
+    participant COS as 腾讯云 COS
+    participant DB as PostgreSQL
+    H->>API: 触发抓取轮次
+    API->>SRC: crawl 新论文（去重 uq(user_id,pmid)）
+    API->>API: parse 流水线（错峰 + 并发上限，防抢核）
+    API->>COS: PDF / 产物上传（不占本地盘）
+    API->>DB: papers / 订阅关系入库
+    API-->>H: 轮次完成（crawl_runs 记录）
+    Note over API: 订阅推送按用户应用设置触发
+  </div>
+  <div class="notes">
+    <div class="note">三条链路共同点：全部先经 Caddy 鉴权，user_id 只从登录态取、不信请求体。</div>
+    <div class="note">文献流水线与 Agent 任务共享 2 核：parse 批避开用户活跃时段（资源防呆）。</div>
+  </div>
+</section>
+
 <!-- ============ ⑤ 术语速查 ============ -->
 <section class="card" id="glossary">
-  <h2><span class="no">05</span>术语速查 · 非 IT 版</h2>
+  <h2><span class="no">09</span>术语速查 · 非 IT 版</h2>
   <div class="sub">三张图里出现的专业词，全部用一句话解释。按图分组，按需查找。</div>
 
   <div class="g-group">
@@ -491,9 +711,20 @@ sequenceDiagram
       <div class="g-item"><dt>prod 覆盖层</dt><dd>生产环境的附加配置，覆盖开发默认值——比如关掉数据库对外的门，只保留前台的三个门。</dd></div>
     </dl>
   </div>
+
+  <div class="g-group">
+    <h4>图 6–8 · 多账号 / 资源预算 / 应用时序</h4>
+    <dl>
+      <div class="g-item"><dt>RBAC</dt><dd>角色权限体系：给角色打包权限，再把角色发给账号——比逐个账号单独设权限好维护。</dd></div>
+      <div class="g-item"><dt>级联删除（CASCADE）</dt><dd>删账号时自动带走它名下所有业务数据，物理清空、不可恢复。</dd></div>
+      <div class="g-item"><dt>用户内唯一</dt><dd>同一篇论文你可以收藏，别人也可以收藏；约束只保证「同一个人不重复」。</dd></div>
+      <div class="g-item"><dt>腾讯云 COS</dt><dd>对象存储：文件放云端不占服务器磁盘，按需取用、按量计费。</dd></div>
+      <div class="g-item"><dt>月汇总</dt><dd>费用流水太多时，每月轧一次总账进小表，明细定期清理，统计查询永远跑在小表上。</dd></div>
+    </dl>
+  </div>
 </section>
 
-<footer>流光咖啡馆 · 架构总览 v1（2026-11-07）· 权威目录见 <code>docs/项目地图-v1.md</code></footer>
+<footer>流光咖啡馆 · 架构总览 v1.1（2026-11-07）· 多账号/资源预算/应用时序三节依《评审-架构适配与多账号数据方案-v1》补充 · 权威目录见 <code>docs/项目地图-v1.md</code></footer>
 
 </div>
 <script src="https://fastly.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>

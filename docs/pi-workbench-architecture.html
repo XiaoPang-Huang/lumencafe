@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>个人 Agent 工作台 · 架构说明（大白话版 v1.2）</title>
+<style>
+:root{
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, "Microsoft YaHei Mono", monospace;
+  --ink:#1c1c1a; --muted:#5f5e5a; --faint:#888780;
+  --bg:#ffffff; --panel:#f7f6f2; --line:#e3e1db; --line-strong:#c9c7bf;
+  --blue:#185fa5; --blue-bg:#e6f1fb; --blue-line:#378add;
+  --teal:#0f6e56; --teal-bg:#e1f5ee; --teal-line:#1d9e75;
+  --red:#a32d2d; --red-bg:#fcebeb; --red-line:#e24b4a;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-size:15px;line-height:1.8;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px 80px;display:grid;grid-template-columns:232px minmax(0,1fr);gap:48px}
+header{grid-column:1/-1;padding:56px 0 28px;border-bottom:1px solid var(--line);margin-bottom:8px}
+h1{font-size:30px;font-weight:600;line-height:1.35;margin:0 0 12px;letter-spacing:-.4px}
+.sub{font-size:16px;color:var(--muted);margin:0 0 20px;max-width:780px}
+.meta{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:12px;padding:4px 11px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted);background:var(--panel)}
+.chip.k{background:var(--blue-bg);border-color:var(--blue-line);color:var(--blue)}
+.chip.t{background:var(--teal-bg);border-color:var(--teal-line);color:var(--teal)}
+nav.toc{position:sticky;top:24px;align-self:start;font-size:13px;padding-top:24px}
+nav.toc .label{font-size:11px;letter-spacing:.12em;color:var(--faint);margin-bottom:12px}
+nav.toc a{display:block;padding:5px 10px;color:var(--muted);text-decoration:none;border-left:2px solid transparent;border-radius:0 4px 4px 0}
+nav.toc a:hover{color:var(--blue);background:var(--panel)}
+nav.toc a.active{color:var(--blue);border-left-color:var(--blue);background:var(--blue-bg);font-weight:500}
+main{min-width:0;padding-top:24px}
+section{padding:32px 0;border-bottom:1px solid var(--line);scroll-margin-top:20px}
+section:last-of-type{border-bottom:none}
+h2{font-size:21px;font-weight:600;margin:0 0 16px;letter-spacing:-.2px}
+h2 .num{color:var(--faint);font-weight:400;font-size:14px;margin-right:10px;font-variant-numeric:tabular-nums}
+h3{font-size:16px;font-weight:600;margin:26px 0 10px}
+p{margin:0 0 14px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin:6px 0}
+a{color:var(--blue)}
+strong{font-weight:600}
+code{font-family:var(--font-mono);font-size:.88em;background:var(--panel);border:1px solid var(--line);padding:1px 5px;border-radius:4px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;overflow-x:auto;margin:0 0 16px;line-height:1.65}
+pre code{background:none;border:none;padding:0;font-size:13px;color:#2c2c2a}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin:0 0 18px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);background:var(--panel);font-size:12.5px}
+tbody tr:hover{background:#fbfaf7}
+td code{font-size:12px}
+.figure{margin:22px 0 8px;padding:18px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.figure svg{display:block;width:100%;height:auto}
+.figure svg text{font-family:var(--font-sans)}
+figcaption{font-size:12.5px;color:var(--faint);margin-top:12px;text-align:center}
+.note,.warn,.ok{border-radius:10px;padding:14px 18px;margin:0 0 18px;font-size:14px;border:1px solid}
+.note{background:var(--blue-bg);border-color:var(--blue-line);color:#0c447c}
+.warn{background:var(--red-bg);border-color:var(--red-line);color:#791f1f}
+.ok{background:var(--teal-bg);border-color:var(--teal-line);color:#085041}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 0 18px}
+.card{border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:#fff}
+.card h4{font-size:14px;font-weight:600;margin:0 0 8px}
+.card p{font-size:13.5px;color:var(--muted);margin:0}
+.card ul{font-size:13.5px;color:var(--muted);margin:0;padding-left:18px}
+.words{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 18px}
+.word{border:1px solid var(--line);border-radius:10px;padding:12px 16px;background:var(--panel)}
+.word b{display:block;font-size:14px;margin-bottom:3px}
+.word span{font-size:13px;color:var(--muted);line-height:1.65}
+footer{grid-column:1/-1;border-top:1px solid var(--line);padding-top:24px;font-size:12.5px;color:var(--faint)}
+@media(max-width:900px){
+  .wrap{grid-template-columns:1fr;gap:0;padding:0 20px 60px}
+  header{padding:36px 0 20px}
+  nav.toc{position:static;padding:16px 0;border-bottom:1px solid var(--line);margin-bottom:8px;columns:2}
+  .grid2,.words{grid-template-columns:1fr}
+  main{padding-top:8px}
+}
+@media print{
+  nav.toc{display:none}
+  .wrap{display:block;max-width:none;padding:0}
+  section{break-inside:avoid-page}
+  .figure,table,pre{break-inside:avoid}
+  body{font-size:11pt}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>个人 Agent 工作台 · 架构说明（大白话版）</h1>
+  <p class="sub">自己搭一个工作台：第一批放对话、记账、论文三样（双链笔记、实验记录为后备）；能对这些资料提问；能在聊天软件里问；有对话窗口、技能包、不同角色的专家；每个应用有自己的页面；两个人用，一个管理员管所有账号。要求是以后加新应用、升级底层代码时，已经做好的应用不会被弄坏。</p>
+  <div class="meta">
+    <span class="chip k">架构说明 v1.3</span>
+    <span class="chip">2026-11-10</span>
+    <span class="chip t">应用清单已拍板</span>
+    <span class="chip t">Pi 功能清单已核实</span>
+    <span class="chip k">正式契约见白皮书 §17</span>
+    <span class="chip">2 核 CPU / 4G 内存 / 70G 硬盘 + COS 网盘</span>
+    <span class="chip">2 人 · 管理员管账号</span>
+    <span class="chip t">pi / chord 作底座</span>
+    <span class="chip t">每应用独立页面</span>
+  </div>
+</header>
+
+<nav class="toc" aria-label="目录">
+  <div class="label">目录</div>
+  <a href="#words">00 先说清楚几个词</a>
+  <a href="#summary">01 先说结论</a>
+  <a href="#constraints">02 要做什么、条件是什么</a>
+  <a href="#options">03 几种做法，为什么选这个</a>
+  <a href="#layers">04 整体分几层</a>
+  <a href="#process">05 实际开几个程序</a>
+  <a href="#flow">06 问一句话，中间发生了什么</a>
+  <a href="#layout">07 文件夹怎么摆</a>
+  <a href="#pages">08 每个应用怎么挂自己的页面</a>
+  <a href="#modules">09 每块负责什么</a>
+  <a href="#contracts">10 配置长什么样</a>
+  <a href="#rbac">11 账号、角色和管理员页面</a>
+  <a href="#security">12 两个人用，怎么不串数据</a>
+  <a href="#upgrade">13 怎么升级才不会改坏</a>
+  <a href="#rag">14 怎么从资料里找答案</a>
+  <a href="#budget">15 这台机器扛不扛得住</a>
+  <a href="#roadmap">16 分几步做、怎么算做对了</a>
+  <a href="#risks">17 要小心的坑</a>
+  <a href="#apps">18 每个应用做什么（已拍板）</a>
+  <a href="#refs">19 参考了哪些项目</a>
+  <a href="#pi">20 Pi 全部功能清单（官方核实）</a>
+  <a href="#decisions">21 本轮拍板与文档修订</a>
+</nav>
+
+<main>
+
+<section id="words">
+  <h2><span class="num">00</span>先说清楚几个词</h2>
+  <p>下面这些名字绕不开，先用大白话说一遍，后面出现就不再解释了。</p>
+  <div class="words">
+    <div class="word"><b>pi</b><span>别人写好、开放出来的一堆 TypeScript 代码。我们是把它拿过来用，不是装一个软件当服务器跑。</span></div>
+    <div class="word"><b>chord</b><span>pi 同一个仓库里的另一堆代码，管的是：应用怎么装进来、怎么在不重启程序的情况下换掉某一块、登录和会话怎么处理。</span></div>
+    <div class="word"><b>MCP</b><span>一种大家通用的调用格式。每个应用按这个格式写清楚「我能干什么、要给我什么、我会返回什么」。好处是上层软件换了，应用不用改。</span></div>
+    <div class="word"><b>技能包（Skill）</b><span>一个文件夹，里面一个 SKILL.md 说明文件，告诉大模型某类活该怎么干。就是一份说明，不是一段程序。</span></div>
+    <div class="word"><b>专家</b><span>一条配置：用哪个模型、允许调哪些工具、能看哪些资料、配哪些技能包。不是一段独立程序，也不额外占内存。</span></div>
+    <div class="word"><b>身份</b><span>「现在是谁在用」。登录一次就记下来，之后每一次点页面、调工具、跑后台任务都带着它。</span></div>
+    <div class="word"><b>角色</b><span>给账号贴的标签，比如管理员、成员、访客。角色决定这个人能看什么、能改什么。</span></div>
+    <div class="word"><b>COS</b><span>腾讯云的对象存储，就当网盘用：放 PDF 原件、笔记快照、数据库备份。</span></div>
+  </div>
+  <div class="note">这份文档尽量不用行话。凡是代码里必须写英文的地方（比如 <code>pi-agent-core</code>、<code>sqlite-vec</code>），都是具体的包或文件名，不是拿术语糊弄人。</div>
+</section>
+
+<section id="summary">
+  <h2><span class="num">01</span>先说结论</h2>
+  <div class="ok"><strong>自己写一个小程序当核心，把 pi / chord 的代码当零件拿来用，所有应用都按同一种格式对外干活。</strong>不去改 OpenClaw、Dify 这类现成工作台，不把 pi 的命令行工具当服务器跑，也不用 DeepSeek Harness 当底座（只跑一份当参考）。</div>
+  <ol>
+    <li><strong>pi 是拿来引用的代码，不是要启动的软件。</strong>启动入口是我们自己写的，用到哪块就引用哪块。不装 pi 的命令行工具，也不往它里面塞插件。</li>
+    <li><strong>写两层东西把变化挡住。</strong>一层专门放「大家事先说好的调用格式」，另一层专门放所有引用 pi 和 chord 的代码。别的地方一律不碰 pi。这样 pi 升级时，只需要改那一层。</li>
+    <li><strong>各应用在文件和数据上各管各的，但跑在同一个程序里。</strong>不是每个应用开一个程序，是几个模块装在同一个程序里。互不干扰靠的是：事先说好的格式、各自独立的数据库文件、每次请求都带上「现在是谁」。只有跑命令、改文件这类危险动作才单独丢到隔离环境里。</li>
+    <li><strong>应用清单第一批定三个：对话、记账、论文（2026-11-10 拍板）。</strong>双链笔记、实验记录挪到后备，要做时按「加应用」的流程走。每个应用做什么、哪些活用 pi、对话怎么组织，见第 18 节。</li>
+    <li><strong>账号和角色走 pi / chord 自带的那套。</strong>登录、会话、按人分开存数据、没身份就拒绝、管理员发邀请，全是现成的；我们只写「谁能干什么」的规则和一个管理员页面。</li>
+  </ol>
+  <p>为什么这么绕？因为你要加的是<strong>有自己数据、自己页面、自己账号权限的应用</strong>，不是给大模型加一个工具。把账本、双链笔记塞进别人的插件里，人家一升级接口，你就得跟着改。</p>
+</section>
+
+<section id="constraints">
+  <h2><span class="num">02</span>要做什么、条件是什么</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4>要做出来的东西</h4>
+      <ul>
+        <li>能一直加应用。第一批三个：对话、记账、论文（推送 / 推荐 / 笔记问答 / 下载）；双链笔记、实验记录本为后备批次</li>
+        <li><strong>每个应用有自己的页面</strong>，不是全挤在一个聊天窗口里</li>
+        <li>这些应用里的资料都能被搜到、能被提问</li>
+        <li>能在聊天软件里直接问；有对话窗口、技能包、不同角色的专家</li>
+        <li><strong>账号分角色，一个管理员能管理其他人</strong></li>
+        <li>以后还能接着加应用、接着升级底层</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>必须满足的条件</h4>
+      <ul>
+        <li>别人升级工作台，不能影响我的应用</li>
+        <li>自己写的部分，也要能升级底层</li>
+        <li>两个人用，数据分开，也允许共享一部分</li>
+        <li>数据是普通文件，换底层时不用搬家</li>
+        <li>自己部署，各种密钥集中放一处</li>
+        <li>每次操作能查到是谁干的</li>
+      </ul>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th style="width:24%">条件</th><th>说清楚</th></tr></thead>
+    <tbody>
+      <tr><td>机器</td><td>2 核 CPU、4G 内存、70G 硬盘，外加一个 COS 网盘。<strong>两个人用够，但剩下不多。</strong>真正容易卡住的是只有 2 核 CPU，以及 SQLite 同一时间只能一个地方写；不是内存不够。</td></tr>
+      <tr><td>运行环境</td><td>pi 要求 Node.js 22.19 以上。</td></tr>
+      <tr><td>明确不做的</td><td>本机跑大模型、本机跑向量模型、RAGFlow（官方就要 4 核 16G）、Elasticsearch、Milvus 集群，以及 Redis / Celery / RabbitMQ / Kafka 这类消息队列。</td></tr>
+      <tr><td>聊天软件</td><td>微信个人号没有官方接口，用非官方方式登录会封号，别当正式入口。优先企业微信、飞书、Telegram。</td></tr>
+      <tr><td>数据格式</td><td>普通 Markdown 文件、SQLite 数据库文件、JSON。PDF 原件和备份放 COS 网盘；检索用的索引放本地硬盘，不放网盘。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="options">
+  <h2><span class="num">03</span>几种做法，为什么选这个</h2>
+  <table>
+    <thead><tr><th style="width:22%">做法</th><th style="width:30%">代表项目</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>直接改现成工作台</td><td>OpenClaw、nanobot、QwenPaw、LibreChat、LobeHub、Paperclip、Dify、Langflow</td><td><strong>不选。</strong>它们留给你的是「给大模型加个工具」的位置，装不下有自己数据和页面的应用。上游一改接口，你的业务跟着坏。</td></tr>
+      <tr><td>自己写核心 + 统一调用格式</td><td>自己写六小块</td><td><strong>骨架。</strong>格式稳定，升级自己说了算，应用能插能拔。</td></tr>
+      <tr><td>把 pi / chord 的代码当零件用</td><td>pi-ai、pi-agent-core、pi-durable、chord</td><td><strong>采用。</strong>省掉自己写大模型循环、模型切换、会话保存、不重启换代码、后台任务、登录与账号这些重复活。</td></tr>
+      <tr><td>拿写代码的工具当核心</td><td>codex、opencode、pi 的命令行工具</td><td><strong>不选。</strong>那是终端里帮你写代码的软件，不是应用框架。拿来帮你写代码可以，当底座不行。</td></tr>
+    </tbody>
+  </table>
+  <h3>后来查过 DeepSeek Harness，为什么没选它当底座</h3>
+  <p>它是 DeepSeek 官方 2026 年 8 月开源的完整运行时，自带网页界面、会话日志、后台任务、定时活，所有能力都能换，做得很漂亮。也确实考虑过它——你甚至说过愿意接受每次升级跟着改插件。但三条硬需求把它挡住了：</p>
+  <ul>
+    <li><strong>没有官方的多用户账号。</strong>网页只绑本机地址，没有多用户登录、没有角色，官方安全文件还写着「实验性预览、未经安全审计、别当生产安全用」。社区建议是每人跑一个实例。</li>
+    <li><strong>身份传不到工具层。</strong>第三方登录插件只挡住「能不能打开网页」，进了门之后，工具拿到的是「这次执行的编号」，不是「哪个用户」。要做管理员管人，得自己再造一套身份系统并塞进每个工具。</li>
+    <li><strong>独立页面不擅长。</strong>它的界面扩展主要是往内置聊天窗口里插卡片、往设置页加一张卡片。每个应用一个完整页面，得另起前端服务。</li>
+  </ul>
+  <p>顺带说清楚：它和 pi 不是竞品。DSH 里面「接各种模型」的那个插件，用的就是 pi 的 <code>pi-ai</code>。<strong>结论：跑一份 DSH 当参考书，抄它三样设计（配置分层、会话全程留痕、能力拆三份），正式系统走 pi / chord。</strong></p>
+  <div class="note"><strong>chord 到底是什么：</strong>pi 同一个仓库里的一包代码，管「应用怎么装进来、怎么在不停机的情况下换掉某一块、登录和会话怎么办」。每个应用先写一份说明（叫什么、能干什么、版本号多少）；应用只声明自己提供什么，由 chord 负责真正启动；数据写在它管的数据库里；每次调用都带「是谁」；换代码时一个模块一个模块地换，程序不重启。官方教程就是教你怎么用它做一个带插件的笔记应用。</div>
+</section>
+
+<section id="layers">
+  <h2><span class="num">04</span>整体分几层</h2>
+  <p>中间那层绿色最要紧：它是应用和上层软件之间<strong>唯一需要长期不变的东西</strong>。上面两层随时可以换，下面两层是你自己的资产。</p>
+  <figure class="figure">
+  <svg viewBox="0 0 680 434" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="工作台整体分层">
+    <title>工作台整体分层</title>
+    <rect x="40" y="20" width="600" height="48" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="60" y="44" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">入口</text>
+    <text x="170" y="44" font-size="12" fill="#185FA5" dominant-baseline="central">聊天软件 · 网页 · 命令行 —— 随时能换</text>
+    <rect x="40" y="82" width="600" height="48" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="60" y="106" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">让大模型干活</text>
+    <text x="170" y="106" font-size="12" fill="#185FA5" dominant-baseline="central">pi 的两包代码 —— 想好了调哪个工具</text>
+    <rect x="40" y="144" width="600" height="56" rx="10" fill="#9FE1CB" stroke="#0F6E56" stroke-width="1"/>
+    <text x="60" y="164" font-size="13" font-weight="500" fill="#04342C" dominant-baseline="central">统一调用格式（MCP）</text>
+    <text x="60" y="184" font-size="12" fill="#0F6E56" dominant-baseline="central">事先说好的参数格式 · 自动检查有没有改坏 · 唯一不变的地方</text>
+    <rect x="40" y="214" width="600" height="76" rx="10" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="60" y="228" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central">第一批三应用 · 各有自己的页面和数据</text>
+    <rect x="60" y="238" width="130" height="36" rx="8" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+    <text x="125" y="256" font-size="12" fill="#085041" text-anchor="middle" dominant-baseline="central">对话</text>
+    <rect x="205" y="238" width="130" height="36" rx="8" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+    <text x="270" y="256" font-size="12" fill="#085041" text-anchor="middle" dominant-baseline="central">记账</text>
+    <rect x="350" y="238" width="130" height="36" rx="8" fill="#E1F5EE" stroke="#1D9E75" stroke-width="0.5"/>
+    <text x="415" y="256" font-size="12" fill="#085041" text-anchor="middle" dominant-baseline="central">论文</text>
+    <rect x="495" y="238" width="130" height="36" rx="8" fill="#F7F6F2" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="560" y="250" font-size="11" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">后备：双链笔记</text>
+    <text x="560" y="264" font-size="11" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">实验记录</text>
+    <rect x="40" y="304" width="600" height="48" rx="10" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="60" y="328" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">找资料</text>
+    <text x="170" y="328" font-size="12" fill="#5F5E5A" dominant-baseline="central">关键词 + 按意思找 + 重排 + 谁连着谁</text>
+    <rect x="40" y="366" width="600" height="48" rx="10" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="60" y="390" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">存东西</text>
+    <text x="170" y="390" font-size="12" fill="#5F5E5A" dominant-baseline="central">本地 SQLite（数据 / 索引 / 待办） · COS 网盘（原件 / 备份）</text>
+  </svg>
+  <figcaption>图 1 · 六层结构，中间绿色那层是唯一要长期保持不变的</figcaption>
+  </figure>
+  <div class="note"><strong>统一入口和统一格式是两回事，别混。</strong>统一入口管外面进来的请求：谁在用、什么角色、密钥放哪、记日志、别让请求太多、有哪些应用、每个应用的页面挂在哪个网址。统一格式管内部几块之间怎么互相叫：每个应用能干什么、参数长什么样、升级时怎么确认没改坏。两件事都要做，但别把业务逻辑塞进入口。</div>
+</section>
+
+<section id="process">
+  <h2><span class="num">05</span>实际开几个程序</h2>
+  <p><strong>只开一个常驻程序。</strong>干重活的小程序按需临时启动，用完就关。第一批三个应用（对话、记账、论文）是装在这一个程序里的模块，不是三个程序。大模型、向量计算、COS、聊天软件都在云上，不占这台机器。</p>
+  <figure class="figure">
+  <svg viewBox="0 0 680 348" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="实际开几个程序">
+    <title>实际开几个程序</title>
+    <rect x="40" y="20" width="600" height="308" rx="20" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="60" y="42" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">2C4G 一台机器 · 一个常驻程序 + 临时后台程序</text>
+    <rect x="60" y="60" width="560" height="180" rx="12" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="80" y="80" font-size="12" font-weight="500" fill="#0C447C" dominant-baseline="central">常驻程序 · Node 22.19 以上 · 约 0.5G 内存</text>
+    <rect x="80" y="100" width="250" height="52" rx="8" fill="#FFFFFF" stroke="#378ADD" stroke-width="0.5"/>
+    <text x="96" y="120" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">统一入口</text>
+    <text x="96" y="138" font-size="12" fill="#185FA5" dominant-baseline="central">登录 · 角色 · 密钥 · 日志</text>
+    <rect x="350" y="100" width="250" height="52" rx="8" fill="#FFFFFF" stroke="#378ADD" stroke-width="0.5"/>
+    <text x="366" y="120" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">派活</text>
+    <text x="366" y="138" font-size="12" fill="#185FA5" dominant-baseline="central">选模型 · 想一步做一步 · 存会话</text>
+    <rect x="80" y="164" width="250" height="52" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="96" y="184" font-size="13" font-weight="500" fill="#085041" dominant-baseline="central">对外出口</text>
+    <text x="96" y="202" font-size="12" fill="#0F6E56" dominant-baseline="central">统一格式 · 带版本号</text>
+    <rect x="350" y="164" width="250" height="52" rx="8" fill="#FFFFFF" stroke="#378ADD" stroke-width="0.5"/>
+    <text x="366" y="184" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">应用与页面</text>
+    <text x="366" y="202" font-size="12" fill="#185FA5" dominant-baseline="central">对话 · 记账 · 论文（后备：笔记 · 实验）</text>
+    <rect x="60" y="252" width="270" height="56" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="76" y="272" font-size="13" font-weight="500" fill="#085041" dominant-baseline="central">临时后台程序</text>
+    <text x="76" y="290" font-size="12" fill="#0F6E56" dominant-baseline="central">干重活 · 用完就关</text>
+    <rect x="350" y="252" width="270" height="56" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="366" y="272" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">云上</text>
+    <text x="366" y="290" font-size="12" fill="#5F5E5A" dominant-baseline="central">大模型 · 向量计算 · 网盘 · 聊天软件</text>
+  </svg>
+  <figcaption>图 2 · 一个程序装全部应用，重活交给临时后台程序</figcaption>
+  </figure>
+  <ul>
+    <li><strong>登录、设备配对、会话、账号表、密钥这些，chord 里已经写好了，直接用。</strong>自己只补：角色规则、管理员页面、有哪些应用分别在哪、两个人之间哪些数据能共享。</li>
+    <li><strong>对外那套格式不用再开一个程序。</strong>应用把「我能干什么」登记在一张表里，对外只是把这张表翻译成通用格式。一套能力，内部用和对外用是同一个东西。</li>
+    <li><strong>危险动作单独放。</strong>跑命令、改文件这类丢进隔离的小环境，密钥不跟着进去。</li>
+    <li><strong>别给每个应用各开一个常驻程序。</strong>2C4G 上太浪费。文件和数据还是各管各的，互不干扰靠格式和数据库文件，不靠多开程序。</li>
+  </ul>
+</section>
+
+<section id="flow">
+  <h2><span class="num">06</span>问一句话，中间发生了什么</h2>
+  <figure class="figure">
+  <svg viewBox="0 0 680 324" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="问一句话中间发生了什么">
+    <title>问一句话中间发生了什么</title>
+    <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+    <rect x="60" y="20" width="560" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="80" y="42" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">统一入口</text>
+    <text x="200" y="42" font-size="12" fill="#185FA5" dominant-baseline="central">认出是谁 · 查角色 · 别让请求太多 · 带上密钥</text>
+    <path d="M340 64 L340 78" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+    <rect x="60" y="80" width="560" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="80" y="102" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">派活</text>
+    <text x="200" y="102" font-size="12" fill="#185FA5" dominant-baseline="central">取会话 · 读专家配置 · 把技能包名字列给大模型</text>
+    <path d="M340 124 L340 138" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+    <rect x="60" y="140" width="560" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="80" y="162" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">问大模型</text>
+    <text x="200" y="162" font-size="12" fill="#185FA5" dominant-baseline="central">问云上的模型，边想边决定调哪个工具</text>
+    <path d="M340 184 L340 198" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+    <rect x="60" y="200" width="560" height="44" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="80" y="222" font-size="13" font-weight="500" fill="#085041" dominant-baseline="central">工具检查</text>
+    <text x="200" y="222" font-size="12" fill="#0F6E56" dominant-baseline="central">再看一次角色能调哪些 → 按统一格式调应用 / 找资料</text>
+    <path d="M340 244 L340 258" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+    <rect x="60" y="260" width="560" height="44" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="80" y="282" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">回话</text>
+    <text x="200" y="282" font-size="12" fill="#5F5E5A" dominant-baseline="central">答案 + 能点回原文的出处 → 聊天软件 · 记一笔日志</text>
+  </svg>
+  <figcaption>图 3 · 一问一答的经过，身份和角色在第一步就查、调工具前再查一次</figcaption>
+  </figure>
+  <div class="warn"><strong>慢活不走这条路。</strong>导入 PDF、批量导入、给全部资料重新算索引、定时同步，统统丢到后台：把「写数据」和「记一条待办」放在同一次数据库操作里（要么都成功，要么都不算），后台小程序慢慢做，同时最多跑 1 到 2 个，同一个任务重复跑也不会出事。不这么做的话，聊天消息等不到结果就超时，两个人一起导入还会把 2 核 CPU 占满。</div>
+  <p><strong>后台待办必须有，但不用 Redis 那一套。</strong>chord 自带的后台任务和「按需启动、空闲就停」的小程序已经够了。要另外选，Python 这边有 Huey（成熟、能定时间跑）或 duraq（一个数据库文件、什么都不用装、带重试和失败记录）。</p>
+</section>
+
+<section id="layout">
+  <h2><span class="num">07</span>文件夹怎么摆</h2>
+<pre><code>personal-workbench/                  # 一个项目，Node 22.19 以上
+├── apps/
+│   ├── gateway/                    # 统一入口：登录、角色、密钥、日志
+│   │   ├── auth/                   # 账号表、角色、管理员、邀请
+│   │   ├── rbac/                   # 一处判断：谁能看什么、能改什么
+│   │   ├── registry/               # 有哪些应用、页面挂在哪
+│   │   ├── pages/admin/            # 管理员页面
+│   │   └── mcp/                    # 把内部能力翻译成通用格式对外
+│   ├── conversation/               # 对话窗口、存会话、太长了就压缩
+│   ├── orchestrator/               # 选专家、读技能包、检查能用哪些工具
+│   └── knowledge/                  # 关键词 + 按意思找 + 重排 + 双链
+├── packages/
+│   ├── contracts/                  # ★ 事先说好的调用格式，带版本号
+│   │   └── test/                   # 自动检查：老例子在新版本还能不能跑
+│   ├── pi-facade/                  # ★ 全项目唯一引用 pi / chord 的地方
+│   │   ├── agent.ts                # 包一层：选模型、大模型循环
+│   │   ├── runtime.ts              # 包一层：装应用、换代码、后台任务
+│   │   └── store.ts                # 包一层：读写数据库
+│   └── shared/                     # 日志、配置、错误处理、身份
+├── app-packages/                   # 每个应用一个包，版本自己管
+│   ├── conversation/               # 对话：会话绑定应用 + 总对话（工具注册表）
+│   │   ├── data/  server/  web/
+│   ├── money/                      # 记账：传统表单 + 对话记账 + 对话统计
+│   │   ├── data/  server/  web/
+│   ├── papers/                     # 论文：推送 / 推荐 / 笔记问答 / 下载探索
+│   │   ├── data/  server/  web/
+│   ├── notes/                      # 【后备】双链笔记：Obsidian 文件夹索引
+│   └── lab-notebook/               # 【后备】实验记录：Markdown
+├── config/
+│   ├── experts/*.json              # 专家，一条配置一个文件
+│   ├── skills/*/SKILL.md           # 技能包，一份说明一个文件夹
+│   ├── roles.yaml                  # 角色和各自能干什么
+│   └── apps.yaml                   # 应用清单 + 页面网址
+├── data/                           # 本地硬盘，不进代码仓库
+│   ├── core.sqlite                 # 账号 / 角色 / 会话 / 日志 / 待办
+│   ├── knowledge.sqlite            # 全文 + 向量
+│   └── apps/*.sqlite               # 每个应用自己的库
+└── scripts/                        # 备份到网盘、改表结构、跑自动检查</code></pre>
+  <p><strong>别自己写笔记软件和文献管理器。</strong>资料还是用现成软件产生：Obsidian 的笔记本来就是一堆 Markdown 文件，双链就是文件里的 <code>[[链接]]</code>；Zotero 的资料在它自己的数据库里；记账用 beancount 纯文本；实验记录用 Markdown 加一段开头信息。我们服务端只干两件事：读进来建索引、按统一格式把能力报出去。现成的桥接工具已经有了：<code>zotero-obsidian-mcp</code>（把 Zotero 文献、PDF 解析和 Obsidian 笔记打通）、<code>@docsagent/mcp-zotero</code>（本地全文检索，1500 篇文献只占 160–227MB 内存）、<code>academic-workflow-mcp</code>。</p>
+</section>
+
+<section id="pages">
+  <h2><span class="num">08</span>每个应用怎么挂自己的页面</h2>
+  <p>这是这次新增的硬需求。三种做法，按推荐顺序：</p>
+  <table>
+    <thead><tr><th style="width:16%">做法</th><th style="width:44%">怎么弄</th><th>适合 / 不适合</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A 推荐</strong></td><td>每个应用往同一套网页服务里加自己的网址和页面（<code>/money</code>、<code>/papers</code>，后备的 <code>/notes</code>、<code>/lab</code>）。chord 允许插件贡献路由和页面，各应用的前端脚本由框架统一发布，改了还能不重启就换。</td><td><strong>最省事。</strong>登录只有一套，页面和工具自动知道「现在是谁」。各应用看起来是一个站。</td></tr>
+      <tr><td>B</td><td>每个应用完全独立前端，前面挂一个统一入口转发，共享登录 cookie。</td><td>隔离最强，但登录状态要自己同步，工作量翻倍。</td></tr>
+      <tr><td>C</td><td>用框架自带的浏览器脚本机制，每个应用写一段前端模块。</td><td>最一体化，但概念最绕，第一步别碰。</td></tr>
+    </tbody>
+  </table>
+  <p>按 A 做，每个页面只干三件事：</p>
+  <pre><code>1. 从统一入口拿到「现在是谁、什么角色」      —— 不用自己再做登录
+2. 通过本应用自己的接口读数据、显示出来        —— 不直接碰别人的数据库
+3. 要调工具就走统一格式，带上身份              —— 入口会再查一次角色
+
+网址分配（2026-11-10 按第一批应用修订）：
+  /             对话窗口（每个应用可绑自己的对话，另有总对话）
+  /money        记账          /papers     论文（推送/推荐/笔记/下载）
+  /admin        账号与角色管理（只有管理员能进）
+  /notes /lab   后备批次启用时再加，入口一行不改</code></pre>
+  <div class="note"><strong>关键是「共用登录、各管数据」。</strong>页面挂在一起，但数据还是各存各的库；管理员页面是唯一一个能碰账号表的页面。这样加第五个应用时，只要在应用清单里多写一行网址、多放一个前端包，入口和登录一行都不用改。</div>
+  <p>顺带说清楚为什么没选 DSH 做这件事：它的界面扩展主要是<strong>往内置聊天窗口里插卡片、往设置页加一张卡片</strong>。要做四个完整独立页面，得另起前端服务或写完整的前端插件，不是它顺手的路。</p>
+</section>
+
+<section id="modules">
+  <h2><span class="num">09</span>每块负责什么</h2>
+  <table>
+    <thead><tr><th style="width:17%">哪块</th><th style="width:41%">直接用 pi / chord 现成的</th><th>自己写</th></tr></thead>
+    <tbody>
+      <tr><td>统一入口</td><td>登录、设备配对、会话、安全设置、默认拒绝没身份的请求</td><td>角色规则、管理员页面、应用清单、密钥放哪、限制请求次数、日志</td></tr>
+      <tr><td>对话</td><td>pi-durable 存会话</td><td>网页里逐字显示回答、聊天太长时先压缩</td></tr>
+      <tr><td>派活</td><td>pi-ai 换模型、pi-agent-core 管「想一步做一步」</td><td>专家表、按需读技能包、检查这个专家能用哪些工具</td></tr>
+      <tr><td>装应用</td><td>chord 管应用怎么装进来、怎么不重启就换代码、后台任务、每次调用带「是谁」</td><td>各应用本身、把数据存成普通文件</td></tr>
+      <tr><td>应用页面</td><td>chord 的网页服务发布各应用的前端脚本、共用登录</td><td>四个页面长什么样、各自调自己的接口</td></tr>
+      <tr><td>对外出口</td><td>—</td><td>按 MCP 格式写清楚每个工具的参数和返回值，带版本号，答案里带得出处</td></tr>
+      <tr><td>找资料</td><td>—</td><td>读进来 → 切小段 → 调云上的向量接口 → 关键词和按意思一起找 → 重排</td></tr>
+      <tr><td>后台待办</td><td>chord 自带的后台任务 + 按需启动的小程序</td><td>有哪几类活、同一个活重复跑不出错、同时最多几个</td></tr>
+      <tr><td>存东西</td><td>chord 自带的数据库改表工具</td><td>备份到 COS 网盘</td></tr>
+    </tbody>
+  </table>
+  <h3>技能包、扩展、专家，实际是什么</h3>
+  <ul>
+    <li><strong>技能包</strong>：一个文件夹，里面一份 SKILL.md 说明。程序启动时只把「名字、一句话说明、放在哪」告诉大模型，不把整篇说明塞进去；等真用到了才去读。不占内存，也不额外开程序。</li>
+    <li><strong>扩展</strong>：一小段跑在同一个程序里的代码，用来加自定义工具、命令和事件。同样不额外开程序。</li>
+    <li><strong>专家</strong>：就是一条配置，零内存增量。千万别给每个专家开一个常驻程序，更别给每个专家配一个本地模型。</li>
+  </ul>
+</section>
+
+<section id="contracts">
+  <h2><span class="num">10</span>配置长什么样</h2>
+  <h3>一条专家配置</h3>
+<pre><code>// config/experts/papers-assistant.json
+{
+  "id": "papers-assistant",
+  "system_prompt": "你是论文助手，回答必须带来源，找不到的直说",
+  "model": "deepseek-v3.2",
+  "allowed_tools": ["papers.search", "papers.read_note", "knowledge.ask"],
+  "resource_scope": {
+    "collections": ["papers"],
+    "visibility": ["private", "shared"]
+  },
+  "skill_refs": ["pdf-tools", "literature-review"],
+  "max_parallel": 1
+}</code></pre>
+  <p>翻译成人话：这个专家用哪个模型、能调哪几个工具、能看哪几类资料、允许看自己的还是也能看共享的、配了哪几个技能包、同时最多干几件。</p>
+  <h3>一个工具的说明（示意）</h3>
+<pre><code>// packages/contracts — 每个工具都要有版本号，返回里要带出处
+{
+  "name": "papers.search",
+  "version": "1.0.0",
+  "input":  { "query": "string", "scope": "principal|shared", "limit": "number" },
+  "output": {
+    "hits": [{
+      "source_ref": "papers/{paperId}",
+      "title": "string",
+      "snippet": "string",
+      "score": "number"
+    }]
+  }
+}</code></pre>
+  <p>返回里带上「这条来自哪个应用的哪一条」，答案才能点回原文，否则找资料就是张嘴就来。技能包只写名字引用，不把内容复制一份。</p>
+  <div class="warn"><strong>四种会把机器搞垮的做法：</strong>① 把所有技能包的说明一次全塞给大模型 —— 每次提问白烧几千 token，还把有用的上下文挤掉，应该用到哪个读哪个；② 给每个专家单独建一份索引 —— 大家共用一份，靠标签区分是谁的、属于哪类；③ 给每个专家开一个常驻程序 —— 要用时临时起、用完停；④ 让好几个专家同时开干 —— 排队，最多同时 2 个。</div>
+</section>
+
+<section id="rbac">
+  <h2><span class="num">11</span>账号、角色和管理员页面</h2>
+  <div class="ok"><strong>这是这次定下来的重点，也是选 pi / chord 而不选 DSH 的主要原因。</strong>pi / chord 已经把地基铺好了：账号表、会话、身份一路传到每个请求、没身份就拒绝、按人分开存数据、还有现成的「主人/管理员」概念。我们要写的只有「谁是什么角色、各角色能干什么」的规则，和一个管理员页面。</div>
+  <figure class="figure">
+  <svg viewBox="0 0 680 340" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="登录到权限判断的过程">
+    <title>登录到权限判断的过程</title>
+    <defs><marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+    <rect x="40" y="20" width="600" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="60" y="42" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">登录</text>
+    <text x="160" y="42" font-size="12" fill="#185FA5" dominant-baseline="central">账号密码 / 邀请链接 / 设备配对 → 会话里记住「是谁」</text>
+    <path d="M340 64 L340 78" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow2)"/>
+    <rect x="40" y="80" width="600" height="44" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+    <text x="60" y="102" font-size="13" font-weight="500" fill="#0C447C" dominant-baseline="central">每次请求</text>
+    <text x="160" y="102" font-size="12" fill="#185FA5" dominant-baseline="central">页面、工具、后台任务都自动带着这个身份；没身份直接拒绝</text>
+    <path d="M340 124 L340 138" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow2)"/>
+    <rect x="40" y="140" width="600" height="44" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+    <text x="60" y="162" font-size="13" font-weight="500" fill="#085041" dominant-baseline="central">统一入口查一次</text>
+    <text x="200" y="162" font-size="12" fill="#0F6E56" dominant-baseline="central">读身份 → 查角色 → 这个网址 / 这个工具能不能用</text>
+    <path d="M340 184 L340 198" fill="none" stroke="#888780" stroke-width="1" marker-end="url(#arrow2)"/>
+    <rect x="40" y="200" width="600" height="44" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+    <text x="60" y="222" font-size="13" font-weight="500" fill="#2C2C2A" dominant-baseline="central">应用里再按人取数据</text>
+    <text x="230" y="222" font-size="12" fill="#5F5E5A" dominant-baseline="central">自己的 / 共享的，边界由身份决定</text>
+    <rect x="40" y="260" width="600" height="60" rx="12" fill="#F7F6F2" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text x="60" y="280" font-size="12" font-weight="500" fill="#2C2C2A" dominant-baseline="central">管理员页面：只有管理员能进</text>
+    <text x="60" y="300" font-size="12" fill="#5F5E5A" dominant-baseline="central">列账号 · 改角色 · 停用 · 发邀请 · 看谁在什么时候干了什么</text>
+  </svg>
+  <figcaption>图 4 · 身份从登录一路传到数据，角色只在一个地方判断</figcaption>
+  </figure>
+  <h3>身份和角色长什么样</h3>
+  <pre><code>// 一次登录之后，系统里带着的就是这么个小东西
+{ "类别": "用户", "id": "zhangsan", "角色": "管理员" }
+{ "类别": "用户", "id": "lisi",     "角色": "成员" }
+
+// config/roles.yaml — 角色规则自己写，就这一处
+管理员:  能进所有应用页面 · 能管账号 · 能改共享资料 · 能看全部日志
+成员:    能用自己的应用 · 能看共享资料 · 不能进管理页面 · 不能改别人的账号
+访客:    只能看被明确共享的内容 · 不能写 · 不能调会改数据的工具</code></pre>
+  <h3>管理员页面长什么样</h3>
+  <p>一个只有管理员能打开的页面（挂在 <code>/admin</code>），功能就五个，都是调现成账号表的增删改查：</p>
+  <table>
+    <thead><tr><th style="width:24%">功能</th><th>做什么</th></tr></thead>
+    <tbody>
+      <tr><td>账号列表</td><td>看有哪些人、什么角色、最后一次登录是什么时候、现在是启用还是停用</td></tr>
+      <tr><td>改角色</td><td>把成员提成管理员、把访客升成成员，或反过来</td></tr>
+      <tr><td>停用 / 删除</td><td>让某个账号立刻进不来；会话一并作废</td></tr>
+      <tr><td>发邀请</td><td>生成一次性链接（有效期 7 天），新人点开直接带指定身份进来。只有管理员能发</td></tr>
+      <tr><td>操作记录</td><td>谁在什么时候进了哪个页面、调了哪个工具、改了什么，逐条可查</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><strong>管理员从哪来？</strong>不用自己造。启动服务时指定的那个「主人」就是天然的管理员；只有他能发邀请链接。所以第一步是：启动时把 owner 定成你，然后由你发链接把第二个人拉进来、给他「成员」角色。</div>
+  <h3>工作量与诚实边界</h3>
+  <ul>
+    <li><strong>pi / chord 也没有开箱即用的角色规则</strong>，「谁能删、谁能看」这些判断得自己写。但它把账号、会话、身份贯穿、按人存数据、默认拒绝、管理员概念都给了，我们只写一个统一入口的检查 + 一个管理页面，量级大约<strong>几天</strong>。</li>
+    <li><strong>如果改用 DSH 做这件事</strong>：要自己建用户库、登录、会话、角色、管理界面，还要把用户身份塞进每个工具和每个应用，应用侧再做一次数据隔离。量级<strong>数周</strong>。而且这套东西不在它的框架约定里，升级容易断；官方还明说不支持两人共用一个实例、软件未经安全审计。</li>
+  </ul>
+</section>
+
+<section id="security">
+  <h2><span class="num">12</span>两个人用，怎么不串数据</h2>
+  <p>pi 的说明里写得很清楚：<strong>它不管文件系统和进程的权限</strong>，默认是「谁启动的程序，就有什么权限」。所以除了上面那套账号角色，还要补下面几件事：</p>
+  <ul>
+    <li>每次调用都带上「现在是谁」；对象本来就按身份分开存，取数据时再按身份筛一遍。</li>
+    <li>资料地址里带上是谁的，比如 <code>notes://{谁}/{哪条笔记}</code>。</li>
+    <li>专家配置里写死「能用哪些工具、能看哪些资料」，调用前再查一遍角色。</li>
+    <li>能共享的东西用标签标出来，别靠猜。</li>
+    <li>跑命令、改文件放隔离的小环境；各种密钥只放在入口程序里；每次调工具都记一笔日志。</li>
+    <li>要是两个人互不完全信任，光靠标记不够 —— 得把危险动作真的关进容器。pi 官方给了三条路，选 Docker 最省事。</li>
+  </ul>
+</section>
+
+<section id="upgrade">
+  <h2><span class="num">13</span>怎么升级才不会改坏</h2>
+  <ol>
+    <li><strong>调用格式一改就把版本号加一，哪怕只是多一个字段。</strong>再写个自动检查：拿老版本的调用例子跑一遍，看新版本还能不能正常回答。</li>
+    <li><strong>版本写死。</strong>应用包用 pi 的分发方式把版本钉成 <code>@1.2.3</code>，不让它自动拉最新；pi 和 chord 的版本锁在项目锁文件里。</li>
+    <li><strong>升级顺序固定。</strong>先只改那个「唯一引用 pi 的地方」→ 跑自动检查 → 过了才升；没过就先别升。全项目只有那一处需要跟着 pi 改。</li>
+    <li><strong>不重启换代码。</strong>chord 换代码时一个模块一个模块地换；新代码起不来就继续用旧的；老数据等用到的时候再慢慢改格式；换的过程中正在跑的活不会断。</li>
+    <li><strong>数据都是普通文件。</strong>换底层不用搬数据；统一入口挂了，应用之间还能按事先说好的格式直接说话。</li>
+    <li><strong>账号和角色规则都在统一入口那一处</strong>，升级底层不动它，也不动各应用。</li>
+  </ol>
+  <div class="ok"><strong>就认两条：</strong>加新应用，核心一行都不用改；换大模型供应商或者换找资料的方式，应用一行都不用改。整个架构绕这一圈，就是为了这两条成立。</div>
+</section>
+
+<section id="rag">
+  <h2><span class="num">14</span>怎么从资料里找答案</h2>
+  <table>
+    <thead><tr><th style="width:18%">干什么</th><th style="width:34%">一开始用</th><th style="width:26%">不够了再换</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>按意思找相似内容</td><td>SQLite 加个小插件 <code>sqlite-vec</code>（免费，占不到 20MB）</td><td>LanceDB（存硬盘上、自带关键词和重排）或单跑一个 Qdrant</td><td>起步方案是挨个比，10 万段以内够快，再多就慢；Qdrant 的本地试用模式只放得下约 2 万条，只能拿来测试</td></tr>
+      <tr><td>按关键词找</td><td>SQLite 自带的全文检索（中文要配分词）</td><td>Meilisearch</td><td><strong>中文必须两种一起用。</strong>光按意思找，遇到金额、编号、日期、实验批次这种精确的东西会找不准</td></tr>
+      <tr><td>算向量、给结果重排</td><td colspan="2">都调云上的接口：<code>BAAI/bge-m3</code> + <code>BAAI/bge-reranker-v2-m3</code>（硅基流动有免费档），或阿里云 <code>text-embedding-v3</code> + <code>qwen3-rerank</code></td><td>本机不跑模型。换模型要把全部资料重新算一遍，所以第一个要定死</td></tr>
+      <tr><td>双链 / 图谱</td><td>先把 <code>[[链接]]</code> 当成「谁连着谁」记下来</td><td>LightRAG（图 + 按意思找，两层一起用）</td><td>LightRAG 默认把四类东西全放内存、还要好几个模型角色，2C4G 别一上来就全开</td></tr>
+    </tbody>
+  </table>
+  <p><strong>COS 网盘只放三样：</strong>原始 PDF / 附件、笔记的 Markdown 快照、数据库定期备份。检索用的索引放本地硬盘 —— 网盘不适合反复随机读写，只把它的备份传上去。</p>
+  <p><strong>明确不做：</strong>RAGFlow（官方就要 4 核 16G 内存、50G 硬盘，还依赖 Elasticsearch）、Milvus 集群、Elasticsearch、本机跑大模型。</p>
+  <p><strong>聊天接入：</strong>用 AstrBot 这类现成机器人框架收消息，转成请求发给统一入口。渠道相关的代码一行都别写进核心。</p>
+</section>
+
+<section id="budget">
+  <h2><span class="num">15</span>这台机器扛不扛得住</h2>
+  <table>
+    <thead><tr><th style="width:58%">一直占着内存的东西</th><th>大概多少</th></tr></thead>
+    <tbody>
+      <tr><td>系统本身</td><td>约 0.4G</td></tr>
+      <tr><td>统一入口 + 账号角色 + 让大模型干活的程序</td><td>0.4–0.6G</td></tr>
+      <tr><td>对话窗口、技能包、专家配置</td><td>不到 0.05G</td></tr>
+      <tr><td>各应用和它们的页面（装在同一个程序里）</td><td>0.4–0.8G</td></tr>
+      <tr><td>临时后台程序（不用就关）</td><td>0–0.3G</td></tr>
+      <tr><td>找资料用的索引</td><td>0.1–0.3G</td></tr>
+      <tr><td>两个人的会话和同时跑的任务</td><td>0.1–0.2G</td></tr>
+      <tr><td><strong>加起来</strong></td><td><strong>1.4–2.6G</strong>，还能留 1G 多给系统缓存</td></tr>
+    </tbody>
+  </table>
+  <p>两个人不是内存翻倍。大模型那些都在云上，本机多出来的只有会话和同时跑的任务，大概 100–200MB。<strong>先出问题的不是内存，是 API 账单和 CPU 同时干活太多。</strong>所以硬规定：后台同时最多 1 个（不够再调到 2）、同时问大模型最多 2 个、算向量最多 1–2 批、写索引排队一个一个来（SQLite 同一时间只能一个地方写）、同一个任务重复跑不能出乱子。</p>
+  <div class="note"><strong>什么时候该加钱：</strong>常驻内存超过 3G 或者开始用交换区了，把内存加到 8G 最划算；要单独跑 Qdrant 或本地模型，直接上 8G；超过 5 个人用、或者每秒超过 10 个任务，才需要考虑 Redis 那类东西。70G 硬盘：系统 8G、数据库和索引 10–20G、常用文件缓存一些，其余全放网盘。</div>
+</section>
+
+<section id="roadmap">
+  <h2><span class="num">16</span>分几步做、怎么算做对了</h2>
+  <table>
+    <thead><tr><th style="width:12%">阶段</th><th style="width:52%">做什么</th><th>要验证什么</th></tr></thead>
+    <tbody>
+      <tr><td>第一步</td><td>写出那两层隔开的代码、统一入口、<strong>登录与角色（先把管理员跑通）</strong>、对话应用基础版（会话列表 + 绑定应用）和它的页面、一个专家、聊天能问能答</td><td>整条线跑通；两个人分别登录，成员进不了管理页面。建议先照 chord 官方那个带插件的笔记应用教程跑一遍</td></tr>
+      <tr><td>第二步</td><td>对话记账 + 对话统计（单次调用，不用 pi）</td><td>一句话记一笔入库正确；「这个月吃饭花了多少」查询结果对得上账</td></tr>
+      <tr><td>第三步</td><td>论文下载 + 笔记 + 问答（找资料那层：关键词 + 向量 + 重排）</td><td>下载探索任务能换源重试；问答带出处能点回原文</td></tr>
+      <tr><td>第四步</td><td>定时推送（在第三步的库上加成）</td><td>到点抓取、摘要、推送，失败可重试不重复</td></tr>
+      <tr><td>第五步</td><td>对话 agent 模式：pi + 技能包 / MCP 配置 + 总对话工具注册表</td><td>切到 agent 模式能自主多步干活；前四步的工具都能在总对话里被调到</td></tr>
+      <tr><td>第六步</td><td>升 pi / chord 的版本、换大模型、换找资料的方式；再加双链笔记 / 实验记录等后备应用</td><td><strong>应用和账号一行没改</strong>；加应用只改清单和文件夹</td></tr>
+    </tbody>
+  </table>
+  <h3>四条能实际检查的线</h3>
+  <ol>
+    <li>加应用只改应用清单、多一个文件夹和页面，入口和格式说明不动。</li>
+    <li>换大模型只改那一个引用 pi 的地方的配置；换找资料的方式只改「找资料」那个文件夹里面。</li>
+    <li>成员账号打不开 <code>/admin</code>，也调不了改别人账号的工具；每条操作日志能查到是谁。</li>
+    <li>自动检查没过，就不许升级；两个人同时导入资料不卡死，慢活不会把网页请求堵住。</li>
+  </ol>
+</section>
+
+<section id="risks">
+  <h2><span class="num">17</span>要小心的坑</h2>
+  <table>
+    <thead><tr><th style="width:24%">坑</th><th style="width:42%">实际情况</th><th>怎么办</th></tr></thead>
+    <tbody>
+      <tr><td>chord 还比较新</td><td>它的设计文档自己写着「这是目标设计」，还有没定下来的地方；同步功能标着试验品；npm 上才 20 个版本（最新 1.5.0，2026-11-02）</td><td>用一层自己的代码把它包起来，对外只按通用格式说话，应用别直接用它的东西</td></tr>
+      <tr><td>角色规则要自己写</td><td>pi / chord 给的是账号和身份的地基，<strong>不提供现成的角色判断</strong></td><td>只在统一入口写一处判断 + 一个管理页面；别把角色判断散进各应用，否则一定漏</td></tr>
+      <tr><td>pi 不管文件和进程权限</td><td>官方说明里写了：不限制文件、进程、网络、密钥的访问</td><td>每次调用带「是谁」、调工具前查两遍、危险动作关进容器、全记日志</td></tr>
+      <tr><td>概念不熟</td><td>「先写说明再启动」「拿引用不拿对象」这套不是普通网页开发的写法</td><td>第一步只做一个应用，先照官方教程跑通</td></tr>
+      <tr><td>DSH 看着热闹但别当底座</td><td>27.7 万星、MIT，但仍是预览版（npm 0.2.2-rc.1），官方明说会有破坏性改动、未经安全审计、没有多用户账号</td><td>跑一份当参考，抄它的配置分层和会话留痕设计；正式系统不依赖它</td></tr>
+      <tr><td>开源协议有附加条件</td><td>Dify 不许拿去做多租户服务；LobeHub 改了再分发要买许可；Open WebUI 必须保留它的名字；Cherry Studio 是 AGPL；n8n 不算严格意义的开源</td><td>本方案核心用的 pi / chord 是 MIT；加任何第三方前先读一遍协议</td></tr>
+      <tr><td>项目会停更</td><td>Flowise 在 2026 年 8 月归档了；AutoGen 进入只维护状态</td><td>选之前先看归档标记和最后一次提交时间</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="apps">
+  <h2><span class="num">18</span>每个应用做什么（已拍板）</h2>
+  <p>2026-11-09 ~ 11-10 逐个应用讨论后拍板：第一批做<strong>对话、记账、论文</strong>三个应用；双链笔记、实验记录挪到后备批次。讨论中确立了一条判活规矩，所有功能先过它：</p>
+  <div class="ok"><strong>什么时候才值得动用 pi：</strong>步骤数事先说不准的活（比如「下载这篇论文，找不到 PDF 就换下一个源接着找」），让模型自己边做边决定下一步。步骤固定的活（一句话变成一笔账、一段资料变成一篇摘要），直接一次调用大模型就完事——更便宜、更稳、出错好查。</div>
+
+  <h3>对话应用（第一批 · 打磨顺序 1、5）</h3>
+  <table>
+    <thead><tr><th style="width:26%">功能</th><th style="width:20%">用不用 pi</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>基础聊天体验</td><td>不用</td><td>对标 DeepSeek 网页版：会话列表、逐字显示、markdown 和代码高亮、停止 / 重新生成。走网关单次调用。</td></tr>
+      <tr><td>默认技能包，可人为配置</td><td>agent 模式用</td><td>每个会话有默认专家配置（一条 JSON，见第 10 节），用户可以改模型、换技能包。</td></tr>
+      <tr><td>可配 MCP 检索工具</td><td>agent 模式用</td><td>把「搜资料」等外部工具按 MCP 格式挂进来，模型自己决定调不调、调几次。</td></tr>
+      <tr><td>agent 模式开关</td><td>这就是 pi 的主场</td><td>普通对话 = 单次调用；agent 模式 = pi 接管，想一步做一步。技能包组合不固定、检索次数不固定，正是判活规矩里「步骤说不准」的那类。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>记账应用（第一批 · 打磨顺序 2）</h3>
+  <table>
+    <thead><tr><th style="width:26%">功能</th><th style="width:20%">用不用 pi</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>传统记账为主</td><td>不用</td><td>表单增删改查，沿用现有原型（金额一律「分」，收入红支出绿）。</td></tr>
+      <tr><td>对话记账</td><td>不用</td><td>一句话 → 大模型单次提取金额 / 分类 / 日期 → 入库。固定流程。</td></tr>
+      <tr><td>对话统计</td><td>不用</td><td>「这个月吃饭花了多少」→ 大模型把话转成查询参数 → 代码执行聚合返回。<strong>不让模型自己写 SQL</strong>，危险且不稳。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>论文应用（第一批 · 打磨顺序 3、4）</h3>
+  <table>
+    <thead><tr><th style="width:26%">功能</th><th style="width:20%">用不用 pi</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>论文下载</td><td><strong>用（后台任务）</strong></td><td>讨论中修正过的判断：可能找不到文件、找不到 PDF 源，要不断换源探索（arXiv → Semantic Scholar → Unpaywall → …），步骤数不定。走「慢活」那条路：建待办 → 后台 pi 探索 → 拿到后校验入库，失败标记原因，全程状态页面可见。</td></tr>
+      <tr><td>论文笔记 + 问答</td><td>问答不用；通读生成笔记走后台</td><td>问答 = 检索笔记和原文段落 → 单次回答（带出处点回原文）。「通读整篇 PDF 生成结构化笔记」是多步活，丢后台任务。</td></tr>
+      <tr><td>论文推荐（对话）</td><td>先不用</td><td>检索 → 重排 → 大模型解释推荐理由，流程固定。以后若要「顺着引用链越挖越深」再升级成 agent 模式。</td></tr>
+      <tr><td>定时推送</td><td>不用</td><td>定时抓取 + 单次摘要调用 + 推送。在笔记 / 问答建好的库上加成。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>对话怎么组织：方案 C（已拍板）</h3>
+  <div class="note"><strong>每个应用绑自己的对话 + 保留一个总对话。</strong>记账页面里的对话只挂记账工具，论文页面里的对话只挂论文工具——工具集窄而准，模型不容易选错，权限也清晰。跨应用的问题（「我买论文这个月花了多少钱」）走总对话，它挂检索 + 各应用的<strong>只读</strong>查询工具。业界成熟形态全是这个模式：Claude 的 Projects、Open WebUI 的 workspace、ChatGPT 的 GPTs，本质都是「一组上下文绑定一个会话」。代价只是多维护一个总对话的工具注册表。</div>
+  <p>由此派生一条硬规矩：<strong>总对话里挂的应用工具一律只读。</strong>改数据的动作必须回到应用自己的对话或页面里做，避免在总对话里一句话误改两个应用的数据。</p>
+
+  <h3>打磨顺序（已拍板）</h3>
+  <ol>
+    <li><strong>对话应用基础版</strong>——一切的地基，先把「会话绑定应用」的结构立起来。</li>
+    <li><strong>对话记账 + 对话统计</strong>——单次调用，量级小，快速见效。</li>
+    <li><strong>论文下载 + 笔记 + 问答</strong>——把「找资料」那层（关键词 + 向量 + 重排）建起来，是论文域核心。</li>
+    <li><strong>定时推送</strong>——在第 3 步的库上加成。</li>
+    <li><strong>对话 agent 模式（pi + 技能包 / MCP 配置）</strong>——最强也最重，且前四步已把各应用的工具都注册好了，放最后水到渠成。</li>
+  </ol>
+  <p>排序逻辑：从依赖少、见效快的往前走；pi 相关的最重的一步放最后，等工具都备齐了再接。</p>
+</section>
+
+<section id="refs">
+  <h2><span class="num">19</span>参考了哪些项目</h2>
+  <h3>真正会用到的</h3>
+  <table>
+    <thead><tr><th style="width:30%">项目</th><th style="width:18%">协议</th><th>拿来干什么</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/earendil-works/pi">pi（原 badlogic/pi-mono，已迁到 earendil-works/pi）</a></td><td>MIT</td><td>选模型、大模型循环、存会话、装应用、不重启换代码、后台任务、登录与账号。主仓库已发 1.0.0，chord 是 1.5.0（2026-11-02）</td></tr>
+      <tr><td><a href="https://github.com/modelcontextprotocol/servers">MCP</a></td><td>开放格式</td><td>应用对外干活时统一按这个格式写说明</td></tr>
+      <tr><td><a href="https://github.com/asg017/sqlite-vec">sqlite-vec</a></td><td>MIT</td><td>一开始做「按意思找」</td></tr>
+      <tr><td><a href="https://github.com/lancedb/lancedb">LanceDB</a></td><td>Apache 系</td><td>资料多了以后换它，关键词和按意思找都自带</td></tr>
+      <tr><td><a href="https://github.com/AstrBotDevs/AstrBot">AstrBot</a></td><td>—</td><td>接聊天软件的现成框架候选</td></tr>
+      <tr><td><a href="https://github.com/HKUDS/LightRAG">LightRAG</a></td><td>—</td><td>第四步做双链图谱时的参考</td></tr>
+    </tbody>
+  </table>
+  <h3>认真比较过、最后没拿来当底座的</h3>
+  <table>
+    <thead><tr><th style="width:30%">项目</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness（dsh）</a></td><td>MIT / TypeScript / 2026-08-13 开源 / 27.7 万星 / npm 0.2.2-rc.1 / 要求 Node 24.9 以上。一整套现成运行时，插件化做得很漂亮，中文文档齐全，值得抄三样设计。<strong>但官方没有多用户账号、没有角色、网页只绑本机、安全文件写明未经安全审计，界面扩展以聊天窗口卡片为主</strong>，不适配「两人 RBAC + 每应用独立页面」。它内部接模型的插件用的还是 pi 的 <code>pi-ai</code>，两者不是竞品。</td></tr>
+      <tr><td>OpenClaw、QwenPaw、nanobot、LibreChat、LobeHub、Paperclip、Open WebUI、Dify、Langflow、Sim</td><td>它们留的扩展位置是「给大模型加个工具」，装不下有自己数据、页面和账号规则的应用；但可以当作随时能换掉的前端，或者拿来读架构（尤其 nanobot 的架构说明写得很清楚）。</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12.5px;color:var(--faint)">数字哪来的：2026-11-09 逐个查 GitHub 接口核实星数、协议、最后一次提交，并读了各项目自己的说明文档；npm 上核实了包版本。网上那些「2026 最佳开源项目」榜单数字互相打架，没采用。硬件要求和 RAGFlow 的最低配置来自它们的官方文档。模型价格以服务商官网为准。</p>
+</section>
+
+<section id="pi">
+  <h2><span class="num">20</span>Pi 全部功能清单（官方核实）</h2>
+  <p>2026-11-10 逐个读了 <a href="https://github.com/earendil-works/pi">pi 官方仓库</a>的总说明和每个包的说明文件，把「Pi 到底给了我们什么」列全。核实口径：仓库 <code>github.com/earendil-works/pi</code>（原 badlogic/pi-mono，MIT 协议，TypeScript，要求 Node.js 22.19 以上）。</p>
+  <div class="ok"><strong>一句话：Pi 不是一整个软件，是一盒拆开的零件。一共 7 个包，可以只用其中几个。</strong>官方自己也是这么写的：「不是一个命令行工具，是一组可以分层单独取用的包」。我们不需要整盒搬回来。</div>
+
+  <h3>20.1 七个包，各管什么</h3>
+  <table>
+    <thead><tr><th style="width:24%">包名</th><th>干什么（大白话）</th></tr></thead>
+    <tbody>
+      <tr><td><code>pi-ai</code></td><td><strong>统一接大模型。</strong>30 多家厂商一个接口（OpenAI、Anthropic、Google、DeepSeek、月之暗面、智谱、MiniMax、通义、硅基流动兼容接口……）；流式逐字输出、工具调用与参数校验、自动找密钥（环境变量 / OAuth / AWS / gcloud）、每次调用记 token 和钱、思考过程、换厂商接着聊。<strong>注意：没有「把文字变成数字」这个功能</strong>，所以向量得我们另调云端接口。</td></tr>
+      <tr><td><code>pi-agent-core</code></td><td><strong>让模型想一步做一步。</strong>工具调用循环、记状态、逐条往外发消息事件（开始 / 一句话 / 一个字 / 工具开始 / 工具结束 / 结束）；工具能并行也能排队；调工具前可以拦一道（<code>beforeToolCall</code>，做角色检查正好用这里）；聊到一半能插话、能追问、断了能接着跑。</td></tr>
+      <tr><td><code>pi-durable</code></td><td><strong>把聊天和长活存住，崩了能接着跑。</strong>会话是不可改的一条条记录；一次提交要么全存要么全不算（正好是我们说的「记数据和记待办同一次操作」）；任务每一步存一个存档点、重启后从存档点续跑、能定时睡醒、能生子任务、能看任务图；长聊天自动压短；每会话记 token 和费用。<strong>官方标着「试验品，接口可能随时变」。</strong></td></tr>
+      <tr><td><code>chord</code></td><td><strong>把好几个应用装进同一个程序。</strong>事先说好的调用格式（带版本号）、数据文档、一个自带的库、模块之间互相喊话、按需起后台小程序（空闲就停）、网页和命令行界面、插件换代码不重启。下面 20.2 单独展开。</td></tr>
+      <tr><td><code>pi-telemetry</code></td><td><strong>统一记日志的格式。</strong>谁在什么时候调了什么、花了多少钱、哪一步慢，用一套固定格式记下来，还带自动检查。</td></tr>
+      <tr><td><code>pi-coding-agent</code></td><td><strong>官方那个在终端里帮你写代码的软件。</strong>带技能包、扩展、提示词模板、主题、打包分发；能用命令行、JSON、RPC、TypeScript SDK 四种方式驱动。<strong>我们的方案明确不拿它当服务器</strong>（第 03 节已否）。</td></tr>
+      <tr><td><code>pi-tui</code></td><td><strong>终端里画界面的库。</strong>只画字符界面，网页用不上。</td></tr>
+    </tbody>
+  </table>
+  <div class="note">另外还有一个独立仓库 <code>pi-chat</code>，是拿 Pi 去接 Slack / 聊天软件的现成架子，不在上面 7 个包里。第 14 节提的 AstrBot 是同类选择。</div>
+
+  <h3>20.2 chord 拆开看（我们争议最多的那个）</h3>
+  <p>chord 的核心想法是：<strong>每个应用先写一份说明（叫什么、要什么参数、有哪些状态和方法、版本号多少），程序照说明把它装进来；别人拿到的是「引用」不是对象本身</strong>。这样换掉某一块代码时，别的模块手上那张「名片」还有效。</p>
+  <table>
+    <thead><tr><th style="width:22%">入口</th><th>给什么</th></tr></thead>
+    <tbody>
+      <tr><td>核心 <code>chord</code></td><td>调用格式的说明书、错误类型、装应用的宿主、数据文档、后台任务、模块之间互相喊话的连接、一张登记表、自带的库（建表、查、导出导入）。</td></tr>
+      <tr><td><code>chord/http</code></td><td>网页服务：网址路由、拦截器、长连接、<strong>登录校验器</strong>、默认就开着的一套安全底线、对外喊话的入口。</td></tr>
+      <tr><td><code>chord/workers</code></td><td>后台小程序：按需要起一个，空闲了就停；带一把进程锁。这正是「叫了才来、干完就走」。</td></tr>
+      <tr><td><code>chord/plugins</code></td><td>插件的发现、打包、文件监视、<strong>一台一台换代码</strong>、装插件、测插件。</td></tr>
+      <tr><td><code>chord/app</code></td><td>把上面拼成能跑的一整套：启动服务、启动后台、<strong>会话与主人登录、设备配对</strong>、文件、按人导出导入；<strong>可选插件：用户账号、邀请链接、临时登录</strong>。</td></tr>
+      <tr><td><code>chord/surfaces</code> / <code>web</code> / <code>react</code> / <code>tui</code></td><td>网页和终端界面：基础页面包、插件脚本、浏览器端启动、可选的 React 组件、终端界面。</td></tr>
+      <tr><td><code>chord/sqlite</code> 等</td><td><strong>自带的库是 SQLite</strong>（也有浏览器和 Cloudflare 版）；带原子改表、定时清理的日志表。</td></tr>
+      <tr><td><code>chord/sync</code></td><td>多份数据同步，<strong>官方标着试验品</strong>。</td></tr>
+      <tr><td><code>chord/context</code> / <code>delta</code> / <code>watch</code> / <code>output</code></td><td>取消任务、记日志、JSON 改动追踪、盯着某个值变化、限制输出长度并按节奏报进度。</td></tr>
+    </tbody>
+  </table>
+  <div class="ok"><strong>上一轮的疑问核实完了：chord 确实带账号地基。</strong>官方 <code>chord/app</code> 明写有「会话与主人登录、设备配对」，还有可选的「用户、邀请、临时登录」插件；<code>chord/http</code> 带登录校验器和默认安全底线；文档的第 11 节说法基本成立。<strong>但要补两句：</strong>① 账号和邀请是<strong>可选插件</strong>，不是装了就自动有；② 「谁能删、谁能看」这套角色规则官方仍然不给，得自己写（第 11 节本来也是这么定的）。</div>
+  <div class="warn"><strong>新发现一个和 PG 决策打架的地方：</strong>chord 自带的库、以及 pi-durable 的存储后端，<strong>都只有 SQLite / JSONL / 内存 / 浏览器库 / Cloudflare，没有 PostgreSQL</strong>。你要「其他应用也用 PG」，就得接受「chord 自己的账号会话用它的小库、业务数据用 PG」两套并存，或者干脆不用 chord 的自带库、账号会话也自己写进 PG。这一条列进待拍板（第 21 节）。</div>
+
+  <h3>20.3 「改了程序不用关掉再开」到底是什么</h3>
+  <p>它叫 <strong>reload（换代码不重启）</strong>，chord 官方原话：「在跑着的程序里换掉一个插件的代码，一台一台地换；宿主继续跑，数据、连接、正在干的活尽量都留着」。</p>
+  <ul>
+    <li><strong>不是「保持登录」。</strong>登录状态本来就在库里，程序重启也丢不了。它保的是「正在跑的那件事不中断、连着的网页不断线」。</li>
+    <li><strong>什么时候有用：</strong>几百人在线、正在付钱或上传，重启一下就全断了，这才值钱。</li>
+    <li><strong>你两个人用：</strong>改完程序关掉再开就几秒钟，没人会正好卡在那一刻。</li>
+    <li><strong>但要说实话：这个能力在 chord 里不是能随手摘掉的小开关。</strong>它整套「拿引用不拿对象」的设计就是为换代码准备的。我们能做的是<strong>不用它</strong>（升级时正常重启、不做一台一台换），但没法把这层概念从 chord 里删掉。这也是第 17 节把它列为「还比较新、先别依赖」的原因。</li>
+  </ul>
+
+  <h3>20.4 官方明说不管的</h3>
+  <ul>
+    <li><strong>没有权限系统。</strong>官方原文：「Pi 不带内建的文件、进程、网络、密钥限制，默认以启动它那个用户的权限运行」。要边界就自己关容器，官方给三条路：只把危险工具丢进微虚机（Gondolin）、整个进程进 Docker、或用策略沙箱（OpenShell）。</li>
+    <li><strong>没有向量功能。</strong>pi-ai 只管聊天 / 生图 / 分类三类模型，把文字变成数字得我们另调云端接口（第 14 节已经是这么写的）。</li>
+    <li><strong>没有现成的角色规则、没有现成的「谁能删」。</strong></li>
+    <li><strong>pi-durable 是试验品</strong>，官方明说接口会在版本之间无通知变更。</li>
+    <li><strong>一个库同一时间只能一个进程写</strong>，pi-durable 原文：「没有跨进程锁」。所以「后台最多 1~2 个」这条硬规定不是我们保守，是它本身就这么设计的。</li>
+  </ul>
+
+  <h3>20.5 顺带核实：官方的供应链做法和我们一致</h3>
+  <p>官方仓库写明：直接依赖钉死精确版本、装包配置里写「保存精确版本」和「新发布的包至少放两天再装」、锁文件是唯一依据、安装一律 <code>--ignore-scripts</code>、定时跑漏洞扫描。<strong>和 2026-10-25 已经落地的依赖锁定纪律是同一套做法</strong>，接 Pi 不用改我们的规矩。</p>
+</section>
+
+<section id="decisions">
+  <h2><span class="num">21</span>本轮拍板与对前文的修订</h2>
+  <p>2026-11-10 晚讨论后确认。本节改掉前文里对不上的地方；<strong>正式契约以 <code>docs/白皮书-v3.md</code> 为准</strong>，本页是大白话说明版（讨论稿）。</p>
+
+  <h3>21.1 已经拍板</h3>
+  <table>
+    <thead><tr><th style="width:20%">事</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td>chord</td><td><strong>保留。</strong>核实后确认它带会话、主人登录、设备配对、可选的用户 / 邀请插件，第 11 节选它的主要理由成立。但升级走「正常重启」，<strong>不依赖换代码不重启</strong>；<code>chord/sync</code> 试验品不用。</td></tr>
+      <tr><td>数据库</td><td><strong>用 PostgreSQL + 一个小插件存「按意思找」的数字</strong>，因为其他应用也共用这个库。前文第 07、14、15 节按 SQLite 写的文件夹和 <code>sqlite-vec</code> <strong>作废</strong>。</td></tr>
+      <tr><td>向量库</td><td>不为它单独再开一个软件；独立向量库（Qdrant / Milvus / LanceDB）全部缓一缓。</td></tr>
+      <tr><td>Redis / 消息队列</td><td><strong>确认不要。</strong>两个人、一天几个慢活，库里一张待办表足够。守一条：记数据和记待办放在同一次提交里，要么都成要么都不算；同一个活重跑不能出乱子；后台同时最多 1~2 个。什么时候才需要它：一秒几十上百个活、好几个程序抢着领——两个人到不了。</td></tr>
+      <tr><td>模型</td><td><strong>只调云端</strong>，本机不跑大模型、不跑向量模型。RAG 自己做。</td></tr>
+      <tr><td>LightRAG</td><td><strong>抄思路，不整套搬。</strong>协议是 MIT（2026-11-10 核实），法律上可以抄、改、商用，留个原作者声明就行；但它是 Python 写的研究型代码，自己的说明里写着默认那套存法只适合测试评估、不适合正式用。抄两样：① 按意思找 + 顺着关系网找，两层一起用；② 长文章先压成短摘要再存。用自己的库落地。</td></tr>
+      <tr><td>Docker 小房间</td><td><strong>不是给「对话应用」用的</strong>，是给「模型自己决定去跑命令、改文件」这类危险动作用的。前四步（基础聊天、记账、论文问答、定时推送）没有这类动作；第 5 步让模型自己一步步干活时才需要。<strong>另外：现有项目里已经有一个 pi-runner 沙箱容器在跑</strong>（白皮书 §2 / §11），不是从零新做，是沿用。</td></tr>
+    </tbody>
+  </table>
+
+  <h3>21.2 上一轮说错的两处，改过来</h3>
+  <ul>
+    <li><strong>「旧的那套导完就停」说错了一半。</strong>PG 要留着给别的应用共用，不能停；停的是那套 Python 服务程序和定时任务程序，不是数据库。</li>
+    <li><strong>「chord 带不带账号待核实」已有答案：带。</strong>见第 20.2 节，第 11 节的说法成立，只是账号 / 邀请属可选插件、角色规则仍要自己写。</li>
+  </ul>
+
+  <h3>21.3 还没定、但会影响后面的三件事</h3>
+  <ol>
+    <li><strong>chord 自带库只有 SQLite，没有 PG。</strong>要么接受「chord 的账号会话用它自己的小库、业务数据用 PG」两套并存，要么账号会话也自己写进 PG、不用 chord 的库。这条不定，第 07 节的文件夹就画不死。</li>
+    <li><strong>第 13 节「数据都是普通文件，换底层不用搬家」和 PG 打架</strong>，这条约束得重新拍一次（保留、改写、还是放弃）。</li>
+    <li><strong>前端形态</strong>：沿用 <code>prototype/v2</code> 的单页应用（hash 路由、静态文件由主程序发），还是按 chord 的方式发页面，尚未拍板。</li>
+  </ol>
+
+  <h3>21.4 砍完，你的应用长什么样</h3>
+  <pre><code>一直开着的（三样）
+  一个主程序：认人、分角色、发页面、管密钥、记日志；三个应用都装在里面
+  一个 PG 库：账号 / 账本 / 论文 / 笔记 / 会话 / 待办 / 那串数字
+  一个网页门口（Caddy）：管网址和加密
+
+叫了才来的
+  后台小程序：下载论文换源找、定时推送、把资料变成数字；干完就关，最多 1~2 个
+
+在别人机器上的
+  云端模型（只调不跑）· 网盘（PDF 原件和备份）
+
+暂时不请的
+  独立向量库 · Redis / 消息队列 · 本机模型 · chord 换代码不重启
+  Docker 小房间（第 5 步再用，且沿用现有 pi-runner）
+
+三个应用
+  对话：基础聊天 + 每个应用绑自己的对话 + 一个总对话（只读）；第 5 步才让模型自己一步步干活
+  记账：表单为主 + 一句话记一笔 + 一句话查统计，都只调一次云端模型
+  论文：下载（后台换源找）· 笔记问答（先翻库再答，答案能点回原文）· 推荐 · 定时推送</code></pre>
+</section>
+
+</main>
+
+<footer>个人 Agent 工作台 · 架构说明（大白话版）v1.3 · 2026-11-10 · 本次更新：新增第 20 节「Pi 全部功能清单（官方核实）」与第 21 节「本轮拍板与对前文的修订」；数据库改 PG、chord 保留但不依赖换代码不重启、Redis / 消息队列确认砍、LightRAG 抄思路、Docker 沙箱定位澄清 · 正式契约见 docs/白皮书-v3.md · 单文件，可离线打开，可直接打印成 PDF</footer>
+</div>
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function update(){
+    var y = window.scrollY + 120, current = 0;
+    sections.forEach(function(s,i){ if(s && s.offsetTop <= y) current = i; });
+    links.forEach(function(a,i){ a.classList.toggle('active', i === current); });
+  }
+  window.addEventListener('scroll', update, {passive:true});
+  update();
+})();
+</script>
+</body>
+</html>
