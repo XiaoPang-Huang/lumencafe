@@ -94,16 +94,16 @@ test('从 Markdown 完整、确定性地生成可离线阅读的 HTML', () => {
   );
 
   const mermaidBlocks = matches(sourceBefore, /```mermaid\r?\n([\s\S]*?)```/g);
-  assert.equal(mermaidBlocks.length, 7, '全文必须保留七张 Mermaid 图（§06 两张架构图 + 五张时序图）');
+  assert.equal(mermaidBlocks.length, 10, '全文必须保留十张 Mermaid 图（§06 两张架构图 + 八张时序图）');
   assert.equal(
     matches(secondHtml, /<svg\b[^>]*class="mermaid-svg"/g).length,
-    7,
-    '七张 Mermaid 图必须预渲染为内联 SVG',
+    10,
+    '十张 Mermaid 图必须预渲染为内联 SVG',
   );
   assert.equal(
     matches(secondHtml, /<details class="diagram-source">/g).length,
-    7,
-    '七张图必须保留可查看的 Mermaid 源码',
+    10,
+    '十张图必须保留可查看的 Mermaid 源码',
   );
   assert.ok(secondHtml.includes('✅ 已实测验证（2026-11-11）'), '必须保留 chord 实测回填');
   assert.ok(secondHtml.includes('总体架构图：主请求链路（容器视图）'), '必须保留第一张图标题');
@@ -113,6 +113,9 @@ test('从 Markdown 完整、确定性地生成可离线阅读的 HTML', () => {
   assert.ok(secondHtml.includes('失败重试与草稿恢复时序图：三种状态全手动重试（基础版）'), '必须保留失败重试与草稿恢复时序图标题');
   assert.ok(secondHtml.includes('AI 记一笔时序图：先出草稿，点确认才入账（幂等）'), '必须保留 AI 记一笔时序图标题');
   assert.ok(secondHtml.includes('对话统计时序图：模型只出三条件，代码执行聚合（方案 C）'), '必须保留对话统计时序图标题');
+  assert.ok(secondHtml.includes('论文下载解析时序图：pi agent 护栏内换源探索，MinerU 解析入库（慢活）'), '必须保留论文下载解析时序图标题');
+  assert.ok(secondHtml.includes('单篇问答时序图：双路检索加云端重排，出处点回原文段落（block 级）'), '必须保留单篇问答时序图标题');
+  assert.ok(secondHtml.includes('定时抓取推送时序图：每日早八点一轮，push_logs 幂等防重'), '必须保留定时抓取推送时序图标题');
 
   const markdownLinks = matches(sourceBefore, /\[[^\]]+\]\((https?:\/\/[^)]+)\)/g).map(
     (match) => match[1],
