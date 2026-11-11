@@ -94,20 +94,23 @@ test('从 Markdown 完整、确定性地生成可离线阅读的 HTML', () => {
   );
 
   const mermaidBlocks = matches(sourceBefore, /```mermaid\r?\n([\s\S]*?)```/g);
-  assert.equal(mermaidBlocks.length, 2, '§06 必须保留两张 Mermaid 图');
+  assert.equal(mermaidBlocks.length, 5, '全文必须保留五张 Mermaid 图（§06 两张架构图 + §08/§09 三张时序图）');
   assert.equal(
     matches(secondHtml, /<svg\b[^>]*class="mermaid-svg"/g).length,
-    2,
-    '两张 Mermaid 图必须预渲染为内联 SVG',
+    5,
+    '五张 Mermaid 图必须预渲染为内联 SVG',
   );
   assert.equal(
     matches(secondHtml, /<details class="diagram-source">/g).length,
-    2,
-    '两张图必须保留可查看的 Mermaid 源码',
+    5,
+    '五张图必须保留可查看的 Mermaid 源码',
   );
   assert.ok(secondHtml.includes('✅ 已实测验证（2026-11-11）'), '必须保留 chord 实测回填');
   assert.ok(secondHtml.includes('总体架构图：主请求链路（容器视图）'), '必须保留第一张图标题');
   assert.ok(secondHtml.includes('数据与运行边界（补充视图）'), '必须保留第二张图标题');
+  assert.ok(secondHtml.includes('普通聊天时序图：保存确认后再生成（基础版）'), '必须保留普通聊天时序图标题');
+  assert.ok(secondHtml.includes('总对话只读查询时序图：写操作在网关拒绝（方案 C 边界）'), '必须保留总对话只读查询时序图标题');
+  assert.ok(secondHtml.includes('失败重试与草稿恢复时序图：三种状态全手动重试（基础版）'), '必须保留失败重试与草稿恢复时序图标题');
 
   const markdownLinks = matches(sourceBefore, /\[[^\]]+\]\((https?:\/\/[^)]+)\)/g).map(
     (match) => match[1],
