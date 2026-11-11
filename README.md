@@ -20,7 +20,7 @@
 
 ```
 AGENTS.md    设计强制规则 + 工程约定（最高优先级）
-docs/        白皮书 v3（新架构契约）、架构讨论稿、团队协作规范、项目地图、论文数据源目录
+docs/        仅保留白皮书 v3（新架构契约）和架构讨论稿
 prototype/   前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
 skills/      Skill 文件夹库（运行期数据，Agent Skills 开放标准）
 ```
@@ -34,5 +34,3 @@ cd prototype
 python -m http.server 4311
 # 浏览器打开 http://localhost:4311/v2/
 ```
-
-找不到要改的文件？先看 [docs/项目地图-v1.md](docs/项目地图-v1.md)（或浏览器打开 `docs/项目地图.html`，可搜索、点选复制路径）。
