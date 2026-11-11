@@ -25,6 +25,7 @@
 - 中文记账配色：收入红、支出绿。
 - 本地预览：`prototype/` 目录起任意静态服务（如 `python -m http.server 4311`）。
 - 产品契约唯一：`docs/白皮书-v3.md`——任何产品决策/架构变更/新应用立项必须先更新白皮书再动手，统一以章节形式追加，不再独立成文。v3 基于新的 pi/chord 架构重做（v2 已删除，备份在 `.workbuddy/backup-docs-20261110/`）；架构讨论稿见 `docs/pi-workbench-architecture.html`。v3 §16 是未决问题清单，拍板后再写进正文。
+- **白皮书双格式同步**：`docs/白皮书-v3.md` 是唯一源文件，`docs/白皮书-v3.html` 是由 `tools/build-whitepaper.mjs` 生成的阅读版。每次 Markdown 改动后必须运行 `npm --prefix=tools run docs:build` 重新生成 HTML，禁止只改一边或直接手改 HTML；首次使用先运行 `npm --prefix=tools run docs:install`。提交前用 `npm --prefix=tools run docs:check` 验证同步，完整验收运行 `npm --prefix=tools run docs:test`。
 - **功能面板统一中央弹窗**（2026-10-22 用户定）：功能列/设置类的功能面板一律复用 modal 基建做屏幕中央圆角弹窗，**不做右侧抽屉/侧滑面板**（移动端导航抽屉除外）。首批适用：Skill 中心；后续收藏/专家/MCP 等照此实现。
 
 ## 三、关键产品决策（勿违反，2026-11-11 随新架构更新）

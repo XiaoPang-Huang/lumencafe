@@ -1,0 +1,21 @@
+{
+  "name": "lumencafe-whitepaper-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic offline HTML generator for the LumenCafe whitepaper.",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "docs:install": "npm ci --no-audit --no-fund",
+    "docs:build": "node build-whitepaper.mjs",
+    "docs:check": "node build-whitepaper.mjs --check",
+    "docs:test": "node --test whitepaper.test.mjs && node verify-whitepaper-browser.mjs"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.3",
+    "mermaid": "12.3.0",
+    "puppeteer": "25.17.0"
+  }
+}

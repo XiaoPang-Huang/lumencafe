@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="source-sha256" content="d6eece553022154079f9ed814327840ffd2439f286e2f6755f9373684962b8d2">
+  <meta name="generator" content="tools/build-whitepaper.mjs">
+  <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
+  <style>
+:root {
+  color-scheme: light;
+  --brand: #1664ff;
+  --brand-soft: #eef4ff;
+  --text: #172033;
+  --muted: #5c687a;
+  --faint: #7b8697;
+  --border: #e2e7ee;
+  --surface: #f7f9fc;
+  --topbar-height: 64px;
+  --sidebar-width: 304px;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--topbar-height) + 28px); }
+body { margin: 0; background: #fff; color: var(--text); font-size: 16px; line-height: 1.8; }
+body.nav-open { overflow: hidden; }
+a { color: var(--brand); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { font: inherit; }
+[hidden] { display: none !important; }
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 8px 14px; background: var(--text); color: #fff; transform: translateY(-150%); }
+.skip-link:focus { transform: translateY(0); }
+.topbar { position: sticky; z-index: 50; top: 0; height: var(--topbar-height); display: flex; align-items: center; gap: 16px; padding: 0 28px; border-bottom: 1px solid var(--border); background: rgba(255, 255, 255, .97); }
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; font-weight: 650; text-decoration: none; white-space: nowrap; }
+.brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 7px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 750; letter-spacing: .04em; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border); }
+.document-kind { color: var(--muted); font-size: 14px; }
+.source-link { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-size: 13px; text-decoration: none; white-space: nowrap; }
+.source-link:hover { color: var(--brand); }
+.source-link svg { width: 15px; height: 15px; }
+.menu-toggle { display: none; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--text); cursor: pointer; }
+.menu-toggle svg { width: 19px; height: 19px; }
+.page-shell { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); max-width: 1600px; margin: 0 auto; }
+.sidebar { position: sticky; top: var(--topbar-height); grid-column: 1; grid-row: 1; height: calc(100vh - var(--topbar-height)); overflow-y: auto; overscroll-behavior: contain; border-right: 1px solid var(--border); background: #fff; scrollbar-width: thin; scrollbar-color: #c7d0dc transparent; }
+.sidebar-inner { padding: 24px 16px 40px; }
+.sidebar-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 12px 14px; color: var(--text); font-size: 13px; font-weight: 700; letter-spacing: .06em; }
+.sidebar-heading span:last-child { color: var(--faint); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.toc-list, .toc-children { margin: 0; padding: 0; list-style: none; }
+.toc-chapter { margin: 2px 0; }
+.toc-link { position: relative; display: block; border-radius: 6px; color: var(--muted); text-decoration: none; transition: background-color .15s ease, color .15s ease; }
+.toc-link:hover { background: var(--surface); color: var(--text); }
+.toc-link:focus-visible, .heading-anchor:focus-visible, .chapter-nav-link:focus-visible, .menu-toggle:focus-visible { outline: 3px solid rgba(22, 100, 255, .25); outline-offset: 2px; }
+.toc-link-chapter { padding: 7px 12px; font-size: 13.5px; font-weight: 550; line-height: 1.5; }
+.toc-children { margin: 3px 0 7px 13px; padding-left: 10px; border-left: 1px solid var(--border); }
+.toc-link-child { padding: 5px 9px; font-size: 12.5px; line-height: 1.5; }
+.toc-link.active, .toc-link[aria-current="location"] { background: var(--brand-soft); color: var(--brand); font-weight: 650; }
+.toc-link-chapter.active::before, .toc-link-chapter[aria-current="location"]::before { position: absolute; top: 8px; bottom: 8px; left: 0; width: 3px; border-radius: 3px; background: var(--brand); content: ""; }
+main { grid-column: 2; grid-row: 1; min-width: 0; }
+.whitepaper { width: min(100%, 960px); margin: 0 auto; padding: 48px 48px 64px; }
+.whitepaper h1, .whitepaper h2, .whitepaper h3 { position: relative; color: #111b2d; font-weight: 700; line-height: 1.4; letter-spacing: -.015em; }
+.whitepaper h1 { max-width: 820px; margin: 0 0 28px; font-size: clamp(30px, 4vw, 42px); line-height: 1.3; }
+.whitepaper h2 { margin: 0 0 24px; padding-top: 4px; font-size: 28px; }
+.whitepaper h3 { margin: 40px 0 16px; font-size: 20px; }
+.heading-anchor { position: absolute; margin-left: 10px; color: #a0abba; font-size: .7em; font-weight: 400; text-decoration: none; opacity: 0; }
+.whitepaper h1:hover .heading-anchor, .whitepaper h2:hover .heading-anchor, .whitepaper h3:hover .heading-anchor, .heading-anchor:focus-visible { opacity: 1; }
+.whitepaper p { margin: 0 0 18px; }
+.whitepaper strong { color: #101b2e; font-weight: 650; }
+.whitepaper ul, .whitepaper ol { margin: 0 0 22px; padding-left: 1.6em; }
+.whitepaper li { margin: 5px 0; padding-left: 3px; }
+.whitepaper li::marker { color: #6b7890; }
+.whitepaper blockquote { margin: 0 0 28px; padding: 16px 20px; border: 0; border-left: 3px solid var(--brand); border-radius: 0 7px 7px 0; background: var(--surface); color: #48566b; }
+.whitepaper blockquote p { white-space: pre-line; }
+.whitepaper blockquote p:last-child { margin-bottom: 0; }
+.whitepaper code { padding: .12em .36em; border: 1px solid #e4e8ef; border-radius: 4px; background: #f5f7fa; color: #24324a; font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: .88em; overflow-wrap: anywhere; }
+.whitepaper pre { margin: 0; padding: 20px; overflow: auto; border: 1px solid var(--border); border-radius: 0 0 7px 7px; background: #f7f9fb; line-height: 1.65; tab-size: 2; }
+.whitepaper pre code { padding: 0; border: 0; background: transparent; font-size: 13px; overflow-wrap: normal; }
+.code-block { margin: 24px 0 28px; }
+.code-block figcaption { display: flex; justify-content: space-between; padding: 8px 14px; border: 1px solid var(--border); border-bottom: 0; border-radius: 7px 7px 0 0; background: #fff; color: var(--faint); font-size: 12px; }
+.table-wrap { max-width: 100%; margin: 22px 0 28px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.65; }
+th, td { min-width: 96px; padding: 12px 15px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+th { background: var(--surface); color: #354156; font-weight: 650; white-space: nowrap; }
+th:not(:last-child), td:not(:last-child) { border-right: 1px solid #edf0f4; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: #fbfcfe; }
+.chapter { padding-top: 48px; }
+.chapter > hr { height: 1px; margin: 44px 0 28px; border: 0; background: var(--border); }
+.whitepaper > h1 + blockquote { margin-bottom: 24px; }
+.whitepaper > hr { height: 1px; margin: 28px 0 0; border: 0; background: var(--border); }
+.chapter-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; }
+.chapter-nav-link { display: flex; min-height: 84px; flex-direction: column; justify-content: center; gap: 3px; padding: 13px 16px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); text-decoration: none; }
+.chapter-nav-link:hover { border-color: #aabfdf; background: #fafcff; }
+.chapter-nav-next { align-items: flex-end; text-align: right; }
+.chapter-nav-direction { color: var(--brand); font-size: 12px; font-weight: 650; }
+.chapter-nav-title { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.diagram { margin: 24px 0 30px; border: 1px solid var(--border); border-radius: 9px; background: #fff; }
+.diagram-caption { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 16px; border-bottom: 1px solid var(--border); color: #445168; font-size: 13px; font-weight: 600; }
+.diagram-caption span:last-child { color: var(--faint); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.diagram-viewport { max-width: 100%; padding: 20px; overflow-x: auto; background: #fff; }
+.mermaid-svg { display: block; min-width: 0; max-width: none !important; height: auto; margin: 0 auto; }
+.diagram-source { border-top: 1px solid var(--border); }
+.diagram-source summary { padding: 10px 16px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.diagram-source[open] summary { border-bottom: 1px solid var(--border); }
+.diagram-source pre { border: 0; border-radius: 0 0 8px 8px; }
+.document-footer { width: min(100%, 960px); margin: 0 auto; padding: 22px 48px 40px; border-top: 1px solid var(--border); color: var(--faint); font-size: 12px; }
+.document-footer code { font-family: "Cascadia Code", Consolas, monospace; }
+.nav-backdrop { display: none; }
+@media (min-width: 1500px) {
+  :root { --sidebar-width: 320px; }
+  .whitepaper { padding-right: 56px; padding-left: 56px; }
+}
+@media (max-width: 1100px) {
+  :root { --sidebar-width: 270px; }
+  .whitepaper { padding: 40px 32px 56px; }
+  .document-footer { padding-right: 32px; padding-left: 32px; }
+}
+@media (max-width: 900px) {
+  :root { --topbar-height: 58px; }
+  .topbar { gap: 12px; padding: 0 16px; }
+  .menu-toggle { display: inline-flex; }
+  .brand-mark { display: none; }
+  .brand { font-size: 14px; }
+  .topbar-divider, .document-kind { display: none; }
+  .source-link { font-size: 12px; }
+  .page-shell { display: block; }
+  .sidebar { position: fixed; z-index: 80; top: var(--topbar-height); bottom: 0; left: 0; width: min(86vw, 340px); height: auto; border-right: 1px solid #cfd7e3; transform: translateX(-102%); transition: transform .2s ease; }
+  .sidebar.is-open { transform: translateX(0); }
+  .sidebar-inner { padding-top: 20px; }
+  .toc-link-chapter { min-height: 44px; padding-top: 10px; padding-bottom: 10px; }
+  .toc-link-child { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
+  .nav-backdrop { position: fixed; z-index: 70; inset: var(--topbar-height) 0 0; display: block; width: 100%; height: auto; padding: 0; border: 0; background: rgba(23, 32, 51, .32); cursor: pointer; }
+  main { width: 100%; }
+  .whitepaper { width: 100%; max-width: none; padding: 32px 24px 52px; }
+  .whitepaper h1 { font-size: 32px; }
+  .whitepaper h2 { font-size: 25px; }
+  .chapter { padding-top: 38px; }
+  .document-footer { width: 100%; padding: 20px 24px 34px; }
+  .heading-anchor { opacity: .55; }
+}
+@media (max-width: 520px) {
+  .source-link span { display: none; }
+  .whitepaper { padding: 28px 18px 44px; }
+  .whitepaper h1 { font-size: 28px; }
+  .whitepaper h2 { font-size: 23px; }
+  .whitepaper h3 { font-size: 19px; }
+  .whitepaper p, .whitepaper li { font-size: 15.5px; }
+  .chapter-nav { grid-template-columns: 1fr; }
+  .chapter-nav-placeholder { display: none; }
+  .chapter-nav-next { align-items: flex-start; text-align: left; }
+  .diagram-viewport { padding: 12px; }
+  th, td { padding: 10px 12px; }
+  .document-footer { padding-right: 18px; padding-left: 18px; }
+}
+@media print {
+  :root { --topbar-height: 0px; }
+  .topbar, .sidebar, .chapter-nav, .nav-backdrop, .heading-anchor, .document-footer { display: none !important; }
+  .page-shell { display: block; }
+  .whitepaper { width: 100%; max-width: none; padding: 0; }
+  .chapter { break-before: page; padding-top: 20px; }
+  .chapter:first-of-type { break-before: auto; }
+  .table-wrap, .diagram-viewport, .whitepaper pre { overflow: visible; }
+  .diagram, .code-block, .table-wrap { break-inside: avoid; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .toc-link, .sidebar { transition: none; }
+}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#whitepaper-content">跳到正文</a>
+  <header class="topbar">
+    <button class="menu-toggle" id="menu-toggle" type="button" aria-label="打开或关闭白皮书目录" aria-controls="site-nav" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round"/></svg>
+      <span>目录</span>
+    </button>
+    <a class="brand" href="#whitepaper-content"><span class="brand-mark" aria-hidden="true">LC</span><span>流光咖啡馆</span></a>
+    <span class="topbar-divider" aria-hidden="true"></span>
+    <span class="document-kind">白皮书 v3 · 完整阅读版</span>
+    <a class="source-link" href="白皮书-v3.md"><span>Markdown 源文件</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 5h5v5M10 14l9-9M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  </header>
+  <div class="page-shell">
+    <aside class="sidebar" id="site-nav" aria-label="白皮书导航">
+      <div class="sidebar-inner">
+        <div class="sidebar-heading"><span>白皮书目录</span><span>18 章</span></div>
+        <nav id="whitepaper-toc" aria-label="全部章节"><ol class="toc-list"><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#00-这份文档干什么用" data-heading-id="00-这份文档干什么用">00 这份文档干什么用</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#01-一句话定位" data-heading-id="01-一句话定位">01 一句话定位</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#02-硬件与红线" data-heading-id="02-硬件与红线">02 硬件与红线</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" data-heading-id="03-pi-全家桶清单2026-11-10-核实官方-readme">03 pi 全家桶清单（2026-11-10 核实官方 README）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#七个包逐个说" data-heading-id="七个包逐个说">七个包，逐个说</a></li><li><a class="toc-link toc-link-child" href="#引哪几个一句话" data-heading-id="引哪几个一句话">引哪几个，一句话</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#04-官方明确不管的事决定我们要自己写多少" data-heading-id="04-官方明确不管的事决定我们要自己写多少">04 官方明确不管的事（决定我们要自己写多少）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#05-数据存哪2026-11-11-拍板方案-a" data-heading-id="05-数据存哪2026-11-11-拍板方案-a">05 数据存哪（2026-11-11 拍板：方案 A）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#两个用户的数据怎么分" data-heading-id="两个用户的数据怎么分">两个用户的数据怎么分</a></li><li><a class="toc-link toc-link-child" href="#没选的方案留档" data-heading-id="没选的方案留档">没选的方案（留档）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#06-整体分几层" data-heading-id="06-整体分几层">06 整体分几层</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#总体架构图主请求链路容器视图" data-heading-id="总体架构图主请求链路容器视图">总体架构图：主请求链路（容器视图）</a></li><li><a class="toc-link toc-link-child" href="#数据与运行边界补充视图" data-heading-id="数据与运行边界补充视图">数据与运行边界（补充视图）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#07-实际开几个程序2c4g-版" data-heading-id="07-实际开几个程序2c4g-版">07 实际开几个程序（2C4G 版）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#08-三个应用做什么已拍板" data-heading-id="08-三个应用做什么已拍板">08 三个应用做什么（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#判活规矩所有功能先过这一条" data-heading-id="判活规矩所有功能先过这一条">判活规矩（所有功能先过这一条）</a></li><li><a class="toc-link toc-link-child" href="#对话应用打磨顺序-15" data-heading-id="对话应用打磨顺序-15">对话应用（打磨顺序 1、5）</a></li><li><a class="toc-link toc-link-child" href="#记账应用打磨顺序-2" data-heading-id="记账应用打磨顺序-2">记账应用（打磨顺序 2）</a></li><li><a class="toc-link toc-link-child" href="#论文应用打磨顺序-34" data-heading-id="论文应用打磨顺序-34">论文应用（打磨顺序 3、4）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#09-对话怎么组织方案-c已拍板" data-heading-id="09-对话怎么组织方案-c已拍板">09 对话怎么组织（方案 C，已拍板）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#10-慢活怎么办没有-redis-也能行" data-heading-id="10-慢活怎么办没有-redis-也能行">10 慢活怎么办（没有 Redis 也能行）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#其他并发硬线" data-heading-id="其他并发硬线">其他并发硬线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#11-找资料怎么做rag" data-heading-id="11-找资料怎么做rag">11 找资料怎么做（RAG）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#lightrag-怎么处理2026-11-11-核实官方-readme-后定" data-heading-id="lightrag-怎么处理2026-11-11-核实官方-readme-后定">LightRAG 怎么处理（2026-11-11 核实官方 README 后定）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#12-危险动作怎么关起来" data-heading-id="12-危险动作怎么关起来">12 危险动作怎么关起来</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#官方给的四种隔离方式" data-heading-id="官方给的四种隔离方式">官方给的四种隔离方式</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#13-打磨顺序已拍板" data-heading-id="13-打磨顺序已拍板">13 打磨顺序（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#每步验证什么" data-heading-id="每步验证什么">每步验证什么</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#14-升级纪律" data-heading-id="14-升级纪律">14 升级纪律</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#就认两条验收线" data-heading-id="就认两条验收线">就认两条验收线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#15-2c4g-上的增补与裁剪" data-heading-id="15-2c4g-上的增补与裁剪">15 2C4G 上的增补与裁剪</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#要补的六块架构文档没写透" data-heading-id="要补的六块架构文档没写透">要补的六块（架构文档没写透）</a></li><li><a class="toc-link toc-link-child" href="#砍掉或推迟的六样" data-heading-id="砍掉或推迟的六样">砍掉或推迟的六样</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#16-未决问题清单" data-heading-id="16-未决问题清单">16 未决问题清单</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#17-参考了哪些项目" data-heading-id="17-参考了哪些项目">17 参考了哪些项目</a></li></ol></nav>
+      </div>
+    </aside>
+    <main id="whitepaper-content">
+      <article class="whitepaper"><h1 id="流光咖啡馆-白皮书-v3个人-agent-工作台" class="doc-heading">流光咖啡馆 · 白皮书 v3（个人 Agent 工作台）<a class="heading-anchor" href="#流光咖啡馆-白皮书-v3个人-agent-工作台" aria-label="链接到此标题：流光咖啡馆 · 白皮书 v3（个人 Agent 工作台）"><span aria-hidden="true">#</span></a></h1><blockquote>
+<p>状态：<strong>讨论稿</strong>（存储分层 Q1、文档归属 Q6 已拍板；其余 ★ 条目见 §16）
+生成时间：2026-11-10，最近更新 2026-11-11
+上游讨论稿：<code>docs/pi-workbench-architecture.html</code>（架构说明大白话版 v1.2，已降为参考件）
+旧版处置：白皮书 v2 已删除，备份在 <code>.workbuddy/backup-docs-20261110/</code>（该目录不进 git）</p>
+</blockquote>
+<hr>
+<section class="chapter" aria-labelledby="00-这份文档干什么用" data-chapter="0"><h2 id="00-这份文档干什么用" class="doc-heading">00 这份文档干什么用<a class="heading-anchor" href="#00-这份文档干什么用" aria-label="链接到此标题：00 这份文档干什么用"><span aria-hidden="true">#</span></a></h2><p>v2 是基于 Python + PostgreSQL + Hatchet 那套写的，跟新架构不是一回事，所以整份重做。</p>
+<p>v3 的地基是 <code>pi-workbench-architecture.html</code>。这份白皮书在它上面补三样东西：</p>
+<ol>
+<li><strong>pi 全家桶到底有什么</strong>——逐个包核实官方说明，列清楚哪些用、哪些不用（§03）</li>
+<li><strong>官方明确不管的事</strong>——权限、角色、存储后端（§04），这几条直接决定我们要自己写多少</li>
+<li><strong>2C4G 上的增补与裁剪</strong>——哪些软件常驻、哪些按需、哪些不要（§07、§15）</li>
+</ol>
+<p>规矩沿用项目约定：任何产品决策、架构变更、新应用立项，先改这份文档再动手。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><span class="chapter-nav-placeholder" aria-hidden="true"></span><a class="chapter-nav-link chapter-nav-next" href="#01-一句话定位"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">01 一句话定位</span></a></nav></section><section class="chapter" aria-labelledby="01-一句话定位" data-chapter="1"><h2 id="01-一句话定位" class="doc-heading">01 一句话定位<a class="heading-anchor" href="#01-一句话定位" aria-label="链接到此标题：01 一句话定位"><span aria-hidden="true">#</span></a></h2><p>一台 2C4G 服务器，装一个主程序，里面跑三个应用（对话、记账、论文），共用一套登录，大模型全部调云端。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#00-这份文档干什么用"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">00 这份文档干什么用</span></a><a class="chapter-nav-link chapter-nav-next" href="#02-硬件与红线"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">02 硬件与红线</span></a></nav></section><section class="chapter" aria-labelledby="02-硬件与红线" data-chapter="2"><h2 id="02-硬件与红线" class="doc-heading">02 硬件与红线<a class="heading-anchor" href="#02-硬件与红线" aria-label="链接到此标题：02 硬件与红线"><span aria-hidden="true">#</span></a></h2><p><strong>机器</strong>：2 核 CPU、4G 内存、70G 硬盘，外加一个 COS 网盘。两个人用。</p>
+<p><strong>真正的瓶颈是 CPU 和&quot;同时只能一个地方写&quot;</strong>，不是内存。大模型、向量计算都在云上，本机只收发文字。</p>
+<p><strong>明确不做</strong>：</p>
+<ul>
+<li>本机跑大模型、本机跑向量模型</li>
+<li>Redis、Celery、RabbitMQ、Kafka 这类消息队列</li>
+<li>独立向量库常驻（Qdrant、Milvus、LanceDB 服务）</li>
+<li>Elasticsearch、RAGFlow（官方就要 4 核 16G）</li>
+<li>微信个人号当正式入口（无官方接口，非官方登录会封号）</li>
+</ul>
+<p><strong>运行环境</strong>：pi 要求 Node.js 22.19 以上。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#01-一句话定位"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">01 一句话定位</span></a><a class="chapter-nav-link chapter-nav-next" href="#03-pi-全家桶清单2026-11-10-核实官方-readme"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">03 pi 全家桶清单（2026-11-10 核实官方 README）</span></a></nav></section><section class="chapter" aria-labelledby="03-pi-全家桶清单2026-11-10-核实官方-readme" data-chapter="3"><h2 id="03-pi-全家桶清单2026-11-10-核实官方-readme" class="doc-heading">03 pi 全家桶清单（2026-11-10 核实官方 README）<a class="heading-anchor" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" aria-label="链接到此标题：03 pi 全家桶清单（2026-11-10 核实官方 README）"><span aria-hidden="true">#</span></a></h2><p>pi 是一个开源大仓库（<code>github.com/earendil-works/pi</code>，原 <code>badlogic/pi-mono</code>），MIT 协议，TypeScript。</p>
+<p><strong>关键点：pi 不是一个软件，是一堆可以分开拿的代码包。</strong> 需要哪层引哪层，不装它的命令行工具，也不往里塞插件。</p>
+<h3 id="七个包逐个说" class="doc-heading">七个包，逐个说<a class="heading-anchor" href="#七个包逐个说" aria-label="链接到此标题：七个包，逐个说"><span aria-hidden="true">#</span></a></h3><p><strong><code>@earendil-works/pi-ai</code> —— 用</strong></p>
+<p>统一的大模型接口。官方列出的能力：</p>
+<ul>
+<li>30 多家厂商：OpenAI、Anthropic、Google、DeepSeek、MiniMax、Moonshot、Qwen、xAI、OpenRouter、Groq、Cerebras、Bedrock、Vertex AI、Mistral、GitHub Copilot，以及&quot;任何 OpenAI 兼容接口&quot;（Ollama、vLLM、LM Studio）</li>
+<li>流式输出，事件分得很细：文本增量、思考过程增量、工具调用参数增量、开始、结束、出错</li>
+<li>工具调用（也就是让模型说&quot;我要调哪个工具、参数是什么&quot;），参数用 JSON Schema 校验</li>
+<li>提示缓存和会话亲和：同一个会话重复问，厂商那边能少算钱</li>
+<li>模型目录：内置一份，也能动态刷新拉最新</li>
+<li><strong>token 和费用统计</strong>：输入、输出、缓存读、缓存写分开记，还能区分&quot;厂商报的账&quot;和&quot;按目录价估的&quot;</li>
+<li>遥测指标：请求耗时、首字耗时、token 数、费用</li>
+</ul>
+<p>对我们的用处：<strong>这就是网关的核心</strong>。换厂商只改配置，费用统计现成，不用自己写。</p>
+<p><strong><code>@earendil-works/pi-agent-core</code> —— 用</strong></p>
+<p>&quot;想一步做一步&quot;的运行时，建在 pi-ai 上。官方列出的能力：</p>
+<ul>
+<li>完整的事件流：开始、每一轮开始结束、每条消息开始结束、工具执行开始/进度/结束</li>
+<li>工具执行两种模式：并行（默认）和串行</li>
+<li><strong>插话（steering）</strong>：模型正在跑工具时，你可以插一句&quot;停，改做这个&quot;</li>
+<li><strong>排队（follow-up）</strong>：模型快干完时，你把下一件事排上</li>
+<li>两个钩子：<code>beforeToolCall</code>（工具执行前拦一道，可以拒绝）、<code>afterToolCall</code>（结果出来后加工）</li>
+<li>上下文处理：<code>transformContext</code> 用来裁剪老消息、压缩长对话</li>
+<li>思考档位：off / minimal / low / medium / high / xhigh / max，还能配 token 预算</li>
+<li>自定义消息类型：界面上要显示的东西可以塞进对话记录，发给模型前过滤掉</li>
+</ul>
+<p>对我们的用处：<strong>对话应用的 agent 模式靠它</strong>。<code>beforeToolCall</code> 这个钩子正好用来做&quot;调工具前再查一次角色&quot;。</p>
+<p><strong><code>@earendil-works/chord</code> —— 用（部分）</strong></p>
+<p>对象运行时，管&quot;几个应用怎么装进同一个程序&quot;。官方列出的能力：</p>
+<ul>
+<li><strong>契约</strong>：每个对象类型有名字、参数、版本，用 JSON Schema 描述</li>
+<li><strong>引用而非对象</strong>：拿到的是引用，本地和跨进程用起来一样</li>
+<li><strong>文档</strong>：带事务的 JSON 值，对象自己拥有</li>
+<li><strong>jobs</strong>：比调用它的那次请求活得久的活</li>
+<li><strong>principal</strong>：每次调用都带&quot;现在是谁&quot;，对象按人分开存</li>
+<li><strong>热替换</strong>：程序跑着的时候换掉某个插件的代码，一台一台换</li>
+<li>HTTP 层：路由、认证器、默认开启的安全基线</li>
+<li>worker：按需起、闲了就停的子进程</li>
+<li>存储：<code>openStore</code>、<code>defineTable</code>、查询、导出导入</li>
+<li>客户端：网页版和终端版</li>
+<li>可选 React 绑定</li>
+</ul>
+<p><strong><code>chord/app</code> 这个入口额外给的</strong>（这是选它的主要原因）：</p>
+<ul>
+<li><code>startServer</code> / <code>startWorker</code></li>
+<li><strong>会话</strong>：浏览器会话、设备会话、临时会话三种；令牌只存哈希，定长时间比较；cookie 有效期 400 天</li>
+<li><strong>主人登录</strong>：一次性链接（10 分钟有效）+ 本地令牌文件</li>
+<li><strong>设备配对</strong>：手机扫码那种，四段码，主人批准</li>
+<li><strong>可选插件</strong>：<code>defineUsers</code>（按 id 管账号）、<code>inviteFacet</code>（主人发 7 天一次性邀请链接）、<code>ephemeralLoginFacet</code>（临时登录）</li>
+<li>本地文件存储、数据导出导入</li>
+<li><strong>HTTP 默认拒绝</strong>：没身份的路由直接 401，除非显式声明公开</li>
+</ul>
+<p>对我们的用处：<strong>登录、账号、会话、邀请全现成</strong>，这是自己写要好几天的活。</p>
+<blockquote>
+<p><strong>✅ 已实测验证（2026-11-11）</strong>：在项目外临时目录装了 <a href="mailto:chord@1.5.2">chord@1.5.2</a>（npm 直连可装、0 漏洞），写最小 <code>startServer</code> 脚本真跑通——服务器正常启动、打印出带 token 的一次性主人登录链接（<code>http://127.0.0.1:PORT/_chord/owner#&lt;token&gt;</code>）、owner 端点 200 而其余路由默认 401、正常关闭无报错。<code>defineUsers</code>/<code>inviteFacet</code>/<code>Sessions</code> 等账号能力均在 <code>chord/app</code> 实际导出中确认存在。<strong>地基靠得住，白皮书 §04 的判断（有登录账号地基、无现成 RBAC）经实跑证实。</strong> 验证目录已删，未污染项目。</p>
+<p>版本现状（2026-11-11 核实）：chord / pi-ai / pi-agent-core / pi-durable / pi-schema 全线 <strong>1.5.2</strong>（架构文档里记的 1.5.0 已小升）；Node 引擎要求 <code>&gt;=22.19.0</code>，本机 v22.22.2 满足。<code>chord/app</code> 入口需补两个可选依赖 <code>esbuild</code>（构建插件）+ <code>ws</code>（WebSocket）才能用，已确认装上即可。</p>
+</blockquote>
+<p><strong><code>@earendil-works/pi-durable</code> —— 用（2026-11-11 拍板）</strong></p>
+<p>可恢复的对话和任务运行时。官方原话：<strong>&quot;Experimental. The API changes without notice between releases.&quot;</strong>（试验品，版本之间接口会变，不另行通知）</p>
+<p>能力：</p>
+<ul>
+<li>对话是一份只增不改的记录，每步都先写库再显示</li>
+<li><strong>任务是有检查点的状态机</strong>：进程崩了，重开能从上次的点接着跑</li>
+<li>原子提交：追加消息、改文档、建任务，要么全成要么全不成</li>
+<li>内置文档：agent 配置、厂商会话标识、正在跑的生成和工具、排队的输入、花费统计</li>
+<li>上下文压缩、重置、分叉</li>
+<li>存储后端：内存、浏览器 IndexedDB、SQLite、JSONL 文件、Cloudflare Durable Object</li>
+</ul>
+<p>对我们的用处：<strong>论文下载那种长任务、崩了能接着跑，正是它管的</strong>（2026-11-11 拍板：用）。两个顾虑这样应对：</p>
+<ol>
+<li><strong>标着试验品</strong> → 锁死版本，升级前先跑契约测试、看 changelog（沿用 §14 升级纪律）</li>
+<li><strong>存储后端没有 PostgreSQL</strong> → 不是问题。它管的是对话记录和任务检查点这类<strong>框架状态</strong>，正好落在 §05 方案 A 的 SQLite 那层，本来就不需要 PG；业务数据仍在 PG</li>
+</ol>
+<p><strong><code>@earendil-works/pi-schema</code> —— 用</strong></p>
+<p>JSON Schema 构造器。chord 的契约和工具参数都拿它写。</p>
+<p><strong><code>@earendil-works/pi-telemetry</code> —— 观察</strong></p>
+<p>厂商中立的遥测契约、参考适配器、一致性测试、类型化 schema。chord 自带一个 SQLite 遥测后端。第一步不用，等要看&quot;哪次调用花了多少钱、慢在哪&quot;时再接。</p>
+<p><strong><code>@earendil-works/pi-coding-agent</code> —— 不用</strong></p>
+<p>终端里的编程助手。这是帮人写代码的工具，不是应用框架。当底座不行（架构文档 §03 已论证）。</p>
+<p><strong><code>@earendil-works/pi-tui</code> —— 不用</strong></p>
+<p>终端界面库，差分渲染。我们做的是网页，用不上。</p>
+<p><strong><code>earendil-works/pi-chat</code>（另一个仓库）—— 第五步后再看</strong></p>
+<p>接 Slack 和聊天软件的。等真要接企业微信/飞书/Telegram 时再评估。</p>
+<h3 id="引哪几个一句话" class="doc-heading">引哪几个，一句话<a class="heading-anchor" href="#引哪几个一句话" aria-label="链接到此标题：引哪几个，一句话"><span aria-hidden="true">#</span></a></h3><p>第一步需要五个：<code>pi-ai</code>、<code>pi-agent-core</code>、<code>chord</code>、<code>pi-schema</code>、<code>pi-durable</code>（2026-11-11 拍板用，管对话记录 + 可恢复的长任务）。<code>pi-telemetry</code> 观察备用，<code>pi-coding-agent</code> / <code>pi-tui</code> 不用。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#02-硬件与红线"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">02 硬件与红线</span></a><a class="chapter-nav-link chapter-nav-next" href="#04-官方明确不管的事决定我们要自己写多少"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">04 官方明确不管的事（决定我们要自己写多少）</span></a></nav></section><section class="chapter" aria-labelledby="04-官方明确不管的事决定我们要自己写多少" data-chapter="4"><h2 id="04-官方明确不管的事决定我们要自己写多少" class="doc-heading">04 官方明确不管的事（决定我们要自己写多少）<a class="heading-anchor" href="#04-官方明确不管的事决定我们要自己写多少" aria-label="链接到此标题：04 官方明确不管的事（决定我们要自己写多少）"><span aria-hidden="true">#</span></a></h2><p>这几条是从官方文档里逐字核实的，不是猜的。</p>
+<p><strong>1. pi 没有权限系统。</strong></p>
+<p>官方 README 原话大意：pi 不包含限制文件系统、进程、网络、密钥访问的内置权限系统；默认情况下，它以启动它的那个用户和进程的权限运行。如果需要更强的边界，就把 pi 装进容器或沙箱。</p>
+<p>官方给了四种隔离方式（详见 §12）。</p>
+<p><strong>2. chord 没有角色，也没有 RBAC。</strong></p>
+<p><code>chord/app</code> 里翻遍了没有 role、permission、RBAC 这些词。它给的是：</p>
+<ul>
+<li><code>principal</code>：应用自己定义的身份类型，比如 <code>{ kind: &quot;user&quot;, id: &quot;zhangsan&quot; }</code></li>
+<li><code>owner</code>：一个特殊身份，管登录链接、设备配对、发邀请</li>
+<li>HTTP 默认拒绝</li>
+<li><code>authorize</code> 钩子：应用自己写&quot;这个人能不能碰这个地址&quot;</li>
+</ul>
+<p><strong>所以&quot;谁能删、谁能看&quot;这些规则，必须我们自己写。</strong> 架构文档 §11 估的量级是几天，这个估算成立——因为账号表、会话、身份贯穿、按人存数据、默认拒绝都有了，我们只补规则和一个管理页面。</p>
+<p><strong>3. pi-durable 是试验品。</strong></p>
+<p>官方自己写着接口会变、不另行通知。用它就得锁死版本，升级前先跑契约测试。</p>
+<p><strong>4. chord 的存储只有 SQLite。</strong></p>
+<p><code>chord/app</code> 的数据目录长这样：</p>
+<figure class="code-block"><figcaption><span>代码</span><span>text</span></figcaption><pre tabindex="0"><code class="language-text">&lt;datadir&gt;/server/store.sqlite
+&lt;datadir&gt;/workers/&lt;kind&gt;/&lt;key&gt;/store.sqlite
+</code></pre></figure><p>官方文档里没有出现 PostgreSQL。<code>pi-durable</code> 的五个存储后端是：内存、IndexedDB、SQLite、JSONL、Cloudflare Durable Object——<strong>也没有 PostgreSQL</strong>。</p>
+<p>这条直接影响存储选型，见 §05。</p>
+<p><strong>5. chord 的同步功能标着 experimental。</strong></p>
+<p>跨设备同步那套先别指望。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#03-pi-全家桶清单2026-11-10-核实官方-readme"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">03 pi 全家桶清单（2026-11-10 核实官方 README）</span></a><a class="chapter-nav-link chapter-nav-next" href="#05-数据存哪2026-11-11-拍板方案-a"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">05 数据存哪（2026-11-11 拍板：方案 A）</span></a></nav></section><section class="chapter" aria-labelledby="05-数据存哪2026-11-11-拍板方案-a" data-chapter="5"><h2 id="05-数据存哪2026-11-11-拍板方案-a" class="doc-heading">05 数据存哪（2026-11-11 拍板：方案 A）<a class="heading-anchor" href="#05-数据存哪2026-11-11-拍板方案-a" aria-label="链接到此标题：05 数据存哪（2026-11-11 拍板：方案 A）"><span aria-hidden="true">#</span></a></h2><p>背景冲突：chord 和 pi-durable 的存储层只认 SQLite（§04 第 4 条），官方没有 PG 适配器；但业务侧要用 PG。结论是<strong>分两层存，各用各擅长的</strong>。</p>
+<p><strong>框架状态 → chord 默认的 SQLite</strong></p>
+<p>登录会话、账号、对话记录、任务检查点、待办。这些是 chord 和 pi-durable 亲手管的，跟着官方走最省事，升级不容易断。文件就是 <code>&lt;datadir&gt;/server/store.sqlite</code>。</p>
+<p><strong>业务数据 + 向量 → 一个 PostgreSQL（装 pgvector 扩展）</strong></p>
+<p>账本、论文元数据、笔记、向量、检索索引、调用日志、费用统计。</p>
+<p>为什么向量必须放 PG，不放 SQLite：</p>
+<ul>
+<li>SQLite 那套（sqlite-vec）是<strong>挨个比</strong>：1 万条瞬间，5 万条约 50 毫秒，<strong>50 万条以上开始明显卡</strong></li>
+<li>PG 的 pgvector 有专门索引（HNSW，先粗筛再细比）：<strong>百万条还是几毫秒</strong></li>
+<li>我们的量级估算：2000 篇论文 × 每篇约 50 段 ≈ <strong>10 万段向量</strong>。SQLite 还能撑（约 100 毫秒/次）但已踩在临界点；PG 毫无压力</li>
+<li><strong>LightRAG 官方推荐的生产后端就是 PostgreSQL</strong>，一个库能把它要的四类存储全担了（见 §11）。用 PG 当它的后端，它就不把数据集塞内存，进程能瘦到 100–200MB</li>
+</ul>
+<p>关系数据（账本、论文信息、笔记）放 SQLite 其实不会慢——带索引的查询百万行也是几毫秒，两人规模到不了瓶颈。<strong>真正会慢的只有向量检索这一项</strong>，而它正好落在 PG 这层。</p>
+<p>代价：两个库都要备份；跨库的&quot;同一次操作要么都成要么都不成&quot;做不到。但业务上很少需要——待办表和任务状态都在 SQLite 同一层里。</p>
+<h3 id="两个用户的数据怎么分" class="doc-heading">两个用户的数据怎么分<a class="heading-anchor" href="#两个用户的数据怎么分" aria-label="链接到此标题：两个用户的数据怎么分"><span aria-hidden="true">#</span></a></h3><p><strong>用 <code>user_id</code> 区分，不分库。</strong> 业务数据集中在一个 PG 库里，每条记录带 <code>user_id</code>，两人共看的打 <code>shared</code> 标签。</p>
+<ul>
+<li>chord 天生就这么设计：它的 <code>principal</code> 就是&quot;现在是谁&quot;，数据按人分</li>
+<li>PG 还能加&quot;行级安全&quot;（数据库自己保证你只查得到自己的行）</li>
+<li>共享资料一个标签搞定，不用复制两份</li>
+<li>资料地址按架构文档定的带上归属：<code>papers://{谁}/{哪条}</code></li>
+</ul>
+<p><strong>不分库的理由</strong>：向量索引和关系网要在单库里才建得起来；分库会让共享数据无处安放。两人隔离靠 <code>user_id</code> + 网关那一处角色判断（RBAC 单点）足够。</p>
+<h3 id="没选的方案留档" class="doc-heading">没选的方案（留档）<a class="heading-anchor" href="#没选的方案留档" aria-label="链接到此标题：没选的方案（留档）"><span aria-hidden="true">#</span></a></h3><ul>
+<li><strong>方案 B 全 PG</strong>：自己给 chord/pi-durable 写 PG 适配器，数周工作量，且 pi-durable 标着试验品、接口会变，适配器反复返工。跟&quot;升级不痛苦&quot;硬约束冲突，否</li>
+<li><strong>方案 C 全 SQLite</strong>：最省内存（省下 PG 那 150–250MB），但向量检索在 10 万段量级已到 SQLite 临界点，且 LightRAG 用不了它推荐的 PG 后端。否</li>
+</ul>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#04-官方明确不管的事决定我们要自己写多少"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">04 官方明确不管的事（决定我们要自己写多少）</span></a><a class="chapter-nav-link chapter-nav-next" href="#06-整体分几层"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">06 整体分几层</span></a></nav></section><section class="chapter" aria-labelledby="06-整体分几层" data-chapter="6"><h2 id="06-整体分几层" class="doc-heading">06 整体分几层<a class="heading-anchor" href="#06-整体分几层" aria-label="链接到此标题：06 整体分几层"><span aria-hidden="true">#</span></a></h2><p>沿用架构文档 §04 的六层，中间那层是唯一要长期不变的：</p>
+<ol>
+<li><strong>入口</strong>：聊天软件 / 网页 / 命令行——随时能换</li>
+<li><strong>让大模型干活</strong>：pi-ai + pi-agent-core</li>
+<li><strong>统一调用格式（MCP）★</strong>：全项目唯一要长期保持不变的一层</li>
+<li><strong>第一批三应用</strong>：对话、记账、论文（后备：双链笔记、实验记录）</li>
+<li><strong>找资料</strong>：关键词 + 按意思找 + 重排 + 关系网</li>
+<li><strong>存东西</strong>：SQLite（框架状态）+ PG（业务数据和向量）+ COS（原件和备份）</li>
+</ol>
+<p><strong>统一入口和统一格式是两回事，别混。</strong> 入口管外面进来的请求（谁在用、什么角色、密钥放哪、记日志、限流、页面挂哪）；格式管内部几块之间怎么互相叫（每个应用能干什么、参数长什么样、升级时怎么确认没改坏）。</p>
+<h3 id="总体架构图主请求链路容器视图" class="doc-heading">总体架构图：主请求链路（容器视图）<a class="heading-anchor" href="#总体架构图主请求链路容器视图" aria-label="链接到此标题：总体架构图：主请求链路（容器视图）"><span aria-hidden="true">#</span></a></h3><figure class="diagram" aria-label="总体架构图：主请求链路（容器视图）"><figcaption class="diagram-caption"><span>总体架构图：主请求链路（容器视图）</span><span>图 1 / 2</span></figcaption><div class="diagram-viewport" role="img" aria-label="总体架构图：主请求链路（容器视图）；宽图可横向滚动" tabindex="0"><svg class="mermaid-svg" id="whitepaper-diagram-1" width="466" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="1482" viewBox="4 4 466 1482" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#whitepaper-diagram-1{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#whitepaper-diagram-1 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#whitepaper-diagram-1 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#whitepaper-diagram-1 .error-icon{fill:#552222;}#whitepaper-diagram-1 .error-text{fill:#552222;stroke:#552222;}#whitepaper-diagram-1 .edge-thickness-normal{stroke-width:1px;}#whitepaper-diagram-1 .edge-thickness-thick{stroke-width:3.5px;}#whitepaper-diagram-1 .edge-pattern-solid{stroke-dasharray:0;}#whitepaper-diagram-1 .edge-thickness-invisible{stroke-width:0;fill:none;}#whitepaper-diagram-1 .edge-pattern-dashed{stroke-dasharray:3;}#whitepaper-diagram-1 .edge-pattern-dotted{stroke-dasharray:2;}#whitepaper-diagram-1 .marker{fill:#52627a;stroke:#52627a;}#whitepaper-diagram-1 .marker.cross{stroke:#52627a;}#whitepaper-diagram-1 svg{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:16px;}#whitepaper-diagram-1 p{margin:0;}#whitepaper-diagram-1 .label{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;color:#000000;}#whitepaper-diagram-1 .cluster-label text{fill:#333;}#whitepaper-diagram-1 .cluster-label span{color:#333;}#whitepaper-diagram-1 .cluster-label span p{background-color:transparent;}#whitepaper-diagram-1 .label text,#whitepaper-diagram-1 span{fill:#000000;color:#000000;}#whitepaper-diagram-1 .node rect,#whitepaper-diagram-1 .node circle,#whitepaper-diagram-1 .node ellipse,#whitepaper-diagram-1 .node polygon,#whitepaper-diagram-1 .node path{fill:#eee;stroke:#999;stroke-width:1px;}#whitepaper-diagram-1 .rough-node .label text,#whitepaper-diagram-1 .node .label text,#whitepaper-diagram-1 .image-shape .label,#whitepaper-diagram-1 .icon-shape .label{text-anchor:middle;}#whitepaper-diagram-1 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#whitepaper-diagram-1 .rough-node .label,#whitepaper-diagram-1 .node .label,#whitepaper-diagram-1 .image-shape .label,#whitepaper-diagram-1 .icon-shape .label{text-align:center;}#whitepaper-diagram-1 .node.clickable{cursor:pointer;}#whitepaper-diagram-1 .root .anchor path{fill:#52627a!important;stroke-width:0;stroke:#52627a;}#whitepaper-diagram-1 .arrowheadPath{fill:#333333;}#whitepaper-diagram-1 .edgePaths .path{stroke:#52627a;stroke-width:1px;}#whitepaper-diagram-1 .flowchart-link{stroke:#52627a;fill:none;}#whitepaper-diagram-1 .edgeLabel{background-color:#ffffff;text-align:center;}#whitepaper-diagram-1 .edgeLabel p{background-color:#ffffff;}#whitepaper-diagram-1 .edgeLabel rect{opacity:0.5;background-color:#ffffff;fill:#ffffff;}#whitepaper-diagram-1 .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#whitepaper-diagram-1 .cluster rect{fill:#f8fafc;stroke:#b9c4d4;stroke-width:1px;}#whitepaper-diagram-1 .cluster text{fill:#333;}#whitepaper-diagram-1 .cluster span{color:#333;}#whitepaper-diagram-1 .node .collapsed-indicator{fill:#b9c4d4;stroke:none;opacity:0.6;}#whitepaper-diagram-1 .node .collapsed-separator{stroke:#b9c4d4;stroke-width:0.75px;}#whitepaper-diagram-1 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:12px;background:#ffffff;border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#whitepaper-diagram-1 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#whitepaper-diagram-1 rect.text{fill:none;stroke-width:0;}#whitepaper-diagram-1 .icon-shape,#whitepaper-diagram-1 .image-shape{background-color:#ffffff;text-align:center;}#whitepaper-diagram-1 .icon-shape p,#whitepaper-diagram-1 .image-shape p{background-color:#ffffff;padding:2px;}#whitepaper-diagram-1 .icon-shape .label rect,#whitepaper-diagram-1 .image-shape .label rect{opacity:0.5;background-color:#ffffff;fill:#ffffff;}#whitepaper-diagram-1 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#whitepaper-diagram-1 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#whitepaper-diagram-1 .node .neo-node{stroke:#999;}#whitepaper-diagram-1 [data-look="neo"].node rect,#whitepaper-diagram-1 [data-look="neo"].cluster rect,#whitepaper-diagram-1 [data-look="neo"].node polygon{stroke:url(#whitepaper-diagram-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-1 [data-look="neo"].swimlane.cluster rect{filter:none;}#whitepaper-diagram-1 [data-look="neo"].node path{stroke:url(#whitepaper-diagram-1-gradient);stroke-width:1px;}#whitepaper-diagram-1 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-1 [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#whitepaper-diagram-1 [data-look="neo"].node circle{stroke:url(#whitepaper-diagram-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-1 [data-look="neo"].node circle .state-start{fill:#000000;}#whitepaper-diagram-1 [data-look="neo"].icon-shape .icon{fill:url(#whitepaper-diagram-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-1 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#whitepaper-diagram-1-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-1 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="whitepaper-diagram-1_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="whitepaper-diagram-1_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-1_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-1_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-1_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-1_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="whitepaper-diagram-1_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"><g class="cluster" id="whitepaper-diagram-1-HOST" data-look="neo"><rect style="" x="12" y="198" width="450" height="1060"></rect><g class="cluster-label" transform="translate(153.625, 198)"><foreignObject width="166.75" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>2C4G 服务器 · 常驻部分</p></span></div></foreignObject></g></g><g class="cluster" id="whitepaper-diagram-1-NODE" data-look="neo"><rect style="" x="36" y="427" width="402" height="807"></rect><g class="cluster-label" transform="translate(92.28125, 427)"><foreignObject width="289.4375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>单个 Node 22.19+ 主程序 · 三应用同进程</p></span></div></foreignObject></g></g></g><g class="edges edgePaths"><path d="M237,84L237,188L237,245" id="whitepaper-diagram-1-L_Browser_Caddy_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 157 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Browser_Caddy_0" data-points="W3sieCI6MjM3LCJ5Ijo4NH0seyJ4IjoyMzcsInkiOjE4OH0seyJ4IjoyMzcsInkiOjI0OX1d" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M237,345L237,417L237,474" id="whitepaper-diagram-1-L_Caddy_Access_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 125 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Caddy_Access_0" data-points="W3sieCI6MjM3LCJ5IjozNDV9LHsieCI6MjM3LCJ5Ijo0MTd9LHsieCI6MjM3LCJ5Ijo0Nzh9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M237,742L237,810" id="whitepaper-diagram-1-L_Access_Apps_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 64 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Access_Apps_0" data-points="W3sieCI6MjM3LCJ5Ijo3NDJ9LHsieCI6MjM3LCJ5Ijo4MTR9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M215.26666666666665,934L215.26666666666665,956.9289321881345Q215.26666666666665,964 208.19559885480118,964L143.07106781186548,964Q136,964 136,971.0710678118655L136,1086" id="whitepaper-diagram-1-L_Apps_Fixed_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 221.9384002685547 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Apps_Fixed_0" data-points="W3sieCI6MjE1LjI2NjY2NjY2NjY2NjY1LCJ5Ijo5MzR9LHsieCI6MjE1LjI2NjY2NjY2NjY2NjY1LCJ5Ijo5NjR9LHsieCI6MTM2LCJ5Ijo5NjR9LHsieCI6MTM2LCJ5IjoxMDkwfV0=" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M258.73333333333335,934L258.73333333333335,956.9289321881345Q258.73333333333335,964 265.8044011451988,964L330.9289321881345,964Q338,964 338,971.0710678118655L338,1038" id="whitepaper-diagram-1-L_Apps_Agent_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 173.93838500976562 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Apps_Agent_0" data-points="W3sieCI6MjU4LjczMzMzMzMzMzMzMzM1LCJ5Ijo5MzR9LHsieCI6MjU4LjczMzMzMzMzMzMzMzM1LCJ5Ijo5NjR9LHsieCI6MzM4LCJ5Ijo5NjR9LHsieCI6MzM4LCJ5IjoxMDQyfV0=" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M136,1162L136,1244L136,1278L136,1354.9289321881345Q136,1362 143.07106781186548,1362L207.92893218813452,1362Q215,1362 215,1369.0710678118655L215,1378" id="whitepaper-diagram-1-L_Fixed_CloudLLM_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 285.6717224121094 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Fixed_CloudLLM_0" data-points="W3sieCI6MTM2LCJ5IjoxMTYyfSx7IngiOjEzNiwieSI6MTI0NH0seyJ4IjoxMzYsInkiOjEyNzh9LHsieCI6MTM2LCJ5IjoxMzYyfSx7IngiOjIxNSwieSI6MTM2Mn0seyJ4IjoyMTUsInkiOjEzODJ9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path><path d="M338,1210L338,1244L338,1278L338,1354.9289321881345Q338,1362 330.9289321881345,1362L266.0710678118655,1362Q259,1362 259,1369.0710678118655L259,1378" id="whitepaper-diagram-1-L_Agent_CloudLLM_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 237.6717071533203 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Agent_CloudLLM_0" data-points="W3sieCI6MzM4LCJ5IjoxMjEwfSx7IngiOjMzOCwieSI6MTI0NH0seyJ4IjozMzgsInkiOjEyNzh9LHsieCI6MzM4LCJ5IjoxMzYyfSx7IngiOjI1OSwieSI6MTM2Mn0seyJ4IjoyNTksInkiOjEzODJ9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-1_flowchart-v2-pointEnd-margin)"></path></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(236.953125, 136)"><g class="label" data-id="L_Browser_Caddy_0" transform="translate(-22.953125, -12)"><foreignObject width="45.90625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>HTTPS</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(236.890625, 381)"><g class="label" data-id="L_Caddy_Access_0" transform="translate(-36.890625, -12)"><foreignObject width="73.78125" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>HTTP 反代</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(237, 778)"><g class="label" data-id="L_Access_Apps_0" transform="translate(-80, -12)"><foreignObject width="160" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>确认身份与角色后路由</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(135.6171875, 1006)"><g class="label" data-id="L_Apps_Fixed_0" transform="translate(-70.1171875, -12)"><foreignObject width="140.234375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>模型任务 · 步骤固定</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(337.6171875, 1006)"><g class="label" data-id="L_Apps_Agent_0" transform="translate(-86.1171875, -12)"><foreignObject width="172.234375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>模型任务 · 步骤数不确定</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(135.5703125, 1330)"><g class="label" data-id="L_Fixed_CloudLLM_0" transform="translate(-61.0703125, -12)"><foreignObject width="122.140625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>HTTPS · 单次生成</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(337.796875, 1330)"><g class="label" data-id="L_Agent_CloudLLM_0" transform="translate(-89.296875, -12)"><foreignObject width="178.59375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>HTTPS · 经 pi-ai 多轮调用</p></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="whitepaper-diagram-1-flowchart-Browser-0" data-look="neo" transform="translate(237, 48)"><rect class="basic label-container" style="" x="-76" y="-36" width="152" height="72"></rect><g class="label" style="" transform="translate(-60, -24)"><rect></rect><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>浏览器<br>网页入口</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-CloudLLM-1" data-look="neo" transform="translate(237, 1430)"><rect class="basic label-container" style="" x="-76" y="-48" width="152" height="96"></rect><g class="label" style="" transform="translate(-60, -36)"><rect></rect><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>云端大模型<br>外部服务 · pi-ai 统一接入</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-Caddy-2" data-look="neo" transform="translate(237, 297)"><rect class="basic label-container" style="" x="-76" y="-48" width="152" height="96"></rect><g class="label" style="" transform="translate(-60, -36)"><rect></rect><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Caddy<br>HTTPS / 反向代理</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-Access-3" data-look="neo" transform="translate(237, 610)"><rect class="basic label-container" style="" x="-76" y="-132" width="152" height="264"></rect><g class="label" style="" transform="translate(-60, -120)"><rect></rect><foreignObject width="120" height="240"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>统一入口与权限<br>chord HTTP / 会话 / principal / owner / 默认拒绝<br>唯一 RBAC：路由鉴权 + 工具调用前复核<br>密钥 · 日志 · 限流</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-Apps-4" data-look="neo" transform="translate(237, 874)"><rect class="basic label-container" style="" x="-76" y="-60" width="152" height="120"></rect><g class="label" style="" transform="translate(-60, -48)"><rect></rect><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>业务模块 · 同一进程<br>对话 / 记账 / 论文</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-Fixed-5" data-look="neo" transform="translate(136, 1126)"><rect class="basic label-container" style="" x="-76" y="-36" width="152" height="72"></rect><g class="label" style="" transform="translate(-60, -24)"><rect></rect><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>固定步骤路径<br>pi-ai 单次调用</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-1-flowchart-Agent-6" data-look="neo" transform="translate(338, 1126)"><rect class="basic label-container" style="" x="-76" y="-84" width="152" height="168"></rect><g class="label" style="" transform="translate(-60, -72)"><rect></rect><foreignObject width="120" height="144"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>多步 agent 路径<br>pi-agent-core + pi-durable<br>MCP / pi-schema 工具循环 · 检查点</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="whitepaper-diagram-1-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="whitepaper-diagram-1-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="whitepaper-diagram-1-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(0, 0%, 83.3333333333%)" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(0, 0%, 88.9215686275%)" stop-opacity="1"></stop></linearGradient></svg></div><details class="diagram-source"><summary>查看 Mermaid 源码</summary><pre tabindex="0"><code class="language-mermaid">flowchart TB
+    Browser[&quot;浏览器&lt;br&gt;网页入口&quot;]
+    CloudLLM[&quot;云端大模型&lt;br&gt;外部服务 · pi-ai 统一接入&quot;]
+
+    subgraph HOST [&quot;2C4G 服务器 · 常驻部分&quot;]
+        Caddy[&quot;Caddy&lt;br&gt;HTTPS / 反向代理&quot;]
+        subgraph NODE [&quot;单个 Node 22.19+ 主程序 · 三应用同进程&quot;]
+            Access[&quot;统一入口与权限&lt;br&gt;chord HTTP / 会话 / principal / owner / 默认拒绝&lt;br&gt;唯一 RBAC：路由鉴权 + 工具调用前复核&lt;br&gt;密钥 · 日志 · 限流&quot;]
+            Apps[&quot;业务模块 · 同一进程&lt;br&gt;对话 / 记账 / 论文&quot;]
+            Fixed[&quot;固定步骤路径&lt;br&gt;pi-ai 单次调用&quot;]
+            Agent[&quot;多步 agent 路径&lt;br&gt;pi-agent-core + pi-durable&lt;br&gt;MCP / pi-schema 工具循环 · 检查点&quot;]
+        end
+    end
+
+    Browser --&gt;|HTTPS| Caddy
+    Caddy --&gt;|HTTP 反代| Access
+    Access --&gt;|确认身份与角色后路由| Apps
+    Apps --&gt;|模型任务 · 步骤固定| Fixed
+    Apps --&gt;|模型任务 · 步骤数不确定| Agent
+    Fixed --&gt;|HTTPS · 单次生成| CloudLLM
+    Agent --&gt;|HTTPS · 经 pi-ai 多轮调用| CloudLLM
+</code></pre></details></figure><p>主图只回答“请求从哪里进来、在哪里鉴权、模型任务走哪条路”。三个应用是同一 Node 进程内的模块，不是三个独立服务；普通增删改查不强行经过模型，数据读写见下图。</p>
+<h3 id="数据与运行边界补充视图" class="doc-heading">数据与运行边界（补充视图）<a class="heading-anchor" href="#数据与运行边界补充视图" aria-label="链接到此标题：数据与运行边界（补充视图）"><span aria-hidden="true">#</span></a></h3><figure class="diagram" aria-label="数据与运行边界（补充视图）"><figcaption class="diagram-caption"><span>数据与运行边界（补充视图）</span><span>图 2 / 2</span></figcaption><div class="diagram-viewport" role="img" aria-label="数据与运行边界（补充视图）；宽图可横向滚动" tabindex="0"><svg class="mermaid-svg" id="whitepaper-diagram-2" width="1889.640625" xmlns="http://www.w3.org/2000/svg" class="flowchart" height="893.0487060546875" viewBox="4 4 1889.640625 893.0487060546875" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#whitepaper-diagram-2{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#whitepaper-diagram-2 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#whitepaper-diagram-2 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#whitepaper-diagram-2 .error-icon{fill:#552222;}#whitepaper-diagram-2 .error-text{fill:#552222;stroke:#552222;}#whitepaper-diagram-2 .edge-thickness-normal{stroke-width:1px;}#whitepaper-diagram-2 .edge-thickness-thick{stroke-width:3.5px;}#whitepaper-diagram-2 .edge-pattern-solid{stroke-dasharray:0;}#whitepaper-diagram-2 .edge-thickness-invisible{stroke-width:0;fill:none;}#whitepaper-diagram-2 .edge-pattern-dashed{stroke-dasharray:3;}#whitepaper-diagram-2 .edge-pattern-dotted{stroke-dasharray:2;}#whitepaper-diagram-2 .marker{fill:#52627a;stroke:#52627a;}#whitepaper-diagram-2 .marker.cross{stroke:#52627a;}#whitepaper-diagram-2 svg{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:16px;}#whitepaper-diagram-2 p{margin:0;}#whitepaper-diagram-2 .label{font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;color:#000000;}#whitepaper-diagram-2 .cluster-label text{fill:#333;}#whitepaper-diagram-2 .cluster-label span{color:#333;}#whitepaper-diagram-2 .cluster-label span p{background-color:transparent;}#whitepaper-diagram-2 .label text,#whitepaper-diagram-2 span{fill:#000000;color:#000000;}#whitepaper-diagram-2 .node rect,#whitepaper-diagram-2 .node circle,#whitepaper-diagram-2 .node ellipse,#whitepaper-diagram-2 .node polygon,#whitepaper-diagram-2 .node path{fill:#eee;stroke:#999;stroke-width:1px;}#whitepaper-diagram-2 .rough-node .label text,#whitepaper-diagram-2 .node .label text,#whitepaper-diagram-2 .image-shape .label,#whitepaper-diagram-2 .icon-shape .label{text-anchor:middle;}#whitepaper-diagram-2 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#whitepaper-diagram-2 .rough-node .label,#whitepaper-diagram-2 .node .label,#whitepaper-diagram-2 .image-shape .label,#whitepaper-diagram-2 .icon-shape .label{text-align:center;}#whitepaper-diagram-2 .node.clickable{cursor:pointer;}#whitepaper-diagram-2 .root .anchor path{fill:#52627a!important;stroke-width:0;stroke:#52627a;}#whitepaper-diagram-2 .arrowheadPath{fill:#333333;}#whitepaper-diagram-2 .edgePaths .path{stroke:#52627a;stroke-width:1px;}#whitepaper-diagram-2 .flowchart-link{stroke:#52627a;fill:none;}#whitepaper-diagram-2 .edgeLabel{background-color:#ffffff;text-align:center;}#whitepaper-diagram-2 .edgeLabel p{background-color:#ffffff;}#whitepaper-diagram-2 .edgeLabel rect{opacity:0.5;background-color:#ffffff;fill:#ffffff;}#whitepaper-diagram-2 .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#whitepaper-diagram-2 .cluster rect{fill:#f8fafc;stroke:#b9c4d4;stroke-width:1px;}#whitepaper-diagram-2 .cluster text{fill:#333;}#whitepaper-diagram-2 .cluster span{color:#333;}#whitepaper-diagram-2 .node .collapsed-indicator{fill:#b9c4d4;stroke:none;opacity:0.6;}#whitepaper-diagram-2 .node .collapsed-separator{stroke:#b9c4d4;stroke-width:0.75px;}#whitepaper-diagram-2 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;font-size:12px;background:#ffffff;border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#whitepaper-diagram-2 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#whitepaper-diagram-2 rect.text{fill:none;stroke-width:0;}#whitepaper-diagram-2 .icon-shape,#whitepaper-diagram-2 .image-shape{background-color:#ffffff;text-align:center;}#whitepaper-diagram-2 .icon-shape p,#whitepaper-diagram-2 .image-shape p{background-color:#ffffff;padding:2px;}#whitepaper-diagram-2 .icon-shape .label rect,#whitepaper-diagram-2 .image-shape .label rect{opacity:0.5;background-color:#ffffff;fill:#ffffff;}#whitepaper-diagram-2 .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#whitepaper-diagram-2 .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#whitepaper-diagram-2 .node .neo-node{stroke:#999;}#whitepaper-diagram-2 [data-look="neo"].node rect,#whitepaper-diagram-2 [data-look="neo"].cluster rect,#whitepaper-diagram-2 [data-look="neo"].node polygon{stroke:url(#whitepaper-diagram-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-2 [data-look="neo"].swimlane.cluster rect{filter:none;}#whitepaper-diagram-2 [data-look="neo"].node path{stroke:url(#whitepaper-diagram-2-gradient);stroke-width:1px;}#whitepaper-diagram-2 [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-2 [data-look="neo"].node .neo-line path{stroke:#999;filter:none;}#whitepaper-diagram-2 [data-look="neo"].node circle{stroke:url(#whitepaper-diagram-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-2 [data-look="neo"].node circle .state-start{fill:#000000;}#whitepaper-diagram-2 [data-look="neo"].icon-shape .icon{fill:url(#whitepaper-diagram-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-2 [data-look="neo"].icon-shape .icon-neo path{stroke:url(#whitepaper-diagram-2-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#whitepaper-diagram-2 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="whitepaper-diagram-2_flowchart-v2-pointEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-pointStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-pointEnd-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto"><path d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-pointStart-margin" class="marker flowchart-v2" viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto"><polygon points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></polygon></marker><marker id="whitepaper-diagram-2_flowchart-v2-circleEnd" class="marker flowchart-v2" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-2_flowchart-v2-circleStart" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-2_flowchart-v2-circleEnd-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-2_flowchart-v2-circleStart-margin" class="marker flowchart-v2" viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;"></circle></marker><marker id="whitepaper-diagram-2_flowchart-v2-crossEnd" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-crossStart" class="marker cross flowchart-v2" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-crossEnd-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;"></path></marker><marker id="whitepaper-diagram-2_flowchart-v2-crossStart-margin" class="marker cross flowchart-v2" viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"><g class="cluster" id="whitepaper-diagram-2-EXTERNAL" data-look="neo"><rect style="" x="1685.640625" y="12" width="200" height="601.1486968994141"></rect><g class="cluster-label" transform="translate(1753.640625, 12)"><foreignObject width="64" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>外部服务</p></span></div></foreignObject></g></g><g class="cluster" id="whitepaper-diagram-2-HOST2" data-look="neo"><rect style="" x="12" y="17.899999999999977" width="1281.640625" height="871.1487121582031"></rect><g class="cluster-label" transform="translate(607.5625, 17.899999999999977)"><foreignObject width="90.515625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>2C4G 服务器</p></span></div></foreignObject></g></g><g class="cluster" id="whitepaper-diagram-2-ONDEMAND" data-look="neo"><rect style="" x="534.640625" y="68.89999999999998" width="200" height="463"></rect><g class="cluster-label" transform="translate(564.5234375, 68.89999999999998)"><foreignObject width="140.234375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>按需运行 · 干完即停</p></span></div></foreignObject></g></g></g><g class="edges edgePaths"><path d="M188,548.2357142857143L222.92893218813452,548.2357142857143Q230,548.2357142857143 230,555.3067820975798L230,765.9032882672361Q230,772.9743560791015 237.07106781186548,772.9743560791015L530.640625,772.9743560791015" id="whitepaper-diagram-2-L_NodeApp_SQLite_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 558.0509643554688 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_SQLite_0" data-points="W3sieCI6MTg4LCJ5Ijo1NDguMjM1NzE0Mjg1NzE0M30seyJ4IjoyMzAsInkiOjU0OC4yMzU3MTQyODU3MTQzfSx7IngiOjIzMCwieSI6NzcyLjk3NDM1NjA3OTEwMTV9LHsieCI6NTM0LjY0MDYyNSwieSI6NzcyLjk3NDM1NjA3OTEwMTV9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M188,534.1785714285714L234.92893218813452,534.1785714285714Q242,534.1785714285714 242,541.2496392404369L242,599.3289321881346Q242,606.4 249.07106781186548,606.4L1088.5695571881345,606.4Q1095.640625,606.4 1095.640625,599.3289321881346L1095.640625,549.3839484096611Q1095.640625,542.3128805977957 1102.7116928118655,542.3128805977957L1121.640625,542.3128805977957" id="whitepaper-diagram-2-L_NodeApp_PG_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 1055.292724609375 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_PG_0" data-points="W3sieCI6MTg4LCJ5Ijo1MzQuMTc4NTcxNDI4NTcxNH0seyJ4IjoyNDIsInkiOjUzNC4xNzg1NzE0Mjg1NzE0fSx7IngiOjI0MiwieSI6NjA2LjR9LHsieCI6MTA5NS42NDA2MjUsInkiOjYwNi40fSx7IngiOjEwOTUuNjQwNjI1LCJ5Ijo1NDIuMzEyODgwNTk3Nzk1N30seyJ4IjoxMTI1LjY0MDYyNSwieSI6NTQyLjMxMjg4MDU5Nzc5NTd9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M188,506.0642857142857L222.92893218813452,506.0642857142857Q230,506.0642857142857 230,498.9932179024202L230,308.97106781186545Q230,301.9 237.07106781186548,301.9L524.640625,301.9L554.640625,301.9" id="whitepaper-diagram-2-L_NodeApp_Worker_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_Worker_0" data-points="W3sieCI6MTg4LCJ5Ijo1MDYuMDY0Mjg1NzE0Mjg1N30seyJ4IjoyMzAsInkiOjUwNi4wNjQyODU3MTQyODU3fSx7IngiOjIzMCwieSI6MzAxLjl9LHsieCI6NTI0LjY0MDYyNSwieSI6MzAxLjl9LHsieCI6NTU4LjY0MDYyNSwieSI6MzAxLjl9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M188,520.1214285714286L234.92893218813452,520.1214285714286Q242,520.1214285714286 242,513.0503607595631L242,454.97106781186545Q242,447.9 249.07106781186548,447.9L524.640625,447.9L554.640625,447.9" id="whitepaper-diagram-2-L_NodeApp_LightRAG_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_LightRAG_0" data-points="W3sieCI6MTg4LCJ5Ijo1MjAuMTIxNDI4NTcxNDI4Nn0seyJ4IjoyNDIsInkiOjUyMC4xMjE0Mjg1NzE0Mjg2fSx7IngiOjI0MiwieSI6NDQ3Ljl9LHsieCI6NTI0LjY0MDYyNSwieSI6NDQ3Ljl9LHsieCI6NTU4LjY0MDYyNSwieSI6NDQ3Ljl9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M710.640625,447.9L804.640625,447.9L1088.5695571881345,447.9Q1095.640625,447.9 1095.640625,454.97106781186545L1095.640625,481.058908733196Q1095.640625,488.1299765450615 1102.7116928118655,488.1299765450615L1121.640625,488.1299765450615" id="whitepaper-diagram-2-L_LightRAG_PG_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 441.90167236328125 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_LightRAG_PG_0" data-points="W3sieCI6NzEwLjY0MDYyNSwieSI6NDQ3Ljl9LHsieCI6ODA0LjY0MDYyNSwieSI6NDQ3Ljl9LHsieCI6MTA5NS42NDA2MjUsInkiOjQ0Ny45fSx7IngiOjEwOTUuNjQwNjI1LCJ5Ijo0ODguMTI5OTc2NTQ1MDYxNX0seyJ4IjoxMTI1LjY0MDYyNSwieSI6NDg4LjEyOTk3NjU0NTA2MTV9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M188,492.00714285714287L210.92893218813452,492.00714285714287Q218,492.00714285714287 218,484.9360750452774L218,207.54249638329406Q218,200.4714285714286 225.07106781186548,200.4714285714286L487.5695571881345,200.4714285714286Q494.640625,200.4714285714286 494.640625,193.4003607595631L494.640625,174.97106781186548Q494.640625,167.9 501.7116928118655,167.9L524.640625,167.9L554.640625,167.9" id="whitepaper-diagram-2-L_NodeApp_Docker_0" class="edge-thickness-normal edge-pattern-dotted edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_Docker_0" data-points="W3sieCI6MTg4LCJ5Ijo0OTIuMDA3MTQyODU3MTQyODd9LHsieCI6MjE4LCJ5Ijo0OTIuMDA3MTQyODU3MTQyODd9LHsieCI6MjE4LCJ5IjoyMDAuNDcxNDI4NTcxNDI4Nn0seyJ4Ijo0OTQuNjQwNjI1LCJ5IjoyMDAuNDcxNDI4NTcxNDI4Nn0seyJ4Ijo0OTQuNjQwNjI1LCJ5IjoxNjcuOX0seyJ4Ijo1MjQuNjQwNjI1LCJ5IjoxNjcuOX0seyJ4Ijo1NTguNjQwNjI1LCJ5IjoxNjcuOX1d" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M188,562.2928571428572L210.92893218813452,562.2928571428572Q218,562.2928571428572 218,569.3639249547227L218,869.9776443463377Q218,877.0487121582032 225.07106781186548,877.0487121582032L1303.640625,877.0487121582032L1316.5695571881345,877.0487121582032Q1323.640625,877.0487121582032 1323.640625,869.9776443463377L1323.640625,698.1640110033939Q1323.640625,691.0929431915283 1330.7116928118655,691.0929431915283L1576.5695571881345,691.0929431915283Q1583.640625,691.0929431915283 1583.640625,684.0218753796628L1583.640625,461.308242036719Q1583.640625,454.2371742248535 1590.7116928118655,454.2371742248535L1603.640625,454.2371742248535L1660.5695571881345,454.2371742248535Q1667.640625,454.2371742248535 1667.640625,447.16610641298803L1667.640625,382.47106781186545Q1667.640625,375.4 1674.7116928118655,375.4L1705.640625,375.4" id="whitepaper-diagram-2-L_NodeApp_Embedding_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 2308.732421875 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_NodeApp_Embedding_0" data-points="W3sieCI6MTg4LCJ5Ijo1NjIuMjkyODU3MTQyODU3Mn0seyJ4IjoyMTgsInkiOjU2Mi4yOTI4NTcxNDI4NTcyfSx7IngiOjIxOCwieSI6ODc3LjA0ODcxMjE1ODIwMzJ9LHsieCI6MTMwMy42NDA2MjUsInkiOjg3Ny4wNDg3MTIxNTgyMDMyfSx7IngiOjEzMjMuNjQwNjI1LCJ5Ijo4NzcuMDQ4NzEyMTU4MjAzMn0seyJ4IjoxMzIzLjY0MDYyNSwieSI6NjkxLjA5Mjk0MzE5MTUyODN9LHsieCI6MTU4My42NDA2MjUsInkiOjY5MS4wOTI5NDMxOTE1MjgzfSx7IngiOjE1ODMuNjQwNjI1LCJ5Ijo0NTQuMjM3MTc0MjI0ODUzNX0seyJ4IjoxNjAzLjY0MDYyNSwieSI6NDU0LjIzNzE3NDIyNDg1MzV9LHsieCI6MTY2Ny42NDA2MjUsInkiOjQ1NC4yMzcxNzQyMjQ4NTM1fSx7IngiOjE2NjcuNjQwNjI1LCJ5IjozNzUuNH0seyJ4IjoxNzA5LjY0MDYyNSwieSI6Mzc1LjR9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M710.641,296.86 L740.161,296.86 Q740.641,296.86 740.641,296.38 L740.641,296.38 Q740.641,295.9 741.121,295.9 L804.641,295.9 L842.141,295.9 Q846.641,295.9 846.641,291.4 L846.641,291.4 Q846.641,286.9 851.141,286.9 L1303.641,286.9 L1322.841,286.9 Q1323.641,286.9 1323.641,286.1 L1323.641,286.1 Q1323.641,285.3 1324.441,285.3 L1576.57,285.3 Q1583.641,285.3 1583.641,292.371 L1583.641,294.729 Q1583.641,301.8 1590.712,301.8 L1603.641,301.8 L1672.57,301.8 Q1679.641,301.8 1679.641,308.871 L1679.641,351.529 Q1679.641,358.6 1686.712,358.6 L1705.641,358.6" id="whitepaper-diagram-2-L_Worker_Embedding_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 1060.8489990234375 4; stroke-dashoffset: 0;" data-edge="true" data-et="edge" data-id="L_Worker_Embedding_0" data-points="W3sieCI6NzEwLjY0MDYyNSwieSI6Mjk2Ljg2fSx7IngiOjc0MC42NDA2MjUsInkiOjI5Ni44Nn0seyJ4Ijo3NDAuNjQwNjI1LCJ5IjoyOTUuOX0seyJ4Ijo4MDQuNjQwNjI1LCJ5IjoyOTUuOTAwMDAwMDAwMDAwMDN9LHsieCI6ODQ2LjY0MDYyNSwieSI6Mjk1LjkwMDAwMDAwMDAwMDAzfSx7IngiOjg0Ni42NDA2MjUsInkiOjI4Ni45MDAwMDAwMDAwMDAxfSx7IngiOjEzMDMuNjQwNjI1LCJ5IjoyODYuOX0seyJ4IjoxMzIzLjY0MDYyNSwieSI6Mjg2Ljl9LHsieCI6MTMyMy42NDA2MjUsInkiOjI4NS4zfSx7IngiOjE1ODMuNjQwNjI1LCJ5IjoyODUuM30seyJ4IjoxNTgzLjY0MDYyNSwieSI6MzAxLjh9LHsieCI6MTYwMy42NDA2MjUsInkiOjMwMS44fSx7IngiOjE2NzkuNjQwNjI1LCJ5IjozMDEuOH0seyJ4IjoxNjc5LjY0MDYyNSwieSI6MzU4LjZ9LHsieCI6MTcwOS42NDA2MjUsInkiOjM1OC42fV0=" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M710.640625,306.94000000000005L804.640625,306.94000000000005L1303.640625,306.94000000000005L1336.5695571881345,306.94000000000005Q1343.640625,306.94000000000005 1343.640625,314.01106781186553L1343.640625,323.22893218813454Q1343.640625,330.3 1350.7116928118655,330.3L1576.5695571881345,330.3Q1583.640625,330.3 1583.640625,323.22893218813454L1583.640625,320.8710678118655Q1583.640625,313.8 1590.7116928118655,313.8L1603.640625,313.8L1660.5695571881345,313.8Q1667.640625,313.8 1667.640625,306.72893218813454L1667.640625,264.0710678118655Q1667.640625,257 1674.7116928118655,257L1705.640625,257" id="whitepaper-diagram-2-L_Worker_MinerU_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 1071.6751708984375 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Worker_MinerU_0" data-points="W3sieCI6NzEwLjY0MDYyNSwieSI6MzA2Ljk0MDAwMDAwMDAwMDA1fSx7IngiOjgwNC42NDA2MjUsInkiOjMwNi45NDAwMDAwMDAwMDAwNX0seyJ4IjoxMzAzLjY0MDYyNSwieSI6MzA2Ljk0MDAwMDAwMDAwMDA1fSx7IngiOjEzNDMuNjQwNjI1LCJ5IjozMDYuOTQwMDAwMDAwMDAwMDV9LHsieCI6MTM0My42NDA2MjUsInkiOjMzMC4zfSx7IngiOjE1ODMuNjQwNjI1LCJ5IjozMzAuM30seyJ4IjoxNTgzLjY0MDYyNSwieSI6MzEzLjh9LHsieCI6MTYwMy42NDA2MjUsInkiOjMxMy44fSx7IngiOjE2NjcuNjQwNjI1LCJ5IjozMTMuOH0seyJ4IjoxNjY3LjY0MDYyNSwieSI6MjU3fSx7IngiOjE3MDkuNjQwNjI1LCJ5IjoyNTd9XQ==" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M710.640625,286.78L739.200625,286.78Q740.640625,286.78 740.640625,285.34L740.640625,285.34Q740.640625,283.9 742.080625,283.9L804.640625,283.90000000000003L827.5695571881345,283.90000000000003Q834.640625,283.90000000000003 834.640625,276.82893218813456L834.640625,272.97106781186557Q834.640625,265.9000000000001 841.7116928118655,265.9000000000001L1303.640625,265.9L1316.5695571881345,265.9Q1323.640625,265.9 1323.640625,258.8289321881345L1323.640625,162.47106781186545Q1323.640625,155.39999999999998 1330.7116928118655,155.39999999999998L1576.5695571881345,155.39999999999998Q1583.640625,155.39999999999998 1583.640625,148.3289321881345L1583.640625,130.07106781186548Q1583.640625,123 1590.7116928118655,123L1603.640625,123L1705.640625,123" id="whitepaper-diagram-2-L_Worker_Notify_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 1137.7100830078125 4; stroke-dashoffset: 0;;" data-edge="true" data-et="edge" data-id="L_Worker_Notify_0" data-points="W3sieCI6NzEwLjY0MDYyNSwieSI6Mjg2Ljc4fSx7IngiOjc0MC42NDA2MjUsInkiOjI4Ni43OH0seyJ4Ijo3NDAuNjQwNjI1LCJ5IjoyODMuOX0seyJ4Ijo4MDQuNjQwNjI1LCJ5IjoyODMuOTAwMDAwMDAwMDAwMDN9LHsieCI6ODM0LjY0MDYyNSwieSI6MjgzLjkwMDAwMDAwMDAwMDAzfSx7IngiOjgzNC42NDA2MjUsInkiOjI2NS45MDAwMDAwMDAwMDAxfSx7IngiOjEzMDMuNjQwNjI1LCJ5IjoyNjUuOX0seyJ4IjoxMzIzLjY0MDYyNSwieSI6MjY1Ljl9LHsieCI6MTMyMy42NDA2MjUsInkiOjE1NS4zOTk5OTk5OTk5OTk5OH0seyJ4IjoxNTgzLjY0MDYyNSwieSI6MTU1LjM5OTk5OTk5OTk5OTk4fSx7IngiOjE1ODMuNjQwNjI1LCJ5IjoxMjN9LHsieCI6MTYwMy42NDA2MjUsInkiOjEyM30seyJ4IjoxNzA5LjY0MDYyNSwieSI6MTIzfV0=" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path><path d="M710.641,317.02 L739.201,317.02 Q740.641,317.02 740.641,318.46 L740.641,318.46 Q740.641,319.9 742.081,319.9 L804.641,319.9 L830.141,319.9 Q834.641,319.9 834.641,324.4 L834.641,324.4 Q834.641,328.9 839.141,328.9 L1303.641,328.9 L1316.57,328.9 Q1323.641,328.9 1323.641,335.971 L1323.641,395.048 Q1323.641,402.119 1330.712,402.119 L1576.57,402.119 Q1583.641,402.119 1583.641,409.19 L1583.641,435.166 Q1583.641,442.237 1590.712,442.237 L1603.641,442.237 L1672.57,442.237 Q1679.641,442.237 1679.641,449.308 L1679.641,514.003 Q1679.641,521.074 1686.712,521.074 L1705.641,521.074" id="whitepaper-diagram-2-L_Worker_COS_0" class="edge-thickness-normal edge-pattern-solid edge-thickness-normal edge-pattern-solid flowchart-link" style="stroke-dasharray: 0 0 1174.5938720703125 4; stroke-dashoffset: 0;" data-edge="true" data-et="edge" data-id="L_Worker_COS_0" data-points="W3sieCI6NzEwLjY0MDYyNSwieSI6MzE3LjAyfSx7IngiOjc0MC42NDA2MjUsInkiOjMxNy4wMn0seyJ4Ijo3NDAuNjQwNjI1LCJ5IjozMTkuOX0seyJ4Ijo4MDQuNjQwNjI1LCJ5IjozMTkuOTAwMDAwMDAwMDAwMDN9LHsieCI6ODM0LjY0MDYyNSwieSI6MzE5LjkwMDAwMDAwMDAwMDAzfSx7IngiOjgzNC42NDA2MjUsInkiOjMyOC45MDAwMDAwMDAwMDAxfSx7IngiOjEzMDMuNjQwNjI1LCJ5IjozMjguOX0seyJ4IjoxMzIzLjY0MDYyNSwieSI6MzI4Ljl9LHsieCI6MTMyMy42NDA2MjUsInkiOjQwMi4xMTg1ODcxMTI0MjY4fSx7IngiOjE1ODMuNjQwNjI1LCJ5Ijo0MDIuMTE4NTg3MTEyNDI2OH0seyJ4IjoxNTgzLjY0MDYyNSwieSI6NDQyLjIzNzE3NDIyNDg1MzQ1fSx7IngiOjE2MDMuNjQwNjI1LCJ5Ijo0NDIuMjM3MTc0MjI0ODUzNDV9LHsieCI6MTY3OS42NDA2MjUsInkiOjQ0Mi4yMzcxNzQyMjQ4NTM0NX0seyJ4IjoxNjc5LjY0MDYyNSwieSI6NTIxLjA3NDM0ODQ0OTcwN30seyJ4IjoxNzA5LjY0MDYyNSwieSI6NTIxLjA3NDM0ODQ0OTcwN31d" data-look="neo" marker-end="url(#whitepaper-diagram-2_flowchart-v2-pointEnd-margin)"></path></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(368.3203125, 772.4743560791015)"><g class="label" data-id="L_NodeApp_SQLite_0" transform="translate(-60.234375, -24)"><foreignObject width="120.46875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>账号 · 会话 · 对话<br>检查点 · 待办</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(664.640625, 605.9)"><g class="label" data-id="L_NodeApp_PG_0" transform="translate(-76.234375, -24)"><foreignObject width="152.46875" height="48"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>账本 · 论文 · 笔记<br>索引 · 调用日志 · 费用</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(368.3203125, 301.4)"><g class="label" data-id="L_NodeApp_Worker_0" transform="translate(-72.578125, -12)"><foreignObject width="145.15625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>慢活：jobs + 待办表</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(368.3203125, 447.4)"><g class="label" data-id="L_NodeApp_LightRAG_0" transform="translate(-96.3203125, -12)"><foreignObject width="192.640625" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>建索引 / 重建关系网 · HTTP</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(971.140625, 447.4)"><g class="label" data-id="L_LightRAG_PG_0" transform="translate(-94.5, -12)"><foreignObject width="189" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>键值 / 向量 / 图 / 文档状态</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(368.3203125, 199.9714285714286)"><g class="label" data-id="L_NodeApp_Docker_0" transform="translate(-55.5, -12)"><foreignObject width="111" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>命令 / 文件隔离</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1463.640625, 690.5929431915283)"><g class="label" data-id="L_NodeApp_Embedding_0" transform="translate(-63.5, -12)"><foreignObject width="127" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>查询向量化 / 重排</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1463.640625, 284.80000000000007)"><g class="label" data-id="L_Worker_Embedding_0" transform="translate(-63.5, -12)"><foreignObject width="127" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>资料向量化 / 重排</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1343.640625, 306.94000000000005)"><g class="label" data-id="L_Worker_MinerU_0" transform="translate(-88.1875, -12)"><foreignObject width="176.375" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>先下载 PDF，再上传解析</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1463.640625, 154.89999999999998)"><g class="label" data-id="L_Worker_Notify_0" transform="translate(-90.234375, -12)"><foreignObject width="180.46875" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>定时推送 · 官方 Webhook</p></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1463.640625, 401.6185871124268)"><g class="label" data-id="L_Worker_COS_0" transform="translate(-100, -24)"><foreignObject width="200" height="48"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;"><span class="edgeLabel"><p>PDF / 附件 · Markdown 快照 · 数据库备份</p></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default" id="whitepaper-diagram-2-flowchart-NodeApp-0" data-look="neo" transform="translate(112, 527.15)"><rect class="basic label-container" style="" x="-76" y="-60" width="152" height="120"></rect><g class="label" style="" transform="translate(-60, -48)"><rect></rect><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>单个 Node 主程序<br>对话 / 记账 / 论文</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-SQLite-1" data-look="neo" transform="translate(606.640625, 772.9743560791015)"><path d="M0,13.382899628252789 a72,13.382899628252789 0,0,0 144,0 a72,13.382899628252789 0,0,0 -144,0 l0,157.3828996282528 a72,13.382899628252789 0,0,0 144,0 l0,-157.3828996282528" class="basic label-container outer-path" style="" transform="translate(-72, -92.07434944237919)"></path><g class="label" style="" transform="translate(-60, -50)"><rect></rect><foreignObject width="120" height="120"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>SQLite · store.sqlite<br>chord / pi-durable 框架状态</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-PG-2" data-look="neo" transform="translate(1197.640625, 515.2214285714285)"><path d="M0,13.382899628252789 a72,13.382899628252789 0,0,0 144,0 a72,13.382899628252789 0,0,0 -144,0 l0,157.3828996282528 a72,13.382899628252789 0,0,0 144,0 l0,-157.3828996282528" class="basic label-container outer-path" style="" transform="translate(-72, -92.07434944237919)"></path><g class="label" style="" transform="translate(-60, -50)"><rect></rect><foreignObject width="120" height="120"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>PostgreSQL + pgvector<br>业务数据 + 向量<br>单库：user_id + shared</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-Worker-3" data-look="neo" transform="translate(634.640625, 301.9)"><rect class="basic label-container" style="" x="-76" y="-36" width="152" height="72"></rect><g class="label" style="" transform="translate(-60, -24)"><rect></rect><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>后台小程序<br>并发 1–2 · 幂等</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-LightRAG-4" data-look="neo" transform="translate(634.640625, 447.9)"><rect class="basic label-container" style="" x="-76" y="-60" width="152" height="120"></rect><g class="label" style="" transform="translate(-60, -48)"><rect></rect><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>LightRAG 接口服务<br>PostgreSQL 后端 · 按需启停</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-Docker-5" data-look="neo" transform="translate(634.640625, 167.9)"><rect class="basic label-container" style="" x="-76" y="-48" width="152" height="96"></rect><g class="label" style="" transform="translate(-60, -36)"><rect></rect><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>Docker 沙箱<br>第五步才启用 · 密钥留在主程序</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-COS-6" data-look="neo" transform="translate(1781.640625, 521.074348449707)"><path d="M0,13.382899628252789 a72,13.382899628252789 0,0,0 144,0 a72,13.382899628252789 0,0,0 -144,0 l0,109.38289962825279 a72,13.382899628252789 0,0,0 144,0 l0,-109.38289962825279" class="basic label-container outer-path" style="" transform="translate(-72, -68.07434944237919)"></path><g class="label" style="" transform="translate(-60, -26)"><rect></rect><foreignObject width="120" height="72"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>COS 对象存储<br>原件 / 快照 / 备份</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-Embedding-7" data-look="neo" transform="translate(1785.640625, 367)"><rect class="basic label-container" style="" x="-76" y="-36" width="152" height="72"></rect><g class="label" style="" transform="translate(-60, -24)"><rect></rect><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>云端向量 / 重排接口</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-MinerU-8" data-look="neo" transform="translate(1785.640625, 257)"><rect class="basic label-container" style="" x="-76" y="-24" width="152" height="48"></rect><g class="label" style="" transform="translate(-60, -12)"><rect></rect><foreignObject width="120" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: nowrap; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>MinerU 在线 API</p></span></div></foreignObject></g></g><g class="node default" id="whitepaper-diagram-2-flowchart-Notify-9" data-look="neo" transform="translate(1785.640625, 123)"><rect class="basic label-container" style="" x="-76" y="-60" width="152" height="120"></rect><g class="label" style="" transform="translate(-60, -48)"><rect></rect><foreignObject width="120" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 120px; text-align: center; width: 120px;"><span class="nodeLabel"><p>官方通知通道<br>企业微信群机器人主 / Server 酱备</p></span></div></foreignObject></g></g></g></g></g><defs><filter id="whitepaper-diagram-2-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><defs><filter id="whitepaper-diagram-2-drop-shadow-small" height="150%" width="150%"><feDropShadow dx="2" dy="2" stdDeviation="0" flood-opacity="0.06" flood-color="#000000"></feDropShadow></filter></defs><linearGradient id="whitepaper-diagram-2-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="hsl(0, 0%, 83.3333333333%)" stop-opacity="1"></stop><stop offset="100%" stop-color="hsl(0, 0%, 88.9215686275%)" stop-opacity="1"></stop></linearGradient></svg></div><details class="diagram-source"><summary>查看 Mermaid 源码</summary><pre tabindex="0"><code class="language-mermaid">flowchart LR
+    subgraph HOST2 [&quot;2C4G 服务器&quot;]
+        NodeApp[&quot;单个 Node 主程序&lt;br&gt;对话 / 记账 / 论文&quot;]
+        SQLite[(&quot;SQLite · store.sqlite&lt;br&gt;chord / pi-durable 框架状态&quot;)]
+        PG[(&quot;PostgreSQL + pgvector&lt;br&gt;业务数据 + 向量&lt;br&gt;单库：user_id + shared&quot;)]
+        subgraph ONDEMAND [&quot;按需运行 · 干完即停&quot;]
+            Worker[&quot;后台小程序&lt;br&gt;并发 1–2 · 幂等&quot;]
+            LightRAG[&quot;LightRAG 接口服务&lt;br&gt;PostgreSQL 后端 · 按需启停&quot;]
+            Docker[&quot;Docker 沙箱&lt;br&gt;第五步才启用 · 密钥留在主程序&quot;]
+        end
+    end
+
+    subgraph EXTERNAL [&quot;外部服务&quot;]
+        COS[(&quot;COS 对象存储&lt;br&gt;原件 / 快照 / 备份&quot;)]
+        Embedding[&quot;云端向量 / 重排接口&quot;]
+        MinerU[&quot;MinerU 在线 API&quot;]
+        Notify[&quot;官方通知通道&lt;br&gt;企业微信群机器人主 / Server 酱备&quot;]
+    end
+
+    NodeApp --&gt;|账号 · 会话 · 对话&lt;br&gt;检查点 · 待办| SQLite
+    NodeApp --&gt;|账本 · 论文 · 笔记&lt;br&gt;索引 · 调用日志 · 费用| PG
+    NodeApp -.-&gt;|慢活：jobs + 待办表| Worker
+    NodeApp -.-&gt;|建索引 / 重建关系网 · HTTP| LightRAG
+    LightRAG --&gt;|键值 / 向量 / 图 / 文档状态| PG
+    NodeApp -.-&gt;|命令 / 文件隔离| Docker
+    NodeApp --&gt;|查询向量化 / 重排| Embedding
+    Worker --&gt;|资料向量化 / 重排| Embedding
+    Worker --&gt;|先下载 PDF，再上传解析| MinerU
+    Worker --&gt;|定时推送 · 官方 Webhook| Notify
+    Worker --&gt;|PDF / 附件 · Markdown 快照 · 数据库备份| COS
+</code></pre></details></figure><p><strong>读图</strong>：实线箭头表示调用或数据流，虚线箭头表示按需启动或派发，圆柱表示存储。LightRAG、Docker 和后台小程序都不常驻；<strong>Redis / 消息队列不采用</strong>，慢活走 chord jobs + SQLite 待办表。</p>
+<p>画法依据：<a href="https://c4model.com/diagrams" target="_blank" rel="noopener noreferrer">C4 的视图分层</a>、<a href="https://c4model.com/diagrams/notation" target="_blank" rel="noopener noreferrer">C4 节点与连线规范</a> 和 <a href="https://docs.aws.amazon.com/en_us/marketplace/latest/userguide/saas-guidelines.html" target="_blank" rel="noopener noreferrer">AWS 按逻辑运行位置划分边界</a>；图源遵循 <a href="https://mermaid.js.org/syntax/flowchart.html" target="_blank" rel="noopener noreferrer">Mermaid Flowchart 官方语法</a>，便于后续在 HTML 中同步渲染。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#05-数据存哪2026-11-11-拍板方案-a"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">05 数据存哪（2026-11-11 拍板：方案 A）</span></a><a class="chapter-nav-link chapter-nav-next" href="#07-实际开几个程序2c4g-版"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">07 实际开几个程序（2C4G 版）</span></a></nav></section><section class="chapter" aria-labelledby="07-实际开几个程序2c4g-版" data-chapter="7"><h2 id="07-实际开几个程序2c4g-版" class="doc-heading">07 实际开几个程序（2C4G 版）<a class="heading-anchor" href="#07-实际开几个程序2c4g-版" aria-label="链接到此标题：07 实际开几个程序（2C4G 版）"><span aria-hidden="true">#</span></a></h2><p><strong>一直开着的，三样</strong></p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>程序</th>
+<th>干什么</th>
+<th>大概内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主程序（Node 22.19+）</td>
+<td>认人、分角色、发页面、管密钥、记日志；三个应用都装在它里面</td>
+<td>0.8–1.4G</td>
+</tr>
+<tr>
+<td>PostgreSQL + pgvector</td>
+<td>账本、论文、笔记、向量、日志；也是 LightRAG 的后端</td>
+<td>0.15–0.25G</td>
+</tr>
+<tr>
+<td>Caddy</td>
+<td>网址和加密</td>
+<td>约 0.02G</td>
+</tr>
+</tbody>
+</table></div><p><strong>叫了才来的</strong></p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>程序</th>
+<th>干什么</th>
+<th>内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>后台小程序</td>
+<td>下载论文找源、定时推送、把资料变成向量。干完就关，最多同时 1–2 个</td>
+<td>0–0.3G</td>
+</tr>
+<tr>
+<td>LightRAG（接口服务）</td>
+<td>建索引、重建关系网时起，用 PG 后端所以瘦，干完关</td>
+<td>0 / 0.1–0.2G</td>
+</tr>
+<tr>
+<td>Docker 小房间</td>
+<td>第五步 agent 模式要跑命令改文件时才开</td>
+<td>0.1–0.2G</td>
+</tr>
+</tbody>
+</table></div><p><strong>在别人机器上的</strong>：云端大模型、云端向量接口、COS 网盘、聊天软件。</p>
+<p><strong>加起来</strong>：</p>
+<ul>
+<li><strong>平时</strong>（只有常驻三样）：约 1.5–2.3G，4G 内存留 1.7G+ 空闲</li>
+<li><strong>最忙时</strong>（后台 + LightRAG 建索引 + Docker 全开）：约 1.8–2.9G，仍留 1G+，不碰交换区</li>
+</ul>
+<p><strong>别给每个应用各开一个常驻程序</strong>——2C4G 上太浪费。三个应用是装在同一个程序里的模块，互不干扰靠的是契约、各自的数据表、每次请求带&quot;现在是谁&quot;。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#06-整体分几层"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">06 整体分几层</span></a><a class="chapter-nav-link chapter-nav-next" href="#08-三个应用做什么已拍板"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">08 三个应用做什么（已拍板）</span></a></nav></section><section class="chapter" aria-labelledby="08-三个应用做什么已拍板" data-chapter="8"><h2 id="08-三个应用做什么已拍板" class="doc-heading">08 三个应用做什么（已拍板）<a class="heading-anchor" href="#08-三个应用做什么已拍板" aria-label="链接到此标题：08 三个应用做什么（已拍板）"><span aria-hidden="true">#</span></a></h2><h3 id="判活规矩所有功能先过这一条" class="doc-heading">判活规矩（所有功能先过这一条）<a class="heading-anchor" href="#判活规矩所有功能先过这一条" aria-label="链接到此标题：判活规矩（所有功能先过这一条）"><span aria-hidden="true">#</span></a></h3><p><strong>步骤数事先说不准的活，才值得动用 pi。</strong> 比如&quot;下载这篇论文，找不到 PDF 就换下一个源接着找&quot;——让模型自己边做边决定下一步。</p>
+<p><strong>步骤固定的活，直接一次调用大模型就完事。</strong> 比如一句话变成一笔账、一段资料变成一篇摘要。更便宜、更稳、出错好查。</p>
+<h3 id="对话应用打磨顺序-15" class="doc-heading">对话应用（打磨顺序 1、5）<a class="heading-anchor" href="#对话应用打磨顺序-15" aria-label="链接到此标题：对话应用（打磨顺序 1、5）"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>功能</th>
+<th>用不用 pi</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基础聊天体验</td>
+<td>不用</td>
+<td>对标 DeepSeek 网页版：会话列表、逐字显示、markdown 和代码高亮、停止 / 重新生成。走网关单次调用</td>
+</tr>
+<tr>
+<td>默认技能包，可人为配置</td>
+<td>agent 模式用</td>
+<td>每个会话有默认专家配置（一条 JSON），用户可以改模型、换技能包</td>
+</tr>
+<tr>
+<td>可配 MCP 检索工具</td>
+<td>agent 模式用</td>
+<td>把&quot;搜资料&quot;等外部工具按 MCP 格式挂进来，模型自己决定调不调、调几次</td>
+</tr>
+<tr>
+<td>agent 模式开关</td>
+<td>这就是 pi 的主场</td>
+<td>普通对话 = 单次调用；agent 模式 = pi 接管，想一步做一步</td>
+</tr>
+</tbody>
+</table></div><h3 id="记账应用打磨顺序-2" class="doc-heading">记账应用（打磨顺序 2）<a class="heading-anchor" href="#记账应用打磨顺序-2" aria-label="链接到此标题：记账应用（打磨顺序 2）"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>功能</th>
+<th>用不用 pi</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>传统记账为主</td>
+<td>不用</td>
+<td>表单增删改查，沿用现有原型（金额一律「分」，收入红支出绿）</td>
+</tr>
+<tr>
+<td>对话记账</td>
+<td>不用</td>
+<td>一句话 → 单次提取金额 / 分类 / 日期 → 入库。固定流程</td>
+</tr>
+<tr>
+<td>对话统计</td>
+<td>不用</td>
+<td>「这个月吃饭花了多少」→ 把话转成查询参数 → 代码执行聚合。<strong>不让模型自己写 SQL</strong></td>
+</tr>
+</tbody>
+</table></div><h3 id="论文应用打磨顺序-34" class="doc-heading">论文应用（打磨顺序 3、4）<a class="heading-anchor" href="#论文应用打磨顺序-34" aria-label="链接到此标题：论文应用（打磨顺序 3、4）"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>功能</th>
+<th>用不用 pi</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>论文下载</td>
+<td><strong>用（后台任务）</strong></td>
+<td>可能找不到文件、找不到 PDF 源，要不断换源探索。走慢活那条路</td>
+</tr>
+<tr>
+<td>论文笔记 + 问答</td>
+<td>问答不用；通读生成笔记走后台</td>
+<td>问答 = 检索笔记和原文段落 → 单次回答（带出处点回原文）</td>
+</tr>
+<tr>
+<td>论文推荐（对话）</td>
+<td>先不用</td>
+<td>检索 → 重排 → 解释推荐理由，流程固定</td>
+</tr>
+<tr>
+<td>定时推送</td>
+<td>不用</td>
+<td>定时抓取 + 单次摘要 + 推送</td>
+</tr>
+</tbody>
+</table></div><hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#07-实际开几个程序2c4g-版"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">07 实际开几个程序（2C4G 版）</span></a><a class="chapter-nav-link chapter-nav-next" href="#09-对话怎么组织方案-c已拍板"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">09 对话怎么组织（方案 C，已拍板）</span></a></nav></section><section class="chapter" aria-labelledby="09-对话怎么组织方案-c已拍板" data-chapter="9"><h2 id="09-对话怎么组织方案-c已拍板" class="doc-heading">09 对话怎么组织（方案 C，已拍板）<a class="heading-anchor" href="#09-对话怎么组织方案-c已拍板" aria-label="链接到此标题：09 对话怎么组织（方案 C，已拍板）"><span aria-hidden="true">#</span></a></h2><p><strong>每个应用绑自己的对话 + 保留一个总对话。</strong></p>
+<p>记账页面里的对话只挂记账工具，论文页面里的对话只挂论文工具——工具集窄而准，模型不容易选错，权限也清晰。</p>
+<p>跨应用的问题（「我买论文这个月花了多少钱」）走总对话，它挂检索 + 各应用的<strong>只读</strong>查询工具。</p>
+<p>业界成熟形态全是这个模式：Claude 的 Projects、Open WebUI 的 workspace、ChatGPT 的 GPTs，本质都是&quot;一组上下文绑定一个会话&quot;。</p>
+<p><strong>派生一条硬规矩：总对话里挂的应用工具一律只读。</strong> 改数据的动作必须回到应用自己的对话或页面里做，避免一句话误改两个应用的数据。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#08-三个应用做什么已拍板"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">08 三个应用做什么（已拍板）</span></a><a class="chapter-nav-link chapter-nav-next" href="#10-慢活怎么办没有-redis-也能行"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">10 慢活怎么办（没有 Redis 也能行）</span></a></nav></section><section class="chapter" aria-labelledby="10-慢活怎么办没有-redis-也能行" data-chapter="10"><h2 id="10-慢活怎么办没有-redis-也能行" class="doc-heading">10 慢活怎么办（没有 Redis 也能行）<a class="heading-anchor" href="#10-慢活怎么办没有-redis-也能行" aria-label="链接到此标题：10 慢活怎么办（没有 Redis 也能行）"><span aria-hidden="true">#</span></a></h2><p><strong>慢活不走问答那条路。</strong> 导入 PDF、批量导入、重算索引、定时同步，统统丢后台。</p>
+<p>三条规矩：</p>
+<ol>
+<li><strong>写数据和记待办放在同一次数据库操作里</strong>——要么都成功，要么都不算。不然会出现&quot;论文记下了、活没派出去&quot;</li>
+<li><strong>同时最多跑 1 到 2 个</strong>，不够再调</li>
+<li><strong>同一个任务重复跑不能出乱子</strong>（幂等）</li>
+</ol>
+<p>不这么做的话，聊天消息等不到结果就超时，两个人一起导入还会把 2 核 CPU 占满。</p>
+<p><strong>待办筐用 chord 的 jobs + 数据库待办表，不用 Redis。</strong> 两个人、一天几个慢活，够了。</p>
+<p><strong>什么时候才真需要消息队列</strong>：一秒几十上百个活、好几个程序抢着领。你到不了。</p>
+<h3 id="其他并发硬线" class="doc-heading">其他并发硬线<a class="heading-anchor" href="#其他并发硬线" aria-label="链接到此标题：其他并发硬线"><span aria-hidden="true">#</span></a></h3><ul>
+<li>同时问大模型最多 2 个</li>
+<li>算向量最多 1–2 批</li>
+<li>写索引排队一个一个来</li>
+</ul>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#09-对话怎么组织方案-c已拍板"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">09 对话怎么组织（方案 C，已拍板）</span></a><a class="chapter-nav-link chapter-nav-next" href="#11-找资料怎么做rag"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">11 找资料怎么做（RAG）</span></a></nav></section><section class="chapter" aria-labelledby="11-找资料怎么做rag" data-chapter="11"><h2 id="11-找资料怎么做rag" class="doc-heading">11 找资料怎么做（RAG）<a class="heading-anchor" href="#11-找资料怎么做rag" aria-label="链接到此标题：11 找资料怎么做（RAG）"><span aria-hidden="true">#</span></a></h2><p>RAG 说白是开卷考试：先翻自己的资料，摘几段相关的，连同问题发给云端模型答，而不是让它凭记忆瞎编。</p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>干什么</th>
+<th>一开始用</th>
+<th>不够了再换</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>按意思找相似内容</td>
+<td>PG 的 pgvector 插件</td>
+<td>真到十万段以上再议</td>
+</tr>
+<tr>
+<td>按关键词找</td>
+<td>PG 全文检索（中文要配分词）</td>
+<td>Meilisearch</td>
+</tr>
+<tr>
+<td>算向量、重排</td>
+<td>都调云端接口：<code>BAAI/bge-m3</code> + <code>bge-reranker-v2-m3</code>，或阿里云 <code>text-embedding-v3</code> + <code>qwen3-rerank</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>关系网 / 双链</td>
+<td>先把 <code>[[链接]]</code> 当成&quot;谁连着谁&quot;记下来</td>
+<td>用 LightRAG 本体（PG 后端、按需启停），见下</td>
+</tr>
+</tbody>
+</table></div><p><strong>中文必须两种一起用。</strong> 光按意思找，遇到金额、编号、日期、实验批次这种精确的东西会找不准。</p>
+<p><strong>向量模型做成 API 配置项</strong>（2026-11-11 拍板）：不写死在代码里，配置里填「厂商接口地址 + key + 模型名」，具体用哪个后续定（候选 <code>BAAI/bge-m3</code>、阿里云 <code>text-embedding-v3</code>）。<strong>但一旦选定不轻易换</strong>——换模型要把全部资料的向量重算一遍。</p>
+<p><strong>COS 网盘只放三样</strong>：原始 PDF 和附件、笔记的 Markdown 快照、数据库定期备份。检索索引放本地硬盘——网盘不适合反复随机读写。</p>
+<h3 id="lightrag-怎么处理2026-11-11-核实官方-readme-后定" class="doc-heading">LightRAG 怎么处理（2026-11-11 核实官方 README 后定）<a class="heading-anchor" href="#lightrag-怎么处理2026-11-11-核实官方-readme-后定" aria-label="链接到此标题：LightRAG 怎么处理（2026-11-11 核实官方 README 后定）"><span aria-hidden="true">#</span></a></h3><p>核实过：<code>HKUDS/LightRAG</code> 是 MIT 协议（41k star，EMNLP 2025 论文），<strong>法律上允许抄、改、商用，留个原作者声明就行</strong>。</p>
+<p><strong>它要四类存储</strong>，官方默认实现全是内存型（原话：整个数据集待在进程内存里，本地文件只用来存档，容量被内存卡死，只适合测试不适合生产）：</p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>存哪类</th>
+<th>装什么</th>
+<th>默认实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV</td>
+<td>大模型回答缓存、切好的文本段、抽出的实体和关系</td>
+<td>JsonKVStorage</td>
+</tr>
+<tr>
+<td>向量</td>
+<td>文本段、实体、关系的那串数字</td>
+<td>NanoVectorDBStorage</td>
+</tr>
+<tr>
+<td>图</td>
+<td>知识关系网（谁连着谁）</td>
+<td>NetworkXStorage</td>
+</tr>
+<tr>
+<td>文档状态</td>
+<td>处理过哪些文档的清单</td>
+<td>JsonDocStatusStorage</td>
+</tr>
+</tbody>
+</table></div><p>这就是&quot;内存大户&quot;的来源——默认配置下资料越多吃得越凶（300–500MB 起）。</p>
+<p><strong>关键转折：官方推荐生产环境用 PostgreSQL，一个库能担下上面全部四类存储。</strong> 这跟 §05 定的&quot;业务数据 + 向量用 PG&quot;正好合流——用 PG 当 LightRAG 后端，它就不把数据集塞内存，进程能瘦到 100–200MB。</p>
+<p><strong>结论：用本体，包成接口服务，按需启停。</strong></p>
+<ul>
+<li><strong>包接口</strong>：它本来就自带接口服务模式，起来就是个网址，主程序（Node）通过网络喊它。Node 和 Python 通信没有任何障碍——之前说&quot;不能一起用&quot;是错的，真正约束只是&quot;别常驻&quot;</li>
+<li><strong>按需启停</strong>：建索引、重建关系网时拉起来，干完关掉，平时零内存</li>
+<li><strong>跟着上游升级</strong>（用户提出，成立）：它修 bug、优化性能，升个版本号就拿到，比自己重写再自己维护划算</li>
+</ul>
+<p><strong>用本体必须守三条：</strong></p>
+<ol>
+<li><strong>向量和模型全部走云端接口</strong>，绝不让它加载本地模型（一加载 2–4G，直接爆）</li>
+<li><strong>后端配成 PostgreSQL</strong>，不用它默认的内存存储</li>
+<li><strong>锁死版本</strong>，升级走既有的&quot;先评估再升&quot;流程</li>
+</ol>
+<p>如果第 3 步动手后发现只用得上它两个想法（按意思找 + 顺着关系网找、长文先压摘要），自己在 PG 里写几十行也行。这个等实际代码量出来再定，现在不锁死。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#10-慢活怎么办没有-redis-也能行"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">10 慢活怎么办（没有 Redis 也能行）</span></a><a class="chapter-nav-link chapter-nav-next" href="#12-危险动作怎么关起来"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">12 危险动作怎么关起来</span></a></nav></section><section class="chapter" aria-labelledby="12-危险动作怎么关起来" data-chapter="12"><h2 id="12-危险动作怎么关起来" class="doc-heading">12 危险动作怎么关起来<a class="heading-anchor" href="#12-危险动作怎么关起来" aria-label="链接到此标题：12 危险动作怎么关起来"><span aria-hidden="true">#</span></a></h2><p>pi 官方不管文件和进程权限（§04 第 1 条）。所以除了账号角色，还要补：</p>
+<ul>
+<li>每次调用都带&quot;现在是谁&quot;；数据本来就按身份分开存，取的时候再筛一遍</li>
+<li>资料地址里带上是谁的，比如 <code>notes://{谁}/{哪条}</code></li>
+<li>专家配置里写死&quot;能用哪些工具、能看哪些资料&quot;，<strong>调用前再查一遍角色</strong>（用 pi-agent-core 的 <code>beforeToolCall</code> 钩子）</li>
+<li>能共享的东西用标签标出来，别靠猜</li>
+<li>密钥只放在主程序里，不跟着进沙箱</li>
+<li>每次调工具都记一笔日志</li>
+</ul>
+<h3 id="官方给的四种隔离方式" class="doc-heading">官方给的四种隔离方式<a class="heading-anchor" href="#官方给的四种隔离方式" aria-label="链接到此标题：官方给的四种隔离方式"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>方式</th>
+<th>pi 跑在哪</th>
+<th>隔离什么</th>
+<th>密钥怎么办</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plain Docker</td>
+<td>容器里</td>
+<td>pi、内置工具、命令、扩展</td>
+<td>密钥也进容器</td>
+</tr>
+<tr>
+<td>Docker Sandboxes</td>
+<td>托管沙箱</td>
+<td>同上</td>
+<td>密钥留主机，代理替换</td>
+</tr>
+<tr>
+<td>OpenShell</td>
+<td>本地或远程沙箱</td>
+<td>同上</td>
+<td>策略控制</td>
+</tr>
+<tr>
+<td>Gondolin 扩展</td>
+<td>主机</td>
+<td>只有内置工具和 <code>!</code> 命令</td>
+<td>密钥留主机，但环境变量会漏进虚拟机</td>
+</tr>
+</tbody>
+</table></div><p><strong>我们第五步再开，前四步不请。</strong> 因为前四步（基础聊天、记账、论文问答）全是查库和调云端接口，没有跑命令改文件的活，本来就安全。</p>
+<p><strong>注意 Gondolin 那条</strong>：官方自己写着命令会继承主机的环境变量，所以通过环境变量传的密钥在虚拟机里看得见。别拿它当密钥边界。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#11-找资料怎么做rag"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">11 找资料怎么做（RAG）</span></a><a class="chapter-nav-link chapter-nav-next" href="#13-打磨顺序已拍板"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">13 打磨顺序（已拍板）</span></a></nav></section><section class="chapter" aria-labelledby="13-打磨顺序已拍板" data-chapter="13"><h2 id="13-打磨顺序已拍板" class="doc-heading">13 打磨顺序（已拍板）<a class="heading-anchor" href="#13-打磨顺序已拍板" aria-label="链接到此标题：13 打磨顺序（已拍板）"><span aria-hidden="true">#</span></a></h2><ol>
+<li><strong>对话应用基础版</strong>——一切的地基，先把&quot;会话绑定应用&quot;的结构立起来</li>
+<li><strong>对话记账 + 对话统计</strong>——单次调用，量级小，快速见效</li>
+<li><strong>论文下载 + 笔记 + 问答</strong>——把&quot;找资料&quot;那层建起来，是论文域核心</li>
+<li><strong>定时推送</strong>——在第 3 步的库上加成</li>
+<li><strong>对话 agent 模式（pi + 技能包 / MCP 配置）</strong>——最强也最重，前四步已把工具都注册好了</li>
+</ol>
+<p>排序逻辑：从依赖少、见效快的往前走；pi 相关的最重的一步放最后。</p>
+<h3 id="每步验证什么" class="doc-heading">每步验证什么<a class="heading-anchor" href="#每步验证什么" aria-label="链接到此标题：每步验证什么"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>步</th>
+<th>验证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>整条线跑通；两个人分别登录，成员进不了管理页面</td>
+</tr>
+<tr>
+<td>2</td>
+<td>一句话记一笔入库正确；「这个月吃饭花了多少」对得上账</td>
+</tr>
+<tr>
+<td>3</td>
+<td>下载探索任务能换源重试；问答带出处能点回原文</td>
+</tr>
+<tr>
+<td>4</td>
+<td>到点抓取、摘要、推送，失败可重试不重复</td>
+</tr>
+<tr>
+<td>5</td>
+<td>切到 agent 模式能自主多步干活；前四步的工具都能在总对话里被调到</td>
+</tr>
+</tbody>
+</table></div><hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#12-危险动作怎么关起来"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">12 危险动作怎么关起来</span></a><a class="chapter-nav-link chapter-nav-next" href="#14-升级纪律"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">14 升级纪律</span></a></nav></section><section class="chapter" aria-labelledby="14-升级纪律" data-chapter="14"><h2 id="14-升级纪律" class="doc-heading">14 升级纪律<a class="heading-anchor" href="#14-升级纪律" aria-label="链接到此标题：14 升级纪律"><span aria-hidden="true">#</span></a></h2><ol>
+<li><strong>调用格式一改就把版本号加一</strong>，哪怕只是多一个字段。再写个自动检查：拿老版本的调用例子跑一遍，看新版本还能不能正常回答</li>
+<li><strong>版本写死</strong>，钉成 <code>@1.2.3</code>，锁在 lockfile 里，禁 <code>latest</code></li>
+<li><strong>升级顺序固定</strong>：先只改那个&quot;唯一引用 pi 的地方&quot;→ 跑自动检查 → 过了才升</li>
+<li><strong>pi-durable 标着试验品</strong>，用它就必须锁版本 + 升级前先看 changelog</li>
+<li><strong>升级前先出影响面评估</strong>（沿用项目既有纪律）：依赖树波及、changelog 破坏性、锁版本 diff、回退方案。不做裸升</li>
+</ol>
+<h3 id="就认两条验收线" class="doc-heading">就认两条验收线<a class="heading-anchor" href="#就认两条验收线" aria-label="链接到此标题：就认两条验收线"><span aria-hidden="true">#</span></a></h3><ul>
+<li><strong>加新应用，核心一行都不用改</strong></li>
+<li><strong>换大模型供应商、或者换找资料的方式，应用一行都不用改</strong></li>
+</ul>
+<p>整个架构绕这一圈，就是为了这两条成立。</p>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#13-打磨顺序已拍板"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">13 打磨顺序（已拍板）</span></a><a class="chapter-nav-link chapter-nav-next" href="#15-2c4g-上的增补与裁剪"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">15 2C4G 上的增补与裁剪</span></a></nav></section><section class="chapter" aria-labelledby="15-2c4g-上的增补与裁剪" data-chapter="15"><h2 id="15-2c4g-上的增补与裁剪" class="doc-heading">15 2C4G 上的增补与裁剪<a class="heading-anchor" href="#15-2c4g-上的增补与裁剪" aria-label="链接到此标题：15 2C4G 上的增补与裁剪"><span aria-hidden="true">#</span></a></h2><h3 id="要补的六块架构文档没写透" class="doc-heading">要补的六块（架构文档没写透）<a class="heading-anchor" href="#要补的六块架构文档没写透" aria-label="链接到此标题：要补的六块（架构文档没写透）"><span aria-hidden="true">#</span></a></h3><p><strong>1. 前端形态</strong>
+沿用 <code>prototype/v2</code> 的形态：单页应用（hash 路由）+ 静态文件由主程序直接发。零额外进程、零额外内存。设计参考规则（AGENTS.md 第一节）继续有效。</p>
+<p><strong>2. PDF 解析管线 → 用 MinerU 在线 API（2026-11-11 拍板）</strong></p>
+<p>2C4G 上<strong>绝不本地跑 MinerU</strong>：本地版（<code>pip install mineru</code>）虽支持 CPU，但要下载几个 G 的模型、解析时吃满 2 核，直接拖垮整机。用它的<strong>在线 API</strong>（mineru.net，申请免费 token）。</p>
+<p>核实到的关键限制（必须写进流程，否则第 3 步会踩）：</p>
+<ul>
+<li><strong>在线 API 只接受国内能访问的网址</strong>——官方文档明写 github、aws 等国外源会请求超时。而论文很多来自 arXiv（国外）。<strong>所以流程是：后台任务先把 PDF 下载到本地 → 再把文件上传给 MinerU API</strong>，不能把 arXiv 链接直接丢给它</li>
+<li>免费额度按页计（每天上千页量级，足够两人用）；单文件有大小/页数上限，超长的要分段</li>
+<li>它能精准还原公式（转 LaTeX）、表格（转 HTML）、多栏排版、扫描件 OCR，输出 Markdown + JSON，正好喂给后面的切段和向量化</li>
+<li>这是第 3 步（论文笔记 + 问答）的前置件</li>
+</ul>
+<p>降级预案：纯文本层的 PDF（非扫描）可先用轻量库直接抽文字，省 MinerU 额度；扫描版、复杂公式表格才走 MinerU。</p>
+<p><strong>3. 论文下载的探索源清单和止损规则</strong></p>
+<p>要定死：源顺序（arXiv → Semantic Scholar → Unpaywall → 出版商）、失败分类（无元数据 / 有元数据无 PDF / 付费墙）、<strong>一次任务最多试几个源</strong>。不设上限的话 agent 会无限探索烧钱。</p>
+<p><strong>4. 推送通道 → 落到微信，但走官方通道（2026-11-11 拍板）</strong></p>
+<p>你要的是&quot;消息推到微信&quot;。这里有个<strong>必须避开的坑</strong>：</p>
+<ul>
+<li><strong>不能用个人微信号自动化</strong>。你提到参考 OpenClaw 的 IM 模块——我查了，OpenClaw 接微信走的是&quot;个人号扫码登录&quot;（逆向协议），多个来源一致警告：微信无官方个人号 API，逆向方案随时失效、要 24 小时挂机、<strong>有封号风险</strong>。它的 Telegram/WhatsApp 通道很成熟，但微信这条不能抄</li>
+<li><strong>能落到微信又不封号的只有官方通道</strong>，按推荐排序：</li>
+</ul>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>方案</th>
+<th>落在哪</th>
+<th>门槛</th>
+<th>免费额度</th>
+<th>评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>企业微信群机器人</strong></td>
+<td>企业微信群（可建只有自己的单人群）</td>
+<td>注册企业微信（个人可注册，不需真有公司）+ 建群加机器人</td>
+<td>免费，约 20 条/分钟</td>
+<td><strong>首选</strong>：官方 Webhook，一条 HTTP POST 就发，稳定不封号，可加签防刷</td>
+</tr>
+<tr>
+<td>Server 酱 / PushPlus</td>
+<td>个人微信（关注它的服务号）</td>
+<td>扫码拿 SendKey/token</td>
+<td>每天几条到两百条</td>
+<td>备选：接入最快（3 分钟），但额度小、依赖第三方</td>
+</tr>
+<tr>
+<td>Telegram Bot</td>
+<td>Telegram</td>
+<td>找 BotFather 拿 token</td>
+<td>免费无限</td>
+<td>最省事最稳，但你说要落微信，且国内访问不稳</td>
+</tr>
+</tbody>
+</table></div><p><strong>推荐：企业微信群机器人当主通道</strong>（官方、免费、稳定、落微信），Server 酱当备用通道。代码上做一个统一的 <code>notify()</code> 接口，内部可随时切通道——通道相关代码一行都不进核心（沿用架构文档 §14 纪律）。</p>
+<p>AstrBot 这种大框架先不用，两人规模一个 Webhook 调用就够。</p>
+<p>（注：OpenClaw / Octop 这类框架的<strong>架构思路</strong>仍可参考——消息路由、通道适配层、配对白名单——只是它的个人微信通道不能照搬。）</p>
+<p><strong>5. 部署与备份</strong>
+Caddy 保留（HTTPS + 反代）；主程序用 systemd 管；SQLite 和 PG 定时备份到 COS，要落成具体脚本，不能只是&quot;有备份&quot;一句话。</p>
+<p><strong>6. 数据迁移脚本</strong>
+现有 PG 里的账本和论文数据，如果表结构变了要能导过去。两人规模数据量小，一个脚本的事，但要写进第 0 步。</p>
+<h3 id="砍掉或推迟的六样" class="doc-heading">砍掉或推迟的六样<a class="heading-anchor" href="#砍掉或推迟的六样" aria-label="链接到此标题：砍掉或推迟的六样"><span aria-hidden="true">#</span></a></h3><p><strong>1. chord 的&quot;热替换&quot;——不依赖</strong></p>
+<p>先说清这是什么：<strong>程序跑着的时候，把某个模块的代码换掉，不用关掉重开。</strong> 官方叫 reload，一台一台主机换，尽量让数据、连接、正在跑的活都活着。</p>
+<p><strong>跟登录没关系。</strong> 登录状态是存在库里的（chord 的会话存 <code>store.sqlite</code>，cookie 有效期 400 天），所以<strong>重启程序你也不用重新登录</strong>。</p>
+<p>它省的是&quot;重启那几秒的停机&quot;。几百人用才怕停；两个人用，重启几秒没人察觉。偏偏这又是 chord 最新、最容易出怪问题的部分。</p>
+<p><strong>2. 独立向量库——全缓</strong>
+pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条准备的。</p>
+<p><strong>3. Redis / 消息队列——不要</strong>
+见 §10。</p>
+<p><strong>4. 本机模型 / RAGFlow / Elasticsearch——不要；LightRAG——可包接口按需启停（见 §11）</strong>
+见 §02、§11。</p>
+<p><strong>5. Docker 常驻沙箱——第五步再开</strong>
+见 §12。</p>
+<p><strong>6. 旧栈删除（2026-11-11 拍板，Q7）</strong></p>
+<p>项目要按新架构重构，旧的 Python 栈整体删除：</p>
+<ul>
+<li><strong>删</strong>：<code>backend/</code>（FastAPI 全部）、<code>pi-runner/</code>（旧的 Node 薄层 + 旧 SDK 形态）、<code>deploy/</code>（旧 compose 覆盖层、Hatchet/pi 配置）、<code>docker-compose.yml</code>（旧六服务编排）、根 <code>Caddyfile</code> / <code>Caddyfile.dev</code>（绑旧 api 容器）、<code>.env</code> / <code>.env.example</code>（旧变量）、<code>.ruff_cache/</code>（Python 缓存）</li>
+<li><strong>留</strong>：<code>prototype/</code>（前端原型，新栈继续用）、<code>docs/</code>、<code>skills/</code>、<code>AGENTS.md</code>、<code>LICENSE</code>、<code>.gitignore</code>、<code>.workbuddy/</code></li>
+<li><strong>区分清楚</strong>：删的是旧<strong>代码</strong>，不是 PG 这个<strong>技术</strong>——方案 A 里业务数据仍用 PostgreSQL + pgvector，只是由新栈（Node/chord）来连，旧的 FastAPI ORM 和 Alembic 迁移作废重写</li>
+<li><strong>可恢复</strong>：删除前已打包备份到 <code>E:/backups/</code>；且这些文件都在 git 历史里，<code>git log</code> / <code>git show</code> 随时能翻回来。数据层面，旧 PG 库里的账本/论文真实数据若要保留，迁移脚本在重构第 0 步单独处理（§15 要补的第 6 块）</li>
+</ul>
+<hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#14-升级纪律"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">14 升级纪律</span></a><a class="chapter-nav-link chapter-nav-next" href="#16-未决问题清单"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">16 未决问题清单</span></a></nav></section><section class="chapter" aria-labelledby="16-未决问题清单" data-chapter="16"><h2 id="16-未决问题清单" class="doc-heading">16 未决问题清单<a class="heading-anchor" href="#16-未决问题清单" aria-label="链接到此标题：16 未决问题清单"><span aria-hidden="true">#</span></a></h2><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>编号</th>
+<th>问题</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>存储分层选 A / B / C 哪个</td>
+<td>✅ 已定方案 A（框架态 SQLite + 业务态 PG/pgvector，LightRAG 用 PG 后端），见 §05</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>pi-durable 用不用</td>
+<td>✅ 用（管对话记录 + 可恢复长任务；锁版本，状态落 SQLite 层），见 §03</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>推送通道</td>
+<td>✅ 落微信走官方通道：企业微信群机器人主 + Server 酱备；<strong>不用个人号逆向（封号）</strong>，见 §15 第 4 项</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>PDF 解析用哪家</td>
+<td>✅ MinerU <strong>在线 API</strong>（不本地跑）；先下载 PDF 再上传（绕开国外源超时），见 §15 第 2 项</td>
+</tr>
+<tr>
+<td>Q5</td>
+<td>向量模型</td>
+<td>✅ 做成 API 配置项，后续填具体模型；一选定不轻易换（重算成本），见 §11</td>
+</tr>
+<tr>
+<td>Q6</td>
+<td>文档归属：架构 html 和这份白皮书谁是主</td>
+<td>✅ 白皮书 v3 为产品契约主文档，架构 html 降为讨论稿/参考，见 §00</td>
+</tr>
+<tr>
+<td>Q7</td>
+<td>现有 Python 后端和 pi-runner 怎么处置</td>
+<td>✅ 删除（项目重构，新栈不依赖旧代码）；已备份到 E:/backups，git 历史也可恢复，见 §15 第 6 项</td>
+</tr>
+</tbody>
+</table></div><hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#15-2c4g-上的增补与裁剪"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">15 2C4G 上的增补与裁剪</span></a><a class="chapter-nav-link chapter-nav-next" href="#17-参考了哪些项目"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">17 参考了哪些项目</span></a></nav></section><section class="chapter" aria-labelledby="17-参考了哪些项目" data-chapter="17"><h2 id="17-参考了哪些项目" class="doc-heading">17 参考了哪些项目<a class="heading-anchor" href="#17-参考了哪些项目" aria-label="链接到此标题：17 参考了哪些项目"><span aria-hidden="true">#</span></a></h2><p><strong>真正会用到的</strong></p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>项目</th>
+<th>协议</th>
+<th>拿来干什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>pi（<code>earendil-works/pi</code>）</td>
+<td>MIT</td>
+<td>pi-ai 接模型、pi-agent-core 管 agent 循环、chord 管装应用和登录、pi-schema 写契约</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>开放格式</td>
+<td>应用对外干活时统一按这个格式写说明</td>
+</tr>
+<tr>
+<td>pgvector</td>
+<td>PostgreSQL 扩展</td>
+<td>按意思找</td>
+</tr>
+<tr>
+<td>LightRAG（<code>HKUDS/LightRAG</code>）</td>
+<td>MIT</td>
+<td><strong>用本体</strong>，包接口 + PG 后端 + 按需启停；建索引和关系网（见 §11）</td>
+</tr>
+<tr>
+<td>AstrBot</td>
+<td>—</td>
+<td>接聊天软件的候选，第五步后再看</td>
+</tr>
+</tbody>
+</table></div><p><strong>认真比较过、没当底座的</strong></p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>项目</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek Harness</td>
+<td>MIT / TypeScript / 27.7 万星，但官方没有多用户账号、没有角色、网页只绑本机、安全文件写明未经审计。跑一份当参考书，抄它三样设计（配置分层、会话全程留痕、能力拆三份）</td>
+</tr>
+<tr>
+<td>OpenClaw、nanobot、LibreChat、LobeHub、Open WebUI、Dify、Langflow</td>
+<td>它们留的扩展位置是&quot;给大模型加个工具&quot;，装不下有自己数据、页面和账号规则的应用</td>
+</tr>
+</tbody>
+</table></div><hr>
+<p><em>文档结束。改动请先在 §16 未决问题清单里过一遍，拍板后再写进正文。</em></p>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#16-未决问题清单"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">16 未决问题清单</span></a><span class="chapter-nav-placeholder" aria-hidden="true"></span></nav></section></article>
+      <footer class="document-footer">内容以 <code>docs/白皮书-v3.md</code> 为准 · 本页由生成工具同步重建，可直接离线阅读与打印。</footer>
+    </main>
+  </div>
+  <button class="nav-backdrop" id="nav-backdrop" type="button" aria-label="关闭目录" hidden></button>
+  <script>
+(() => {
+  const sidebar = document.getElementById('site-nav');
+  const toggle = document.getElementById('menu-toggle');
+  const backdrop = document.getElementById('nav-backdrop');
+  const links = Array.from(document.querySelectorAll('#whitepaper-toc a[data-heading-id]'));
+  const headings = links.map((link) => ({
+    id: link.dataset.headingId,
+    link,
+    element: document.getElementById(link.dataset.headingId)
+  })).filter((heading) => heading.element);
+  let frame = 0;
+
+  function isMobile() {
+    return window.matchMedia('(max-width: 900px)').matches;
+  }
+
+  function setActive(id) {
+    for (const heading of headings) {
+      const active = heading.id === id;
+      heading.link.classList.toggle('active', active);
+      if (active) heading.link.setAttribute('aria-current', 'location');
+      else heading.link.removeAttribute('aria-current');
+    }
+    const activeLink = links.find((link) => link.dataset.headingId === id);
+    if (!activeLink || isMobile()) return;
+    const linkRect = activeLink.getBoundingClientRect();
+    const sidebarRect = sidebar.getBoundingClientRect();
+    if (linkRect.top < sidebarRect.top + 12 || linkRect.bottom > sidebarRect.bottom - 12) {
+      const target = sidebar.scrollTop + linkRect.top - sidebarRect.top - sidebarRect.height / 2;
+      sidebar.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    }
+  }
+
+  function updatePosition() {
+    frame = 0;
+    if (!headings.length) return;
+    const threshold = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-height')) + 42;
+    let current = headings[0];
+    for (const heading of headings) {
+      if (heading.element.getBoundingClientRect().top <= threshold) current = heading;
+      else break;
+    }
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+      current = headings[headings.length - 1];
+    }
+    setActive(current.id);
+  }
+
+  function requestPositionUpdate() {
+    if (!frame) frame = window.requestAnimationFrame(updatePosition);
+  }
+
+  function openNav() {
+    sidebar.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    backdrop.hidden = false;
+    document.body.classList.add('nav-open');
+  }
+
+  function closeNav(returnFocus) {
+    sidebar.classList.remove('is-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    backdrop.hidden = true;
+    document.body.classList.remove('nav-open');
+    if (returnFocus) toggle.focus();
+  }
+
+  toggle.addEventListener('click', () => {
+    if (sidebar.classList.contains('is-open')) closeNav(false);
+    else openNav();
+  });
+  backdrop.addEventListener('click', () => closeNav(true));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sidebar.classList.contains('is-open')) closeNav(true);
+  });
+  for (const link of links) {
+    link.addEventListener('click', () => {
+      setActive(link.dataset.headingId);
+      if (isMobile()) closeNav(false);
+    });
+  }
+  window.addEventListener('scroll', requestPositionUpdate, { passive: true });
+  window.addEventListener('resize', () => {
+    if (!isMobile()) closeNav(false);
+    requestPositionUpdate();
+  });
+  window.addEventListener('hashchange', requestPositionUpdate);
+  updatePosition();
+})();
+</script>
+</body>
+</html>
