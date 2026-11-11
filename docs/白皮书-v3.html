@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="d6eece553022154079f9ed814327840ffd2439f286e2f6755f9373684962b8d2">
+  <meta name="source-sha256" content="52b77897cf244f57aa81b47b49c72c80c382784f9e9643172816da596c11e7d9">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -482,7 +482,8 @@ tbody tr:hover { background: #fbfcfe; }
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#06-整体分几层"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">06 整体分几层</span></a><a class="chapter-nav-link chapter-nav-next" href="#08-三个应用做什么已拍板"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">08 三个应用做什么（已拍板）</span></a></nav></section><section class="chapter" aria-labelledby="08-三个应用做什么已拍板" data-chapter="8"><h2 id="08-三个应用做什么已拍板" class="doc-heading">08 三个应用做什么（已拍板）<a class="heading-anchor" href="#08-三个应用做什么已拍板" aria-label="链接到此标题：08 三个应用做什么（已拍板）"><span aria-hidden="true">#</span></a></h2><h3 id="判活规矩所有功能先过这一条" class="doc-heading">判活规矩（所有功能先过这一条）<a class="heading-anchor" href="#判活规矩所有功能先过这一条" aria-label="链接到此标题：判活规矩（所有功能先过这一条）"><span aria-hidden="true">#</span></a></h3><p><strong>步骤数事先说不准的活，才值得动用 pi。</strong> 比如&quot;下载这篇论文，找不到 PDF 就换下一个源接着找&quot;——让模型自己边做边决定下一步。</p>
 <p><strong>步骤固定的活，直接一次调用大模型就完事。</strong> 比如一句话变成一笔账、一段资料变成一篇摘要。更便宜、更稳、出错好查。</p>
-<h3 id="对话应用打磨顺序-15" class="doc-heading">对话应用（打磨顺序 1、5）<a class="heading-anchor" href="#对话应用打磨顺序-15" aria-label="链接到此标题：对话应用（打磨顺序 1、5）"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<h3 id="对话应用打磨顺序-15" class="doc-heading">对话应用（打磨顺序 1、5）<a class="heading-anchor" href="#对话应用打磨顺序-15" aria-label="链接到此标题：对话应用（打磨顺序 1、5）"><span aria-hidden="true">#</span></a></h3><p><strong>实施边界（2026-11-11 拍板）</strong>：先做方案 A「普通对话基础版」，包含会话新建 / 重命名 / 删除、历史记录、模型选择、流式回答、停止与重新生成；先验证登录、模型调用和对话保存这条主线。方案 B「普通对话 + Skill / MCP / 工具调用 / agent 模式」不取消，完整保留到第五步实施，不在基础版里提前混入工具权限、任务恢复和沙箱问题。</p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
 <tr>
 <th>功能</th>
 <th>用不用 pi</th>
