@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="34695fdfa77f38b3b9b48b300f7f778b1e56cde3a92d37ba2510d724d7d349b9">
+  <meta name="source-sha256" content="096a3e08bd29109f6b6125aaf6846525a41c2415a333a0cd501176236d73a6c3">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -487,6 +487,12 @@ tbody tr:hover { background: #fbfcfe; }
 <p><strong>会话列表（2026-11-11 拍板）</strong>：采用基础实用版，包含新建、重命名、删除、按标题搜索，按最后对话时间倒序排列。置顶、归档、文件夹和标签暂不做，确有需求后再加。</p>
 <p><strong>删除规则（2026-11-11 拍板）</strong>：二次确认后永久删除，会话与全部消息一起删除，并明确提示不可恢复。基础版不做回收站、软删除和定时清理；若以后误删问题确实频繁，再单独评估恢复能力。</p>
 <p><strong>会话标题（2026-11-11 拍板）</strong>：发送第一条消息后，取消息前 20～30 个字自动生成标题，允许用户手动重命名；不为标题额外调用大模型。以后确有标题质量需求，再评估后台自动总结。</p>
+<p><strong>停止与重新生成（2026-11-11 拍板）</strong>：</p>
+<ul>
+<li>用户停止后，已经显示的回答内容保留，标记为“已停止”，用户可继续发送下一条消息。</li>
+<li>重新生成只针对最后一条 AI 回答；用户问题不变，新回答替换旧回答。</li>
+<li>基础版不做回答版本管理，以后确有需求再加；不做分支会话。</li>
+</ul>
 <div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
 <tr>
 <th>功能</th>
