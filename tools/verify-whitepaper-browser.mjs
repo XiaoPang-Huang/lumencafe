@@ -45,7 +45,7 @@ async function assertDiagramsUseNaturalScale(page, label) {
     }),
   );
 
-  assert.equal(diagrams.length, 5, `${label} 应有五张图（两张架构图 + 三张时序图）`);
+  assert.equal(diagrams.length, 7, `${label} 应有七张图（两张架构图 + 五张时序图）`);
   for (const [index, diagram] of diagrams.entries()) {
     assert.ok(
       Math.abs(diagram.actualWidth - diagram.naturalWidth) <= 1,
@@ -79,7 +79,7 @@ try {
   await page.goto(outputUrl, { waitUntil: 'load' });
   await page.waitForSelector('.mermaid-svg');
   assert.equal(await page.$$eval('main h2', (nodes) => nodes.length), 18);
-  assert.equal(await page.$$eval('.mermaid-svg', (nodes) => nodes.length), 5);
+  assert.equal(await page.$$eval('.mermaid-svg', (nodes) => nodes.length), 7);
   const diagramText = await page.$$eval('.mermaid-svg', (nodes) =>
     nodes.map((node) => ({ text: node.textContent, viewBox: node.getAttribute('viewBox') })),
   );
@@ -94,7 +94,7 @@ try {
       const parts = (diagram.viewBox || '').trim().split(/\s+/).map(Number);
       return parts.length === 4 && parts.every(Number.isFinite) && parts[2] > 0 && parts[3] > 0;
     }),
-    '五张 SVG 必须有有效的 viewBox 尺寸',
+    '七张 SVG 必须有有效的 viewBox 尺寸',
   );
   assert.equal(
     await page.$eval('#site-nav', (node) => getComputedStyle(node).position),
