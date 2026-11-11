@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="ae210cfecae462907908b991c112e7438c011a24789cc03761498ad805c8318b">
+  <meta name="source-sha256" content="8607e4a391cdb0caa74d935f7e7bc679a61640490a85683c24b97c57d1f76f59">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -484,6 +484,7 @@ tbody tr:hover { background: #fbfcfe; }
 <p><strong>步骤固定的活，直接一次调用大模型就完事。</strong> 比如一句话变成一笔账、一段资料变成一篇摘要。更便宜、更稳、出错好查。</p>
 <h3 id="对话应用打磨顺序-15" class="doc-heading">对话应用（打磨顺序 1、5）<a class="heading-anchor" href="#对话应用打磨顺序-15" aria-label="链接到此标题：对话应用（打磨顺序 1、5）"><span aria-hidden="true">#</span></a></h3><p><strong>实施边界（2026-11-11 拍板）</strong>：先做方案 A「普通对话基础版」，包含会话新建 / 重命名 / 删除、历史记录、模型选择、流式回答、停止与重新生成；先验证登录、模型调用和对话保存这条主线。方案 B「普通对话 + Skill / MCP / 工具调用 / agent 模式」不取消，完整保留到第五步实施，不在基础版里提前混入工具权限、任务恢复和沙箱问题。</p>
 <p><strong>模型选择（2026-11-11 拍板）</strong>：按会话生效。新会话使用系统默认模型；每个会话可单独换模型，切换只影响之后的回答，旧消息保持不变；回答生成时禁止切换；页面顶部显示当前会话所用模型。不做全局强制切换，也不在基础版做逐条消息选模型。</p>
+<p><strong>会话列表（2026-11-11 拍板）</strong>：采用基础实用版，包含新建、重命名、删除、按标题搜索，按最后对话时间倒序排列。置顶、归档、文件夹和标签暂不做，确有需求后再加。</p>
 <div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
 <tr>
 <th>功能</th>
