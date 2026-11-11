@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="096a3e08bd29109f6b6125aaf6846525a41c2415a333a0cd501176236d73a6c3">
+  <meta name="source-sha256" content="d2c4175b4122ed69359f52b7963c6d2fe814bb1e04bb2cff287be6b34fbac3af">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -493,6 +493,14 @@ tbody tr:hover { background: #fbfcfe; }
 <li>重新生成只针对最后一条 AI 回答；用户问题不变，新回答替换旧回答。</li>
 <li>基础版不做回答版本管理，以后确有需求再加；不做分支会话。</li>
 </ul>
+<p><strong>失败重试与输入草稿（2026-11-11 拍板）</strong>：</p>
+<ol>
+<li><strong>用户消息尚未保存</strong>：原文保留或回填输入框，提示“发送失败”，用户可修改后手动重试。</li>
+<li><strong>用户消息已保存但 AI 未输出</strong>：保留用户消息，不塞回输入框；回答区显示“生成失败”和“重试”。</li>
+<li><strong>流式中途失败</strong>：保留已显示内容，标记为“生成失败”，与主动停止的“已停止”区分；重试时用户问题不变，新回答替换失败半成品，不做版本或分支。</li>
+<li><strong>手动重试与链路确认</strong>：全部为用户点击后手动重试，不自动重试；页面错误提示说人话，详细原因记日志；发送链路需明确用户消息已保存的确认，并用请求标识避免超时重试造成重复消息。</li>
+<li><strong>本地输入草稿</strong>：草稿按账号和会话保存在当前浏览器，切换会话或刷新后恢复；确认用户消息保存成功后才清空；永久删除会话时同步清除对应本地草稿；不跨设备、不做服务端草稿表，清除浏览器数据后不能恢复。</li>
+</ol>
 <div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
 <tr>
 <th>功能</th>
