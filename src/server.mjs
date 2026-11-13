@@ -1,6 +1,7 @@
 // 流光咖啡馆 · 主程序入口（第 0 批 0A：chord 最小启动）
 import { startServer } from "@earendil-works/chord/app";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { initDb } from "./db.mjs";
 import * as apiV1 from "./api/v1.mjs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -17,6 +18,15 @@ if (fs.existsSync(envFile)) {
 }
 
 const port = Number(process.env.PORT) || 8480;
+
+// 先连 PG、跑完 migration，失败直接退出（fail fast），不静默带病启动
+let db;
+try {
+  db = await initDb(process.env.DATABASE_URL);
+} catch (error) {
+  console.error(`[db] 启动失败：${error.message}`);
+  process.exit(1);
+}
 
 const app = await startServer(
   {
