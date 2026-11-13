@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="f5ea52cbadd3dd5758347f2fbf60650582734c56be06ff3e59f7e61659b41c20">
+  <meta name="source-sha256" content="ba1cd05251b3589b4e2444d124c8f4b4f46b0812d01c617ee56051f8d88b6794">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -905,7 +905,7 @@ tbody tr:hover { background: #fbfcfe; }
     Note over G,X: 判活规矩：找源步数说不准 → pi agent 后台探索&lt;br/&gt;MinerU 上传与解析步骤固定 → 主程序直接执行，agent 不碰
 </code></pre></details></figure><p>读图说明：写 library_item 和记待办在同一次事务里落 PG（critical 块，待办表与业务数据同库），pi agent 只在工具白名单内换源探索，三重护栏超限即停、失败全手动重试；下载的文件只写指定目录、由主程序校验后才上传 MinerU 在线 API，解析产物按 block 锚点入 PG、原件归档 COS，四段阶段条随管线点亮并写入 library_items（业务数据，在 PG），pi-durable 检查点留在 SQLite、保证进程崩了能接着跑。</p>
 <p><strong>向量与重排模型（2026-11-11 拍板）</strong>：定为 <code>BAAI/bge-m3</code> + <code>bge-reranker-v2-m3</code>，做成 API 配置项；一选定不轻换，换 = 全量重算向量。§16-Q5 已拍「配置项」，本次补定具体型号。</p>
-<p><strong>RAG 路线（2026-11-11 拍板）</strong>：第 3 步先用 pgvector 向量检索 + PG 全文检索双路 + 云端重排，自拼几十行；LightRAG 推迟到双链 / 关系网真被需要时，最早第 4 步以后。§11「现在不锁死」的口子本次定型。</p>
+<p><strong>RAG 路线（2026-11-11 拍板）</strong>：第 3 步先用 pgvector 向量检索 + PG 全文检索双路 + 云端重排，自拼几十行；LightRAG 推迟到双链 / 关系网真被需要时，最早第 4 步以后。§11 留的口子本次定型。</p>
 <p><strong>问答入口与出处（2026-11-11 拍板）</strong>：</p>
 <ol>
 <li>3d 先做单篇问答：阅读器右栏问答框，只检索本篇 blocks 和批注，出处点回原文。</li>
@@ -1030,7 +1030,7 @@ tbody tr:hover { background: #fbfcfe; }
 <li>annotations：批注笔记，anchor_block_id、anchor_quote、body、双链 links、user_id。</li>
 <li>translations：翻译缓存，block_id → 译文、状态。</li>
 <li>embeddings / chunks：pgvector 向量与切段。</li>
-<li>subscriptions：订阅配置，或沿用 /me/settings 三 key。</li>
+<li>subscriptions：订阅配置（2026-11-13 拍板，独立建表，不沿用 settings 键）——订阅关键词、数据源、推送频率 / 开关、user_id 归属、创建时间。</li>
 <li>crawl_runs：抓取记录与分源计数。</li>
 <li>push_logs：推送记录，防重复。</li>
 <li>PDF 原件、Markdown 快照、数据库备份放 COS；检索索引留本地硬盘；pi-durable 任务检查点放 SQLite，后台任务待办表放 PG（与业务数据同库同事务，2026-11-13 拍板修订，见 §05、§16-Q17）。</li>
@@ -1175,8 +1175,8 @@ tbody tr:hover { background: #fbfcfe; }
 <li><strong>后端配成 PostgreSQL</strong>，不用它默认的内存存储</li>
 <li><strong>锁死版本</strong>，升级走既有的&quot;先评估再升&quot;流程</li>
 </ol>
-<p>如果第 3 步动手后发现只用得上它两个想法（按意思找 + 顺着关系网找、长文先压摘要），自己在 PG 里写几十行也行。这个等实际代码量出来再定，现在不锁死。</p>
-<p><strong>RAG 路线定型（2026-11-11 拍板，见 §08）</strong>：上面「现在不锁死」的口子本次定型——第 3 步（3c）先用 <strong>pgvector 向量检索 + PG 全文检索双路 + 云端重排</strong>，自拼几十行，不引 LightRAG；LightRAG 本体推迟到双链 / 关系网真被需要时再上，最早第 4 步以后。</p>
+<p>如果第 3 步动手后发现只用得上它两个想法（按意思找 + 顺着关系网找、长文先压摘要），自己在 PG 里写几十行也行。</p>
+<p><strong>RAG 路线定型（2026-11-11 拍板，见 §08）</strong>：上面留的口子本次定型——第 3 步（3c）先用 <strong>pgvector 向量检索 + PG 全文检索双路 + 云端重排</strong>，自拼几十行，不引 LightRAG；LightRAG 本体推迟到双链 / 关系网真被需要时再上，最早第 4 步以后。</p>
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#10-慢活怎么办没有-redis-也能行"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">10 慢活怎么办（没有 Redis 也能行）</span></a><a class="chapter-nav-link chapter-nav-next" href="#12-危险动作怎么关起来"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">12 危险动作怎么关起来</span></a></nav></section><section class="chapter" aria-labelledby="12-危险动作怎么关起来" data-chapter="12"><h2 id="12-危险动作怎么关起来" class="doc-heading">12 危险动作怎么关起来<a class="heading-anchor" href="#12-危险动作怎么关起来" aria-label="链接到此标题：12 危险动作怎么关起来"><span aria-hidden="true">#</span></a></h2><p>pi 官方不管文件和进程权限（§04 第 1 条）。所以除了账号角色，还要补：</p>
 <ul>
@@ -1285,7 +1285,6 @@ tbody tr:hover { background: #fbfcfe; }
 <li>它能精准还原公式（转 LaTeX）、表格（转 HTML）、多栏排版、扫描件 OCR，输出 Markdown + JSON，正好喂给后面的切段和向量化</li>
 <li>这是第 3 步（论文笔记 + 问答）的前置件</li>
 </ul>
-<p>降级预案：纯文本层的 PDF（非扫描）可先用轻量库直接抽文字，省 MinerU 额度；扫描版、复杂公式表格才走 MinerU。</p>
 <p><strong>3. 论文下载的探索源清单和止损规则（2026-11-11 修订拍板）</strong></p>
 <p>原定「定死源顺序（arXiv → Semantic Scholar → Unpaywall → 出版商）、最多试几个源」，现改为：<strong>pi agent 后台探索 + 三重硬护栏</strong>——最多试 5 个源、最多 10 步工具调用、单次任务 token 预算封顶；超限即停并落库记原因，转手动重试。不设护栏 agent 会无限探索烧钱，这条不变。失败分类（无元数据 / 有元数据无 PDF / 付费墙）照旧落库。源范围沿用原型 5 源，详见 §08 论文应用拍板块。</p>
 <p><strong>4. 推送通道 → 落到微信，但走官方通道（2026-11-11 拍板）</strong></p>
