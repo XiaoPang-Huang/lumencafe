@@ -45,3 +45,6 @@ qa_tmp/
 ws-*.png
 fill-*.png
 trivy scan/
+
+# chord 数据目录（SQLite 框架态等，不入库）
+.data/

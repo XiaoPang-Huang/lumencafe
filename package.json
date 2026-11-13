@@ -1,0 +1,23 @@
+{
+  "name": "lumencafe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "流光咖啡馆 — 个人/家庭 AI 工作台（Node + pi/chord 架构）",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "node --watch src/server.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.5.2",
+    "@earendil-works/pi-agent-core": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-durable": "1.5.2",
+    "@earendil-works/pi-schema": "1.5.2",
+    "esbuild": "0.28.2",
+    "ws": "^8.18.3"
+  }
+}
