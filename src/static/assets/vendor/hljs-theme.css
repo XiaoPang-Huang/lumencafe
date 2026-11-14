@@ -1,0 +1,9 @@
+/* highlight.js 主题（贴合火山蓝浅色系，参考 DeepSeek 代码块样式） */
+pre code.hljs { display: block; overflow-x: auto; padding: 14px 16px; border-radius: 10px; background: #f7f8fa; color: #1d2129; font-family: var(--mono); font-size: 12.5px; line-height: 1.7; }
+.hljs-comment, .hljs-quote { color: #86909c; }
+.hljs-keyword, .hljs-selector-tag, .hljs-tag { color: #1664ff; }
+.hljs-string, .hljs-regexp, .hljs-addition { color: #00b42a; }
+.hljs-number, .hljs-literal { color: #d83931; }
+.hljs-title, .hljs-name, .hljs-section { color: #722ed1; }
+.hljs-attr, .hljs-variable, .hljs-template-variable, .hljs-built_in { color: #0e4fd8; }
+.hljs-deletion { color: #d83931; }

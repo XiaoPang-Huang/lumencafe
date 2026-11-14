@@ -1,6 +1,9 @@
 // 流光咖啡馆 · 页面外壳 JS（0C）
 // 单页应用 hash 路由；事件一律委托（视图会重渲染）；弹窗走原生 dialog 基建
+// 视图注册表：chat.js 等子页面模块挂到 window.LC.views，路由命中时由这里挂载
 "use strict";
+
+window.LC = window.LC || {};
 
 const $app = document.getElementById("app");
 const $modal = document.getElementById("modal");
@@ -33,8 +36,11 @@ const IC = {
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ---------- API ---------- */
-async function api(path) {
-  const res = await fetch(path, { headers: { Accept: "application/json" } });
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { Accept: "application/json", ...(options.headers ?? {}) },
+    ...options,
+  });
   if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
   return res.json();
 }
@@ -59,7 +65,7 @@ $modal.addEventListener("click", (e) => { if (e.target === $modal) closeModal();
 
 /* ---------- 视图 ---------- */
 const APPS = [
-  { key: "chat", icon: IC.chat, name: "对话", desc: "通用聊天、agent 干活，第一批开放。" },
+  { key: "chat", icon: IC.chat, name: "对话", desc: "通用聊天：会话、流式回答、停止与重新生成。", href: "#/chat", live: true },
   { key: "money", icon: IC.wallet, name: "记账", desc: "对话记一笔、月度统计，第二批开放。" },
   { key: "papers", icon: IC.book, name: "论文", desc: "订阅推送、下载解析、笔记问答，第二批开放。" },
 ];
@@ -73,9 +79,10 @@ function statusDot() {
 function topbar() {
   const nav = [
     ["home", "工作台", "#/"],
+    ["chat", "对话", "#/chat"],
     ["me", "我的", "#/me"],
   ];
-  const role = state.principal?.kind === "owner" ? "主人" : "成员";
+  const who = state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员");
   return `
   <header class="topbar">
     <div class="brand"><span class="brand-dot">${IC.logo}</span><span>流光咖啡馆</span></div>
@@ -84,7 +91,7 @@ function topbar() {
     </nav>
     <div class="topbar-side">
       ${statusDot()}
-      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${IC.user}</span><span>${role}</span></a>
+      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${IC.user}</span><span>${esc(who)}</span></a>
     </div>
   </header>`;
 }
@@ -97,12 +104,18 @@ function homeView() {
       <p class="stage-sub">三个应用会陆续在这里亮起来。</p>
     </div>
     <div class="card-grid">
-      ${APPS.map((a) => `
+      ${APPS.map((a) => a.live ? `
+      <a class="card" href="${a.href}">
+        <div class="card-icon">${a.icon}</div>
+        <div class="card-title">${a.name}</div>
+        <div class="card-desc">${a.desc}</div>
+        <div class="card-foot"><span class="tag soon">已上线</span><span class="card-link">进入</span></div>
+      </a>` : `
       <article class="card card-disabled">
         <div class="card-icon">${a.icon}</div>
         <div class="card-title">${a.name}<span class="tag soon">即将上线</span></div>
         <div class="card-desc">${a.desc}</div>
-        <div class="card-foot"><span class="tag">第 1–2 批</span><span class="card-link card-link-hidden">进入</span></div>
+        <div class="card-foot"><span class="tag">第 2 批</span><span class="card-link card-link-hidden">进入</span></div>
       </article>`).join("")}
       <article class="card">
         <div class="card-icon">${IC.activity}</div>
@@ -156,9 +169,26 @@ function adminView() {
   </main>`;
 }
 
+let mountedView = null; // 当前挂载的子页面模块（chat 等），切走时清理
+
 function render() {
   const hash = location.hash || "#/";
-  state.route = hash.startsWith("#/me") ? "me" : hash.startsWith("#/admin") ? "admin" : "home";
+  const route = hash.startsWith("#/me") ? "me" : hash.startsWith("#/admin") ? "admin" : hash.startsWith("#/chat") ? "chat" : "home";
+  const sub = window.LC.views?.[route];
+
+  if (route === state.route && mountedView === sub && sub) return; // 子页面自管内部渲染
+  if (mountedView?.cleanup) mountedView.cleanup();
+  mountedView = null;
+  state.route = route;
+
+  if (sub) {
+    $app.innerHTML = topbar() + '<div id="view" class="view-host"></div>';
+    sub.mount(document.getElementById("view"), { hash, state });
+    mountedView = sub;
+    document.title = "流光咖啡馆 · 对话";
+    return;
+  }
+
   const view = state.route === "me" ? meView() : state.route === "admin" ? adminView() : homeView();
   $app.innerHTML = topbar() + view;
   document.title = `流光咖啡馆 · ${state.route === "me" ? "我的" : state.route === "admin" ? "管理" : "工作台"}`;
@@ -188,6 +218,9 @@ document.addEventListener("click", (e) => {
 });
 
 window.addEventListener("hashchange", render);
+
+// 供子页面模块（chat.js 等）使用的共享件
+Object.assign(window.LC, { api, openModal, closeModal, esc, IC, getState: () => state });
 
 /* ---------- 启动：登录态检测 → 未登录跳 chord 登录页 ---------- */
 (async function boot() {

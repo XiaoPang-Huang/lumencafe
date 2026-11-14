@@ -83,5 +83,11 @@ export function shellRoutes() {
       kind: "json",
       value: { principal: ctx.principal },
     }),
+    // 管理面探针：RBAC 单点判断的样板（白皮书 §06 规矩：角色规则只在网关一处判断）
+    // 匿名 401（chord 默认拒绝）；已登录非主人 403；主人 200
+    "GET /api/admin/probe": async (_request, ctx) =>
+      ctx.principal?.kind === "owner"
+        ? { kind: "json", value: { ok: true, role: "owner" } }
+        : { kind: "error", status: 403, message: "仅主人可用" },
   };
 }
