@@ -24,7 +24,6 @@ const svg = (body, size = 20) =>
 const IC = {
   logo: svg('<path d="M12 3c-1.8 0-3 1.4-3 3 0 .5.1 1 .3 1.4C7.9 8.4 7 10.1 7 12v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6c0-1.9-.9-3.6-2.3-4.6.2-.4.3-.9.3-1.4 0-1.6-1.2-3-3-3Z"/><path d="M9 18h6"/>', 16),
   home: svg('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>', 18),
-  menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>', 18),
   chat: svg('<path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5Z"/>'),
   wallet: svg('<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h.01M3 9h18"/>'),
   book: svg('<path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13"/>'),
@@ -163,14 +162,12 @@ function sideNav() {
       <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
       <span class="who"><b>${esc(whoAmI())}</b><span>${esc(roleLabel())}</span></span>
     </div>
-  </aside>
-  <div class="side-backdrop" id="sideBackdrop"></div>`;
+  </aside>`;
 }
 
 function topbar(routeName) {
   return `
   <header class="topbar">
-    <button class="icon-btn menu-btn" data-side-toggle aria-label="菜单">${IC.menu}</button>
     <span class="page-title">${routeName}</span>
     <div class="topbar-side">
       ${statusDot()}
@@ -182,11 +179,6 @@ function topbar(routeName) {
 /* 外壳 = 侧栏 + 主列（顶栏 + 内容） */
 function shell(contentHtml) {
   return `<div class="app-shell">${sideNav()}<div class="shell-col">${topbar(ROUTE_TITLES[state.route] ?? "")}${contentHtml}</div></div>`;
-}
-
-function closeSide() {
-  document.getElementById("sideNav")?.classList.remove("open");
-  document.getElementById("sideBackdrop")?.classList.remove("show");
 }
 
 function statusDot() {
@@ -437,15 +429,6 @@ function render() {
 document.addEventListener("click", (e) => {
   const closeBtn = e.target.closest("[data-close]");
   if (closeBtn) { closeModal(); return; }
-
-  // 窄屏导航抽屉：开关、遮罩、点链接后收起
-  if (e.target.closest("[data-side-toggle]")) {
-    document.getElementById("sideNav")?.classList.toggle("open");
-    document.getElementById("sideBackdrop")?.classList.toggle("show");
-    return;
-  }
-  if (e.target.closest("#sideBackdrop")) { closeSide(); return; }
-  if (e.target.closest(".side-nav a.side-item")) closeSide();
 
   // 通用设置 · 修改密码（批 1）
   if (e.target.closest("[data-pass-submit]")) {

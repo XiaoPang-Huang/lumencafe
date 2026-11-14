@@ -146,26 +146,24 @@ a { color: var(--brand); text-decoration: none; }
 .side-foot .who b { color: #fff; font-size: 12.5px; font-weight: 600; display: block; }
 .side-foot .who span { font-size: 10.5px; color: var(--ink-on-dark-dim); }
 
-/* 窄屏：侧栏变抽屉（项目规矩允许的导航抽屉） */
-.side-backdrop { display: none; }
+/* 窄屏：icon-only 常驻窄栏（白皮书 §20 Q19，学 RAGFlow app-sidebar/nav-item.tsx
+   的 max-md:size-10 图标居中形态；取代原抽屉拍板，无汉堡菜单、无遮罩） */
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: minmax(0, 1fr); }
-  .side-nav {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
-    width: min(280px, 84vw); height: auto;
-    transform: translateX(-100%);
-    transition: transform .24s var(--ease);
-    box-shadow: var(--shadow-pop);
+  .app-shell { grid-template-columns: 56px minmax(0, 1fr); }
+  .side-nav { padding: 10px 0 0; }
+  .side-brand { justify-content: center; padding: 2px 0 12px; }
+  .side-brand > span:last-child { display: none; } /* 只留 logo 点 */
+  .side-gt { display: none; }                      /* 分组标题收起 */
+  .side-group { padding: 4px 8px; }
+  .side-item {
+    width: 40px; height: 40px; margin: 2px auto; padding: 0;
+    justify-content: center; border-radius: 10px;
   }
-  .side-nav.open { transform: translateX(0); }
-  .side-backdrop {
-    display: block;
-    position: fixed; inset: 0; z-index: 49;
-    background: var(--mask);
-    opacity: 0; pointer-events: none;
-    transition: opacity .24s var(--ease);
-  }
-  .side-backdrop.show { opacity: 1; pointer-events: auto; }
+  .side-item span { display: none; }               /* 只留图标 */
+  .side-item svg { width: 18px; height: 18px; }
+  .side-item.active::before { left: -8px; top: 9px; bottom: 9px; }
+  .side-foot { justify-content: center; padding: 10px 0; }
+  .side-foot .who { display: none; }               /* 只留头像 */
 }
 
 /* ---------- 顶栏（白底毛玻璃，参考 gethomepage 状态灯 + midday） ---------- */
@@ -178,11 +176,9 @@ a { color: var(--brand); text-decoration: none; }
   backdrop-filter: saturate(1.6) blur(14px);
   border-bottom: 1px solid var(--line);
 }
-.menu-btn { display: none; }
 .page-title { font-size: 15px; font-weight: 600; }
 .topbar-side { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 @media (max-width: 900px) {
-  .menu-btn { display: inline-flex; }
   .page-title { font-size: 14.5px; }
 }
 
