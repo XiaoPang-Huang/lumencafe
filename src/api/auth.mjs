@@ -192,6 +192,24 @@ export function authRoutes() {
       return { kind: "json", value: { user: user ? toPublicUser(user) : null } };
     },
 
+    // 自助改显示名（白皮书 §20 P1：概览式设置的 Edit 弹窗）
+    "PATCH /api/auth/me": async (request, ctx) => {
+      const user = await userByPrincipal(ctx);
+      if (!user) {
+        return { kind: "error", status: 403, message: "当前身份不可修改" };
+      }
+      const body = await readJsonBody(request);
+      const displayName = String(body?.displayName ?? "").trim();
+      if (!displayName || displayName.length > 100) {
+        return { kind: "error", status: 400, message: "显示名需为 1-100 字符" };
+      }
+      await getPg().query(
+        "UPDATE users SET display_name = $1, updated_at = now() WHERE id = $2",
+        [displayName, user.id],
+      );
+      return { kind: "json", value: { ok: true, displayName } };
+    },
+
     // 自助改密：旧密码验证 + 新密码 ≥ 8 位
     "POST /api/auth/password": async (request, ctx) => {
       const user = await userByPrincipal(ctx);

@@ -113,3 +113,22 @@ test("bootstrap 门槛：member 403、匿名 401", async () => {
   assert.equal((await frank.get("/api/auth/bootstrap")).status, 403);
   assert.equal((await new Client(server.baseUrl).get("/api/auth/bootstrap")).status, 401);
 });
+
+test("改显示名（§20 P1 概览式设置 Edit）：成功 / 空 400 / 超长 400 / 匿名 401", async () => {
+  await insertUser(server.databaseUrl, { username: "gina", password: "gina-pass-1", displayName: "吉娜" });
+  const g = await loginAs(server, "gina", "gina-pass-1");
+
+  // 成功改名，返回值与后续 /api/auth/me 一致
+  const ok = await g.patch("/api/auth/me", { displayName: "  吉娜二号  " });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.displayName, "吉娜二号", "首尾空格被 trim");
+  assert.equal((await g.get("/api/auth/me")).json.user.displayName, "吉娜二号");
+
+  // 空 / 纯空格 → 400
+  assert.equal((await g.patch("/api/auth/me", { displayName: "" })).status, 400);
+  assert.equal((await g.patch("/api/auth/me", { displayName: "   " })).status, 400);
+  // 超长（101 字符）→ 400
+  assert.equal((await g.patch("/api/auth/me", { displayName: "x".repeat(101) })).status, 400);
+  // 匿名 → 401
+  assert.equal((await new Client(server.baseUrl).patch("/api/auth/me", { displayName: "黑客" })).status, 401);
+});

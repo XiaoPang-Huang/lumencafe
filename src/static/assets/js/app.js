@@ -201,7 +201,7 @@ function homeView() {
       </div>
       <div class="welcome-acts">
         <a class="btn btn-ghost btn-ghost-w" href="#/money">记一笔</a>
-        <a class="btn btn-primary" href="#/chat">开始对话</a>
+        <a class="btn btn-accent" href="#/chat">开始对话</a>
       </div>
     </div>
     <div class="stage-head">
@@ -263,6 +263,24 @@ const passBlock = () => `
       <button class="btn btn-primary" data-pass-submit>提交</button>
       <span class="form-msg" id="pwMsg"></span>
     </div>
+  </div>`;
+
+/* 通用设置：概览式「只读行 + Edit 按钮」（§20 P1，学 RAGFlow Profile；
+   原型 designs/lumencafe-redstyle/p1-账号视觉改造.html 第 3 节，已拍板） */
+const profRow = (label, valHtml, editKey = "") => `
+  <div class="prof-row">
+    <span class="prof-label">${esc(label)}</span>
+    <span class="prof-val">${valHtml}</span>
+    ${editKey ? `<button class="prof-edit" data-prof-edit="${editKey}">Edit</button>` : "<span></span>"}
+  </div>`;
+
+const generalOverview = () => `
+  <div class="prof-list">
+    ${profRow("用户名", `${esc(state.user.username)}<span class="muted">不可改（登录标识）</span>`)}
+    ${profRow("显示名", esc(state.user.displayName ?? state.user.username), "name")}
+    ${profRow("角色", `${esc(roleLabel())}<span class="muted">由管理设置调整</span>`)}
+    ${profRow("密码", `••••••••<span class="muted">定期更换</span>`, "pass")}
+    ${profRow("登录方式", `账号密码<span class="muted">chord 会话 cookie</span>`)}
   </div>`;
 
 /* POST JSON 便捷封装（api() 只认 2xx，错误信息按状态码映射） */
@@ -426,14 +444,49 @@ document.addEventListener("click", (e) => {
     const bodies = {
       general: `
         ${state.bootstrapNeeded ? bootstrapBlock() : ""}
-        <div class="kv-row"><span class="kv-k">当前身份</span><span class="kv-v">${esc(whoAmI())}（${esc(roleLabel())}）</span></div>
-        <div class="kv-row"><span class="kv-k">登录方式</span><span class="kv-v">账号密码（chord 会话 cookie）</span></div>
-        ${state.user ? passBlock() : `<p class="me-note">当前身份无密码（chord 主人/邀请会话）。</p>`}`,
+        ${state.user ? generalOverview() : `<p class="me-note">当前身份无密码账号（chord 主人/邀请会话）：${esc(whoAmI())}（${esc(roleLabel())}）。</p>`}`,
       apps: `<p>应用偏好设置会按批次加入：对话、记账、论文各管各的。</p>`,
       admin: isOwner ? `<p>管理后台骨架在 <a href="#/admin">#/admin</a>。</p>` : `<p>仅主人可用。</p>`,
     };
     openModal(domain.querySelector(".domain-name").textContent, bodies[key] ?? "<p>占位</p>",
       `<button class="btn btn-ghost" data-close>关闭</button>`);
+    return;
+  }
+
+  // 概览式设置的 Edit：显示名 / 密码（二级弹窗，学 RAGFlow Profile）
+  const profEdit = e.target.closest("[data-prof-edit]");
+  if (profEdit) {
+    const what = profEdit.dataset.profEdit;
+    if (what === "name") {
+      openModal("修改显示名", `
+        <label class="login-field" for="dnInput"><span class="login-label">显示名</span><input class="text-input" id="dnInput" maxlength="100" value="${esc(state.user?.displayName ?? "")}" autocomplete="off"></label>
+        <div class="form-msg" id="dnMsg"></div>`,
+        `<button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" data-dn-submit>保存</button>`);
+    } else if (what === "pass") {
+      openModal("修改密码", passBlock(), `<button class="btn btn-ghost" data-close>取消</button>`);
+    }
+    return;
+  }
+
+  // 显示名保存
+  if (e.target.closest("[data-dn-submit]")) {
+    const msg = document.getElementById("dnMsg");
+    const name = document.getElementById("dnInput").value.trim();
+    if (!name || name.length > 100) { msg.textContent = "显示名需为 1-100 字符"; msg.className = "form-msg err"; return; }
+    api("/api/auth/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: name }),
+    }).then((data) => {
+      if (state.user) state.user.displayName = data.displayName;
+      closeModal();
+      toast("显示名已更新");
+      render();
+    }).catch((err) => {
+      msg.textContent = err.status === 400 ? "显示名需为 1-100 字符" : "保存失败，请稍后重试";
+      msg.className = "form-msg err";
+    });
+    return;
   }
 });
 

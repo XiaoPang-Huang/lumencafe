@@ -1,8 +1,10 @@
 /* ============================================================
    流光咖啡馆 · 页面外壳与全部页面样式
-   视觉基线（2026-11-14 拍板，白皮书 §18）：红白灰 + 深色点缀
-   品牌红 #D92D20 / 石墨灰侧栏 #2E2E33 / 白卡浅灰页 #F4F4F5
-   参考：PAN 理财工作台（深色侧栏+红选中条）、习惯打卡台（悬浮卡）
+   视觉基线（2026-11-14 拍板 §18；2026-11-15 修订 §20 对齐 RAGFlow）：
+   红白灰 + 深色点缀——主按钮深炭 #1F2329（Q18），品牌红 #D92D20 仅
+   选中态/关键数字/链接/accent；石墨灰侧栏 #2E2E33；白卡浅灰页 #F4F4F5
+   圆角阶梯 4~16 + 输入胶囊 28；0.5px 细边框；hover=90% 不透明
+   参考：RAGFlow（docs/ragflow_逆向/06、07）+ PAN 理财工作台 + 习惯打卡台
    ============================================================ */
 
 @font-face {
@@ -18,7 +20,7 @@
   --ink-2: #4e5969;
   --ink-3: #86909c;
   --line: #e5e6eb;
-  /* 品牌红（仅主按钮/选中态/关键数字） */
+  /* 品牌红（2026-11-15 修订 §20 Q18：仅选中态/关键数字/链接/accent 按钮，主按钮不用红） */
   --brand: #d92d20;
   --brand-strong: #b42318;
   --brand-soft: #fdecea;
@@ -40,8 +42,13 @@
   --shadow-pop: 0 12px 40px rgba(15, 20, 30, .16);
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-  --radius: 14px;
-  --radius-lg: 20px;
+  /* 圆角阶梯（RAGFlow，§20）：按钮6 / 卡片8-12 / 弹窗12 / 大卡16 / 输入胶囊28 */
+  --r-xs: 4px; --r-sm: 5px; --r: 6px; --r-lg: 7px; --r-xl: 8px;
+  --r-2xl: 10px; --r-3xl: 12px; --r-4xl: 16px; --r-pill: 28px;
+  --radius: 12px;       /* 旧变量兼容：普通卡片 */
+  --radius-lg: 16px;    /* 旧变量兼容：大卡 */
+  /* 0.5px 细边框（RAGFlow 质感关键） */
+  --hair: 0.5px solid rgba(31, 35, 41, .14);
   --ease: cubic-bezier(.25, .1, .25, 1);
 }
 
@@ -291,22 +298,28 @@ a { color: var(--brand); text-decoration: none; }
 .domain-desc { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .domain-arrow { color: var(--ink-3); flex-shrink: 0; }
 
-/* ---------- 按钮 ---------- */
+/* ---------- 按钮（§20 Q18：主按钮深炭底白字，hover=90% 不透明；红仅 accent） ---------- */
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
-  font-size: 13.5px; border-radius: 10px; padding: 8px 16px;
-  transition: background .18s var(--ease), color .18s var(--ease);
+  font-size: 13.5px; border-radius: var(--r); padding: 8px 16px;
+  transition: background .15s var(--ease), color .15s var(--ease), opacity .15s var(--ease), border-color .15s var(--ease);
 }
-.btn-primary { background: var(--brand); color: #fff; }
-.btn-primary:hover { background: var(--brand-strong); }
+.btn-primary { background: var(--ink); color: #fff; }
+.btn-primary:hover { opacity: .9; }
+/* accent：品牌红，全站克制使用（每页至多 1 处高频动作） */
+.btn-accent { background: var(--brand); color: #fff; }
+.btn-accent:hover { background: var(--brand-strong); }
 .btn-ghost { background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
 .btn-ghost:hover { color: var(--ink); border-color: var(--line-strong, #c9cdd4); }
+/* 危险延迟暴露（RAGFlow）：平时中性，hover 才变红 */
+.btn-delete-soft { background: transparent; color: var(--ink-2); }
+.btn-delete-soft:hover { background: var(--brand-soft); color: var(--danger); }
 
 /* ---------- 中央弹窗（项目基建：原生 dialog） ---------- */
 .modal-mask {
   margin: auto; border: none; padding: 0;
   width: min(560px, calc(100vw - 32px));
-  border-radius: 18px; box-shadow: var(--shadow-pop);
+  border-radius: var(--r-3xl); box-shadow: var(--shadow-pop);
   background: var(--surface); color: var(--ink);
 }
 .modal-mask::backdrop { background: var(--mask); }
@@ -470,10 +483,11 @@ a { color: var(--brand); text-decoration: none; }
 
 .text-input {
   width: 100%; font-family: inherit; font-size: 14px; color: var(--ink);
-  border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: var(--r-lg); padding: 9px 12px;
   outline: none; background: var(--surface);
+  transition: border-color .15s var(--ease);
 }
-.text-input:focus { border-color: var(--brand); }
+.text-input:focus { border-color: var(--ink); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: #b8352d; }
 .modal-body b { color: var(--danger); }
@@ -661,43 +675,44 @@ a { color: var(--brand); text-decoration: none; }
 .tool-args { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .tool-status { color: var(--ink-3); flex-shrink: 0; }
 
-/* ---------- 登录页（批 1 账号登录；公开页 CSP 禁内联样式，全走外链） ----------
-   参考：Supabase/Stripe SaaS 模板登录页（浅灰底 + 居中单白卡 + 全宽主按钮）、
-   Linear/Spotify 极简登录（无干扰单表单）；配色用项目红白灰体系 */
+/* ---------- 登录页（2026-11-15 §20 P1 重做；原型 designs/lumencafe-redstyle/p1-账号视觉改造.html）
+   参考：RAGFlow login-next（浅灰渐变底 + 居中白卡 + 0.5px 细边框 + 近黑主按钮）
+   ×Supabase/Stripe SaaS 登录页；不做 3D 翻面（无注册面，Q20 不做自助注册） */
 .login-body {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
-  background: var(--stage);
+  background: linear-gradient(160deg, #ededf 0%, var(--stage) 55%, #e9e4e2 100%);
   padding: 24px;
 }
 .login-wrap { width: 100%; max-width: 380px; }
 .login-card {
   background: var(--surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 34px 30px 30px;
+  border: var(--hair);
+  border-radius: var(--r-4xl);
+  box-shadow: 0 12px 40px rgba(15, 20, 30, .10);
+  padding: 36px 32px 30px;
 }
-.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
 .login-logo {
-  width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+  width: 36px; height: 36px; border-radius: var(--r-xl); flex-shrink: 0;
+  background: var(--graphite);
   color: #fff;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 10px rgba(217, 45, 32, .35);
 }
-.login-name { font-size: 17px; font-weight: 700; line-height: 1.2; }
-.login-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; letter-spacing: .04em; }
-.login-title { font-size: 15px; font-weight: 600; margin: 0 0 16px; }
+.login-name { font-size: 16px; font-weight: 650; line-height: 1.2; }
+.login-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; letter-spacing: .06em; }
+.login-title { font-size: 19px; font-weight: 650; margin: 0 0 20px; }
 .login-form { display: flex; flex-direction: column; gap: 14px; }
 .login-field { display: flex; flex-direction: column; gap: 5px; }
 .login-label { font-size: 12.5px; color: var(--ink-2); }
 .login-error {
   font-size: 12.5px; color: var(--danger);
-  background: var(--brand-soft); border-radius: 8px; padding: 8px 12px;
+  background: var(--brand-soft); border-radius: var(--r-lg); padding: 8px 12px;
 }
 .login-error[hidden] { display: none; }
-.login-btn { justify-content: center; width: 100%; padding: 10px 16px; font-size: 14px; }
-.login-btn:disabled { opacity: .6; cursor: default; }
+.login-btn { justify-content: center; width: 100%; height: 40px; padding: 0 22px; font-size: 14px; border-radius: var(--r-lg); margin-top: 4px; }
+.login-btn:disabled { opacity: .55; cursor: default; }
+.login-foot { margin-top: 18px; font-size: 12px; color: var(--ink-3); text-align: center; }
 
 /* 「我的」通用设置里的账号区块（修改密码 / owner 引导建号） */
 .me-sec {
@@ -709,6 +724,23 @@ a { color: var(--brand); text-decoration: none; }
 .form-msg { font-size: 12.5px; color: var(--ink-2); }
 .form-msg.ok { color: var(--ok); }
 .form-msg.err { color: var(--danger); }
+
+/* 概览式设置（§20 P1，学 RAGFlow Profile：只读行 + Edit + 弹窗编辑） */
+.prof-list { display: flex; flex-direction: column; }
+.prof-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 0; border-bottom: var(--hair);
+}
+.prof-row:last-child { border-bottom: none; }
+.prof-label { font-size: 12.5px; color: var(--ink-3); width: 80px; flex-shrink: 0; }
+.prof-val { flex: 1; font-size: 14px; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prof-val .muted { color: var(--ink-3); font-size: 12.5px; margin-left: 8px; }
+.prof-edit {
+  background: none; border: none; color: var(--ink-2); font-size: 13px;
+  padding: 4px 10px; border-radius: var(--r); flex-shrink: 0;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.prof-edit:hover { background: rgba(31, 35, 41, .05); color: var(--ink); }
 .boot-banner {
   background: var(--brand-soft);
   border: 1px solid rgba(217, 45, 32, .25);
