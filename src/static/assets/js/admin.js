@@ -107,12 +107,12 @@
         </div></td>
       </tr>`;
     }).join("");
-    return `<table class="tbl">
+    return `<div class="tbl-wrap"><table class="tbl">
       <thead><tr>
         <th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>创建日期</th><th>操作</th>
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table></div>`;
   }
 
   function grantsMatrix() {
@@ -135,10 +135,10 @@
         ${cells}
       </tr>`;
     }).join("");
-    return `<table class="tbl grant-tbl">
+    return `<div class="tbl-wrap"><table class="tbl grant-tbl">
       <thead>${head}</thead>
       <tbody>${body}</tbody>
-    </table>
+    </table></div>
     <p class="tbl-dim matrix-hint">勾选即生效；「管理 × 管理员」格锁定，防止把管理员入口对所有管理员关闭。</p>`;
   }
 

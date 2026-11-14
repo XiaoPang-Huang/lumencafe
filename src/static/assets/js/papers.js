@@ -36,7 +36,7 @@
   function libHtml() {
     return `<div class="money-page papers-page">
       <div class="money-head-row">
-        <h1 class="stage-title" style="margin:0">论文库</h1>
+        <h1 class="stage-title">论文库</h1>
         <div class="paper-add">
           <input class="text-input paper-add-input" placeholder="标题 / DOI / arXiv 编号">
           <button class="btn btn-primary" data-add-paper>添加并解析</button>
@@ -135,7 +135,7 @@
           input.value = "";
           await loadLibrary(); render(); startPoll(render);
         } catch (err) {
-          alert(err.message);
+          LC.toast(err.message);
           btn.disabled = false;
         }
         return;
@@ -168,7 +168,7 @@
         const input = container.querySelector(".sub-input");
         const kw = input.value.trim();
         if (!kw) return;
-        await api("/api/push/subscriptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: kw }) }).catch((err) => alert(err.message));
+        await api("/api/push/subscriptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: kw }) }).catch((err) => LC.toast(err.message));
         input.value = "";
         await loadLibrary(); render();
         return;
@@ -191,7 +191,7 @@
         btn.disabled = true;
         try {
           const r = await api("/api/push/run-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-          alert(r.result.skipped ? "今天已经推过了（幂等防重）。想重推用 force。" : r.result.pushed ? `已推送（${r.result.channel}），新增 ${r.result.new_count} 篇` : `推送失败：${r.result.detail}`);
+          LC.toast(r.result.skipped ? "今天已经推过了（幂等防重）。想重推用 force。" : r.result.pushed ? `已推送（${r.result.channel}），新增 ${r.result.new_count} 篇` : `推送失败：${r.result.detail}`);
         } finally {
           btn.disabled = false;
           await loadLibrary(); render();
@@ -251,8 +251,8 @@
               <div class="note-quote">段落 ${a.anchor_block + 1}：${esc(a.anchor_quote)}</div>
               <div class="note-body">${esc(a.body)}</div>
               <div class="msg-actions">
-                <button class="msg-act" data-goto="${a.anchor_block}">定位原文</button>
-                <button class="msg-act" data-note-del="${a.id}">删除</button>
+                <button class="mini-act" data-goto="${a.anchor_block}">定位原文</button>
+                <button class="mini-act" data-note-del="${a.id}">删除</button>
               </div>
             </div>`).join("") || `<div class="chat-empty"><div class="chat-empty-sub">点正文段落旁的批注图标，把想法钉在原文上。</div></div>`}
           </div>

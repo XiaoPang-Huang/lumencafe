@@ -38,6 +38,7 @@ n8n-zh/
 # QA / 验收产物（本地生成，不进库）
 .playwright-cli/
 deploy/pi/output-smoke/
+shots/
 qa_*.png
 qa_*.py
 qa_*.mjs

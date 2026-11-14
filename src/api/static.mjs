@@ -23,10 +23,13 @@ const MIME = {
 };
 
 // chord 默认 CSP 是 default-src 'none' 且没有 style-src——页面路由要自己加宽
+// style-src 含 'unsafe-inline'：记账图表条宽/高、输入框自动长高等动态样式必须走内联
+// （2026-11-15 全站 UI 升级时发现原 'self' 会拦掉这些渲染，图表条全塌）；
+// script-src 仍严格 'self'，无内联脚本，XSS 主防线不变
 const PAGE_CSP = [
   "default-src 'none'",
   "script-src 'self'",
-  "style-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
   "connect-src 'self'",

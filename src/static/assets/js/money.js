@@ -97,7 +97,8 @@
       <div class="entry-list">
         ${Object.keys(byDate).sort().reverse().map((date) => {
           const rows = byDate[date];
-          const dayTotal = rows.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount_fen, 0);
+          // amount_fen 从 PG bigint 回来是字符串，必须 Number() 再累加，否则字符串拼接出天文数字
+          const dayTotal = rows.filter((t) => t.type === "expense").reduce((a, t) => a + Number(t.amount_fen), 0);
           return `<div class="entry-date-row">
             <span>${fmtDate(date)}</span><span class="entry-day-total">-¥${yuan(dayTotal)}</span>
           </div>
@@ -231,8 +232,8 @@
           ${S.categories.filter((c) => c.kind === kind).map((c) => `
           <div class="cat-row" data-cat="${c.id}">
             <input class="text-input cat-name" value="${esc(c.name)}" ${c.built_in ? "" : ""}>
-            <button class="msg-act" data-cat-hide="${c.id}">${c.hidden ? "显示" : "隐藏"}</button>
-            ${c.built_in ? `<span class="tag">预置</span>` : `<button class="msg-act" data-cat-del="${c.id}">删除</button>`}
+            <button class="mini-act" data-cat-hide="${c.id}">${c.hidden ? "显示" : "隐藏"}</button>
+            ${c.built_in ? `<span class="tag">预置</span>` : `<button class="mini-act" data-cat-del="${c.id}">删除</button>`}
           </div>`).join("")}`).join("")}
         <div class="cat-add-row">
           <select class="text-input cat-add-kind"><option value="expense">支出</option><option value="income">收入</option></select>
@@ -349,7 +350,7 @@
     if (!hide && !del && !add) return;
     (async () => {
       if (hide) await api(`/api/money/categories/${hide.dataset.catHide}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hidden: true }) });
-      if (del) await api(`/api/money/categories/${del.dataset.catDel}`, { method: "DELETE" }).catch((err) => alert(err.message));
+      if (del) await api(`/api/money/categories/${del.dataset.catDel}`, { method: "DELETE" }).catch((err) => LC.toast(err.message));
       if (add) {
         const modal = document.getElementById("modal");
         await api("/api/money/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: modal.querySelector(".cat-add-name").value.trim(), kind: modal.querySelector(".cat-add-kind").value }) }).catch(() => {});

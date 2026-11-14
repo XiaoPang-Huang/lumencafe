@@ -135,10 +135,10 @@ function avatarInner(fallback) {
 /* 批 3：当前角色是否可用某应用（/api/session 下发的授权列表） */
 const hasApp = (app) => state.apps.includes(app);
 
-/* 石墨灰侧栏（桌面常驻；窄屏变抽屉，项目规矩允许的导航抽屉） */
+/* 石墨灰侧栏（桌面常驻；窄屏 icon-only 常驻窄栏，§20 Q19） */
 function sideNav() {
   const item = (r, name, href, icon) =>
-    `<a class="side-item ${state.route === r ? "active" : ""}" href="${href}">${icon}<span>${name}</span></a>`;
+    `<a class="side-item ${state.route === r ? "active" : ""}" href="${href}" title="${name}" aria-label="${name}">${icon}<span>${name}</span></a>`;
   return `
   <aside class="side-nav" id="sideNav">
     <div class="side-brand">
