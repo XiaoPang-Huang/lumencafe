@@ -1,0 +1,230 @@
+/* ============================================================
+   流光咖啡馆 · 页面外壳样式（0C）
+   参考：midday（外壳）、gethomepage（玻璃 Bento + 状态灯）、
+         Homarr（卡片网格）、macOS 系统设置（设置三域骨架）
+   配色：火山方舟品牌蓝 + 中性灰白（沿用原型 v2 已拍板 token）
+   ============================================================ */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+:root {
+  --stage: #f0f1f3;
+  --surface: #ffffff;
+  --ink: #1d2129;
+  --ink-2: #4e5969;
+  --ink-3: #86909c;
+  --line: #e5e6eb;
+  --brand: #1664ff;
+  --brand-strong: #0e4fd8;
+  --brand-soft: #f0f6ff;
+  --ok: #00b42a;
+  --ok-soft: #e8f8ee;
+  --danger: #d83931;
+  --mask: rgba(15, 20, 30, .34);
+  --glass-strong: rgba(255, 255, 255, .76);
+  --shadow-card: 0 1px 2px rgba(15, 20, 30, .05), 0 10px 28px rgba(15, 20, 30, .06);
+  --shadow-pop: 0 12px 40px rgba(15, 20, 30, .16);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --ease: cubic-bezier(.25, .1, .25, 1);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  font-size: 14px; line-height: 1.6;
+  color: var(--ink);
+  background: var(--stage);
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: inherit; cursor: pointer; background: none; border: none; color: inherit; }
+a { color: var(--brand); text-decoration: none; }
+
+/* ---------- 启动画面 ---------- */
+.boot-splash {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+}
+.boot-logo { font-size: 22px; font-weight: 600; letter-spacing: .06em; }
+.boot-hint { font-size: 13px; color: var(--ink-3); }
+.boot-error { color: var(--danger); }
+
+/* ---------- 顶栏（参考 midday 外壳 + gethomepage 毛玻璃） ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 18px;
+  padding: 0 20px; height: 56px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  backdrop-filter: saturate(1.6) blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 600; }
+.brand-dot {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--brand); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+.nav { display: flex; gap: 4px; flex: 1; }
+.nav-btn {
+  padding: 7px 14px; border-radius: 9px; font-size: 14px; color: var(--ink-2);
+  transition: background .18s var(--ease), color .18s var(--ease);
+}
+.nav-btn:hover { background: rgba(29, 33, 41, .05); }
+.nav-btn.active { background: var(--brand-soft); color: var(--brand); font-weight: 500; }
+.topbar-side { display: flex; align-items: center; gap: 10px; }
+
+/* 状态灯（gethomepage 参考） */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 12px;
+}
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+.status-dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.status-dot.off { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft, rgba(216,57,49,.1)); }
+.status-dot.wait { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.user-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 12px 5px 6px;
+}
+.user-chip .avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--brand); color: #fff; font-size: 12px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- 舞台：容器卡拉满宽度 ---------- */
+.stage { max-width: 1480px; margin: 0 auto; padding: 24px 20px 56px; }
+.stage-head { margin: 6px 2px 18px; }
+.stage-title { font-size: 22px; font-weight: 600; margin: 0; }
+.stage-sub { font-size: 13px; color: var(--ink-3); margin: 4px 0 0; }
+
+/* ---------- 卡片网格（Homarr / gethomepage 参考） ---------- */
+.card-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+.card {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 10px;
+  min-height: 150px;
+  transition: transform .22s var(--ease), box-shadow .22s var(--ease);
+}
+.card:hover { transform: translateY(-2px); box-shadow: var(--shadow-pop); }
+.card-icon {
+  width: 40px; height: 40px; border-radius: 11px;
+  background: var(--brand-soft); color: var(--brand);
+  display: flex; align-items: center; justify-content: center;
+}
+.card-title { font-size: 15.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.card-desc { font-size: 13px; color: var(--ink-2); flex: 1; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.tag {
+  font-size: 11.5px; color: var(--ink-3);
+  background: rgba(228, 230, 235, .85);
+  border-radius: 999px; padding: 3px 10px;
+}
+.tag.soon { color: var(--brand); background: var(--brand-soft); }
+
+.card-link { font-size: 13px; color: var(--brand); font-weight: 500; }
+.card-link-hidden { visibility: hidden; }
+.me-note { margin-top: 16px; font-size: 12.5px; color: var(--ink-3); }
+.card-disabled { opacity: .62; }
+.card-disabled:hover { transform: none; box-shadow: var(--shadow-card); }
+
+/* 状态卡内行 */
+.kv-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.kv-row:last-child { border-bottom: none; }
+.kv-k { color: var(--ink-3); }
+.kv-v { font-family: var(--mono); font-size: 12.5px; color: var(--ink); text-align: right; word-break: break-all; }
+
+/* ---------- 「我的」三域（macOS 设置骨架） ---------- */
+.domain-list { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+.domain-item {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface); border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 18px; width: 100%; text-align: left;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+}
+.domain-item:hover { transform: translateY(-1px); box-shadow: var(--shadow-pop); }
+.domain-item .card-icon { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; }
+.domain-text { flex: 1; min-width: 0; }
+.domain-name { font-size: 14.5px; font-weight: 500; }
+.domain-desc { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+.domain-arrow { color: var(--ink-3); flex-shrink: 0; }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 13.5px; border-radius: 10px; padding: 8px 16px;
+  transition: background .18s var(--ease), color .18s var(--ease);
+}
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover { background: var(--brand-strong); }
+.btn-ghost { background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); }
+.btn-ghost:hover { color: var(--ink); border-color: var(--line-strong, #c9cdd4); }
+
+/* ---------- 中央弹窗（项目基建：原生 dialog） ---------- */
+.modal-mask {
+  margin: auto; border: none; padding: 0;
+  width: min(560px, calc(100vw - 32px));
+  border-radius: 18px; box-shadow: var(--shadow-pop);
+  background: var(--surface); color: var(--ink);
+}
+.modal-mask::backdrop { background: var(--mask); }
+.modal-mask[open] { animation: modal-in .24s var(--ease); }
+@starting-style { .modal-mask[open] { opacity: 0; transform: translateY(14px) scale(.985); } }
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 0;
+}
+.modal-title { font-size: 16px; font-weight: 600; margin: 0; }
+.modal-close {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink-3); transition: background .16s var(--ease), color .16s var(--ease);
+}
+.modal-close:hover { background: rgba(29, 33, 41, .05); color: var(--ink); }
+.modal-body { padding: 14px 22px 22px; font-size: 14px; color: var(--ink-2); }
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 0 22px 20px;
+}
+
+/* ---------- 空页占位 ---------- */
+.empty-hint {
+  background: var(--surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card); padding: 48px 24px;
+  text-align: center; color: var(--ink-3); font-size: 13.5px;
+}
+
+/* ---------- 窄屏（双端同一套卡片布局，只调间距与网格） ---------- */
+@media (max-width: 640px) {
+  .topbar { padding: 0 12px; gap: 10px; }
+  .brand span { display: none; }
+  .stage { padding: 16px 12px 40px; }
+  .card-grid { grid-template-columns: 1fr; gap: 12px; }
+  .stage-title { font-size: 19px; }
+  .status-pill .status-text { display: none; }
+}
