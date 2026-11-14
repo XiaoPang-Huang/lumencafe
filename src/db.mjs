@@ -10,6 +10,14 @@ import { fileURLToPath } from "node:url";
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 
+let sharedClient = null; // 业务模块（记账等）经 getPg() 共用这条连接
+
+/** 业务模块取 PG 连接（必须在 initDb 成功后调用） */
+export function getPg() {
+  if (!sharedClient) throw new Error("PG 未初始化：先跑 initDb");
+  return sharedClient;
+}
+
 /** 连上 PG 并跑完未执行的 migration；返回当前版本号。连不上直接抛错。 */
 export async function initDb(databaseUrl) {
   const client = new pg.Client({ connectionString: databaseUrl });
@@ -19,6 +27,7 @@ export async function initDb(databaseUrl) {
     await client.end().catch(() => {});
     throw new Error(`连不上 PostgreSQL（请确认 pg 容器已启动、DATABASE_URL 正确）：${error.message}`);
   }
+  sharedClient = client;
 
   try {
     await client.query(`

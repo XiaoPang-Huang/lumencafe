@@ -41,6 +41,46 @@ function resolveModel(ref) {
 export const DEFAULT_MODEL_REF = hasRealLlm ? "deepseek/deepseek-flash" : "lumencafe-faux/faux-chat";
 
 /**
+ * 假模型的「固定剧本」（仅未配置 key 时用）：
+ * - 记账助手的 JSON 解析请求 → 按简单规则回 JSON，保证记账链路可演示
+ * - 其他 → 复读机 + Markdown 样例
+ */
+function fauxCanned(systemPrompt, userText) {
+  const isParseCall = systemPrompt.includes("意图二选一"); // 记账的 JSON 解析调用
+  const isAnswerCall = !isParseCall && systemPrompt.includes("记账助手"); // 统计结果说人话
+  if (isParseCall) {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const monthStart = today.slice(0, 8) + "01";
+    const amount = userText.match(/(\d+(?:\.\d+)?)\s*(?:元|块|块钱)/);
+    if (amount) {
+      const fen = Math.round(parseFloat(amount[1]) * 100);
+      const category = /饭|餐|吃|奶茶|咖啡/.test(userText) ? "餐饮" : /车|地铁|滴滴|油/.test(userText) ? "交通" : /买|购/.test(userText) ? "购物" : "其他支出";
+      return JSON.stringify({
+        intent: "record", amount_fen: fen, type: "expense", category,
+        occurred_on: today, shared: /两人|全家|家庭|共同/.test(userText),
+        note: "", confidence: 0.5,
+      });
+    }
+    if (/多少|花了|支出|收入|统计/.test(userText)) {
+      return JSON.stringify({
+        intent: "stats", from: monthStart, to: today,
+        category: /饭|餐|吃/.test(userText) ? "餐饮" : null,
+        type: /收入|赚/.test(userText) ? "income" : "expense",
+        view: /两人|全家|家庭/.test(userText) ? "family" : "personal",
+      });
+    }
+    return JSON.stringify({ intent: "record", amount_fen: null });
+  }
+  if (isAnswerCall) {
+    const m = userText.match(/合计\s*([\d.]+)\s*元，共\s*(\d+)\s*笔/);
+    if (m) return `（假模型回答）这段时间一共花了 ${m[1]} 元，共 ${m[2]} 笔。配置 DEEPSEEK_API_KEY 后是真实回答。`;
+    return "（假模型回答）没查到这笔数。配置 DEEPSEEK_API_KEY 后是真实回答。";
+  }
+  return `（假模型，未配置 DEEPSEEK_API_KEY）你说：${userText}\n\n配置 key 后走 DeepSeek 真模型。支持 Markdown：\n\n\`\`\`js\nconsole.log("hello");\n\`\`\`\n\n- 列表项一\n- 列表项二`;
+}
+
+/**
  * 单次流式对话。messages: [{role, content}]；onDelta(文本增量)。
  * 返回完整文本。signal 用于中止（用户停止）。
  * 失败直接抛错，由调用方按白皮书三态处理。
@@ -49,11 +89,11 @@ export async function streamChat({ modelRef, systemPrompt, messages, onDelta, si
   const model = resolveModel(modelRef) ?? models.getModels()[0];
   if (!model) throw new Error("没有可用模型");
 
-  // faux：每次请求补一条「复读机」回复，无 key 也能演示流式
+  // faux：每次请求补一条假回复，无 key 也能演示流式
   if (faux) {
     const last = [...messages].reverse().find((m) => m.role === "user");
-    const reply = `（假模型，未配置 DEEPSEEK_API_KEY）你说：${last?.content ?? ""}\n\n配置 key 后走 DeepSeek 真模型。支持 Markdown：\n\n\`\`\`js\nconsole.log("hello");\n\`\`\`\n\n- 列表项一\n- 列表项二`;
-    faux.appendResponses([fauxAssistantMessage([fauxText(reply)])]);
+    const canned = fauxCanned(systemPrompt ?? "", last?.content ?? "");
+    faux.appendResponses([fauxAssistantMessage([fauxText(canned)])]);
   }
 
   const context = {

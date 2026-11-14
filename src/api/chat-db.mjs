@@ -18,6 +18,7 @@ chatDb.exec(`
     owner_key     TEXT NOT NULL,
     title         TEXT NOT NULL DEFAULT '新会话',
     model         TEXT,
+    app           TEXT NOT NULL DEFAULT 'chat',
     created_at    INTEGER NOT NULL,
     updated_at    INTEGER NOT NULL,
     last_msg_at   INTEGER NOT NULL
@@ -30,41 +31,58 @@ chatDb.exec(`
     req_id          TEXT NOT NULL UNIQUE,
     role            TEXT NOT NULL CHECK (role IN ('user','assistant')),
     content         TEXT NOT NULL DEFAULT '',
+    kind            TEXT NOT NULL DEFAULT 'text',
     status          TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','stopped','failed')),
     created_at      INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages (conversation_id, created_at);
 `);
 
+// 旧库补列（0002 起 messages.kind / conversations.app 存在；首次启动的库已在建表语句里）
+for (const ddl of [
+  "ALTER TABLE conversations ADD COLUMN app TEXT NOT NULL DEFAULT 'chat'",
+  "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
+]) {
+  try { chatDb.exec(ddl); } catch { /* 列已存在 */ }
+}
+
 const now = () => Date.now();
 const uuid = () => crypto.randomUUID();
 
 const rowToConv = (r) => ({
-  id: r.id, title: r.title, model: r.model,
+  id: r.id, title: r.title, model: r.model, app: r.app,
   created_at: r.created_at, updated_at: r.updated_at, last_msg_at: r.last_msg_at,
 });
 const rowToMsg = (r) => ({
   id: r.id, conversation_id: r.conversation_id, req_id: r.req_id,
-  role: r.role, content: r.content, status: r.status, created_at: r.created_at,
+  role: r.role, content: r.content, kind: r.kind, status: r.status, created_at: r.created_at,
 });
 
 export const conv = {
-  list(ownerKey) {
+  list(ownerKey, app = "chat") {
     return chatDb.prepare(
-      "SELECT * FROM conversations WHERE owner_key = ? ORDER BY last_msg_at DESC",
-    ).all(ownerKey).map(rowToConv);
+      "SELECT * FROM conversations WHERE owner_key = ? AND app = ? ORDER BY last_msg_at DESC",
+    ).all(ownerKey, app).map(rowToConv);
   },
   get(ownerKey, id) {
     const r = chatDb.prepare("SELECT * FROM conversations WHERE owner_key = ? AND id = ?").get(ownerKey, id);
     return r ? rowToConv(r) : null;
   },
-  create(ownerKey, { title = "新会话", model = null } = {}) {
+  create(ownerKey, { title = "新会话", model = null, app = "chat" } = {}) {
     const id = uuid();
     const t = now();
     chatDb.prepare(
-      "INSERT INTO conversations (id, owner_key, title, model, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?)",
-    ).run(id, ownerKey, title, model, t, t, t);
+      "INSERT INTO conversations (id, owner_key, title, model, app, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?,?)",
+    ).run(id, ownerKey, title, model, app, t, t, t);
     return conv.get(ownerKey, id);
+  },
+  /** 应用专属对话（每人每应用一条，如记账对话） */
+  ensureApp(ownerKey, app, title) {
+    const existing = chatDb.prepare(
+      "SELECT * FROM conversations WHERE owner_key = ? AND app = ? ORDER BY created_at LIMIT 1",
+    ).get(ownerKey, app);
+    if (existing) return rowToConv(existing);
+    return conv.create(ownerKey, { title, app });
   },
   rename(ownerKey, id, title) {
     chatDb.prepare("UPDATE conversations SET title = ?, updated_at = ? WHERE owner_key = ? AND id = ?")
@@ -79,10 +97,10 @@ export const conv = {
   remove(ownerKey, id) {
     chatDb.prepare("DELETE FROM conversations WHERE owner_key = ? AND id = ?").run(ownerKey, id);
   },
-  search(ownerKey, q) {
+  search(ownerKey, q, app = "chat") {
     return chatDb.prepare(
-      "SELECT * FROM conversations WHERE owner_key = ? AND title LIKE ? ORDER BY last_msg_at DESC",
-    ).all(ownerKey, `%${q}%`).map(rowToConv);
+      "SELECT * FROM conversations WHERE owner_key = ? AND app = ? AND title LIKE ? ORDER BY last_msg_at DESC",
+    ).all(ownerKey, app, `%${q}%`).map(rowToConv);
   },
   touch(ownerKey, id) {
     chatDb.prepare("UPDATE conversations SET updated_at = ?, last_msg_at = ? WHERE owner_key = ? AND id = ?")
@@ -112,11 +130,11 @@ export const msg = {
     ).run(id, conversationId, reqId, "user", content, "ok", now());
     return { message: rowToMsg(chatDb.prepare("SELECT * FROM messages WHERE id = ?").get(id)), duplicated: false };
   },
-  saveAssistant(conversationId, { reqId, content, status = "ok" }) {
+  saveAssistant(conversationId, { reqId, content, status = "ok", kind = "text" }) {
     const id = uuid();
     chatDb.prepare(
-      "INSERT INTO messages (id, conversation_id, req_id, role, content, status, created_at) VALUES (?,?,?,?,?,?,?)",
-    ).run(id, conversationId, reqId, "assistant", content, status, now());
+      "INSERT INTO messages (id, conversation_id, req_id, role, content, kind, status, created_at) VALUES (?,?,?,?,?,?,?,?)",
+    ).run(id, conversationId, reqId, "assistant", content, kind, status, now());
     return rowToMsg(chatDb.prepare("SELECT * FROM messages WHERE id = ?").get(id));
   },
   /** 失败半成品/停止的内容落库并标记 */
