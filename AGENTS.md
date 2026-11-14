@@ -20,7 +20,7 @@
 
 ## 二、工程约定
 
-- 原型在 `prototype/v2/`：单页应用（hash 路由，file:// 可直开）；入口 `index.html` + `assets/js/app.js`（路由/页面模板/全部事件委托）+ `assets/css/main.css` + `assets/js/data.js`（金额一律「分」）。
+- 原型 = `prototype/index.html`（红白灰双端视觉演示稿，2026-11-14 替换旧原型 v2；与 `designs/lumencafe-redstyle/` 同步维护）；真实前端 = `src/static/`（单页应用，hash 路由）。旧原型 v2 已删（git 历史可恢复）。
 - 图标为 JS 注入内联 SVG（`data-ic`）；交互必须事件委托（视图会重渲染）。
 - 改 CSS/JS 后必须 bump `index.html` 里的 `?v=` 版本号（防浏览器缓存导致用户看到旧版）。
 - 中文记账配色：收入红、支出绿。

@@ -21,7 +21,7 @@
 ```
 AGENTS.md    设计强制规则 + 工程约定（最高优先级）
 docs/        白皮书 v3（Markdown 源文件 + HTML 阅读版）、开发步骤、开发部署流程、架构讨论稿
-prototype/   前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
+prototype/   视觉原型（红白灰双端演示稿 index.html，本地起任意静态服务即可预览；真实前端在 src/static/）
 src/         新栈服务端代码（Node + pi/chord 单主程序，入口 src/server.mjs）
 plugins/     主程序插件（chord 插件根，ping 为 0A 验收探针）
 migrations/  PG 建表脚本（启动时自动执行未跑的）
@@ -54,5 +54,5 @@ npm --prefix=tools run docs:test
 ```bash
 cd prototype
 python -m http.server 4311
-# 浏览器打开 http://localhost:4311/v2/
+# 浏览器打开 http://localhost:4311/
 ```

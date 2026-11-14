@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流光咖啡馆 · 红白灰双端视觉方案 v2</title>
+<style>
+/* =========================================================
+   流光咖啡馆 · 红白灰设计系统
+   参考：web 端借鉴 PAN 个人理财工作台（深色侧栏 + 白卡灰页 + KPI 色条卡）
+        手机端借鉴 习惯打卡台（整屏背景 + 悬浮白卡 + 波点纹理 + 玻璃 Tab）
+   ========================================================= */
+:root{
+  /* 品牌红 */
+  --red:#D92D20;
+  --red-hover:#E5484D;
+  --red-deep:#A61B10;
+  --red-soft:#FDECEA;
+  /* 深色点缀 */
+  --dark:#17171A;
+  --dark-2:#232327;
+  --dark-3:#2E2E33;
+  /* 侧栏语义变量（默认石墨灰，可用 body[data-sb] 切换深炭/浅灰白） */
+  --sb-bg:#2E2E33;
+  --sb-text:#C4C7CE;
+  --sb-hi:#FFFFFF;
+  --sb-dim:#8A8F99;
+  --sb-dim2:#7B808A;
+  --sb-hover:rgba(255,255,255,.07);
+  --sb-line:rgba(255,255,255,.09);
+  --sb-active:linear-gradient(90deg,rgba(217,45,32,.20),rgba(217,45,32,.04));
+  /* 灰阶 */
+  --ink:#1F2329;
+  --ink-2:#4E5969;
+  --ink-3:#86909C;
+  --ink-4:#C9CDD4;
+  --page:#F4F4F5;
+  --card:#FFFFFF;
+  --sub:#F7F7F8;
+  --line:#E5E6EB;
+  --line-2:#EFF0F1;
+  /* 语义色（沿用记账惯例：收入红、支出绿） */
+  --green:#00A854;
+  --green-soft:#E8F8F0;
+  /* 圆角与阴影 */
+  --r-sm:8px; --r-md:10px; --r-lg:14px; --r-xl:20px;
+  --sh-xs:0 1px 2px rgba(31,35,41,.04);
+  --sh-sm:0 2px 8px rgba(31,35,41,.06);
+  --sh-md:0 6px 16px rgba(31,35,41,.08);
+  --sh-lg:0 12px 32px rgba(31,35,41,.12);
+  --sh-card-m:0 4px 18px rgba(31,35,41,.10);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Manrope","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;}
+body{
+  font-family:var(--font-sans);
+  background:#E9E9EB;
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+button{font-family:inherit;border:none;background:none;cursor:pointer;}
+input{font-family:inherit;outline:none;border:none;}
+::-webkit-scrollbar{width:0;height:0;}
+
+/* ============ 侧栏配色变体 ============ */
+body[data-sb="charcoal"]{
+  --sb-bg:#17171A;
+  --sb-text:#B7BEC9;
+  --sb-hi:#FFFFFF;
+  --sb-dim:#6B7280;
+  --sb-dim2:#5B6472;
+  --sb-hover:rgba(255,255,255,.05);
+  --sb-line:rgba(255,255,255,.07);
+  --sb-active:linear-gradient(90deg,rgba(217,45,32,.22),rgba(217,45,32,.04));
+}
+body[data-sb="graphite"]{
+  --sb-bg:#2E2E33;
+  --sb-text:#C4C7CE;
+  --sb-hi:#FFFFFF;
+  --sb-dim:#8A8F99;
+  --sb-dim2:#7B808A;
+  --sb-hover:rgba(255,255,255,.07);
+  --sb-line:rgba(255,255,255,.09);
+  --sb-active:linear-gradient(90deg,rgba(217,45,32,.20),rgba(217,45,32,.04));
+}
+body[data-sb="light"]{
+  --sb-bg:#F7F7F8;
+  --sb-text:#4E5969;
+  --sb-hi:#1F2329;
+  --sb-dim:#86909C;
+  --sb-dim2:#A9AEB8;
+  --sb-hover:#EDEFF2;
+  --sb-line:#E8E9EC;
+  --sb-active:linear-gradient(90deg,rgba(217,45,32,.10),rgba(217,45,32,.02));
+}
+/* 亮侧栏下的侧栏阴影，与白顶栏分界更清晰 */
+body[data-sb="light"] .sb{box-shadow:inset -1px 0 0 var(--sb-line);}
+
+/* ============ 侧栏配色切换器 ============ */
+.sb-switch{
+  position:fixed;right:22px;bottom:22px;z-index:99;
+  background:#fff;border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--sh-lg);padding:10px 12px;display:flex;flex-direction:column;gap:8px;
+}
+.sb-switch .sw-label{font-size:10.5px;font-weight:700;color:var(--ink-3);letter-spacing:1px;}
+.sb-switch .sw-btns{display:flex;background:var(--sub);border-radius:9px;padding:3px;gap:2px;}
+.sb-switch button{
+  font-size:12px;font-weight:600;color:var(--ink-2);padding:6px 13px;border-radius:7px;transition:all .15s;
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+}
+.sb-switch button i{width:10px;height:10px;border-radius:3px;display:inline-block;border:1px solid rgba(31,35,41,.12);}
+.sb-switch button i.c-charcoal{background:#17171A;}
+.sb-switch button i.c-graphite{background:#2E2E33;}
+.sb-switch button i.c-light{background:#F7F7F8;}
+.sb-switch button.on{background:#fff;color:var(--ink);box-shadow:var(--sh-sm);font-weight:700;}
+.sb-switch .sw-note{font-size:10px;color:var(--ink-4);}
+
+/* ============ 展示页头 ============ */
+.doc-head{
+  max-width:1640px;margin:0 auto;padding:28px 32px 8px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;
+}
+.doc-head h1{font-size:22px;font-weight:800;letter-spacing:.3px;display:flex;align-items:center;gap:10px;}
+.doc-head h1 .mark{
+  width:30px;height:30px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--red),var(--red-deep));
+  display:inline-flex;align-items:center;justify-content:center;color:#fff;
+  font-size:14px;font-weight:800;box-shadow:0 4px 10px rgba(217,45,32,.35);
+}
+.doc-head p{font-size:12.5px;color:var(--ink-3);margin-top:6px;line-height:1.7;}
+.doc-legend{display:flex;gap:8px;flex-wrap:wrap;}
+.doc-legend span{
+  font-size:11.5px;padding:5px 12px;border-radius:20px;background:#fff;
+  border:1px solid var(--line);color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;
+}
+.doc-legend i{width:10px;height:10px;border-radius:3px;display:inline-block;}
+
+/* ============ 缩放舞台 ============ */
+#stage{position:relative;margin:12px auto 40px;}
+#stageInner{
+  position:absolute;left:50%;top:0;transform-origin:top center;
+  display:flex;align-items:flex-start;gap:56px;padding:20px 32px 32px;
+}
+.frame-label{
+  font-size:12px;font-weight:700;color:var(--ink-3);letter-spacing:1px;
+  margin:0 0 10px 6px;display:flex;align-items:center;gap:8px;
+}
+.frame-label::before{content:"";width:14px;height:3px;border-radius:2px;background:var(--red);}
+
+/* =========================================================
+   Web 端 · 工作台（宽 1120）
+   ========================================================= */
+.web-col{width:1120px;flex-shrink:0;}
+.browser{
+  background:#fff;border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 64px rgba(23,23,26,.18);border:1px solid rgba(23,23,26,.06);
+}
+.browser-bar{
+  height:40px;background:var(--sub);border-bottom:1px solid var(--line-2);
+  display:flex;align-items:center;gap:14px;padding:0 16px;
+}
+.browser-bar .dots{display:flex;gap:6px;}
+.browser-bar .dots i{width:11px;height:11px;border-radius:50%;}
+.browser-bar .url{
+  flex:1;max-width:420px;height:26px;border-radius:7px;background:#fff;
+  border:1px solid var(--line-2);font-size:11.5px;color:var(--ink-3);
+  display:flex;align-items:center;gap:6px;padding:0 12px;
+}
+.wb{display:grid;grid-template-columns:212px 1fr;height:900px;}
+
+/* —— 深色侧栏 —— */
+.sb{
+  background:var(--sb-bg);color:var(--sb-text);display:flex;flex-direction:column;
+  padding:16px 0 0;overflow:hidden;transition:background .25s;
+}
+.sb-brand{
+  display:flex;align-items:center;gap:10px;padding:2px 18px 16px;
+  border-bottom:1px solid var(--sb-line);margin-bottom:10px;
+}
+.sb-brand .logo{
+  width:32px;height:32px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--red),var(--red-deep));
+  display:flex;align-items:center;justify-content:center;color:#fff;
+  font-size:14px;font-weight:800;box-shadow:0 4px 10px rgba(217,45,32,.4);
+}
+.sb-brand .t{color:var(--sb-hi);font-size:14.5px;font-weight:700;line-height:1.2;}
+.sb-brand .s{font-size:10.5px;color:var(--sb-dim);margin-top:2px;}
+.sb-group{padding:6px 10px;}
+.sb-gt{
+  font-size:10.5px;color:var(--sb-dim2);letter-spacing:1.5px;padding:6px 12px 4px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.sb-gt .gn{background:rgba(217,45,32,.9);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;letter-spacing:0;}
+.sb-item{
+  display:flex;align-items:center;gap:10px;padding:8.5px 12px;margin:1px 0;
+  border-radius:8px;font-size:13px;color:var(--sb-text);cursor:pointer;position:relative;transition:all .15s;
+}
+.sb-item svg{width:16px;height:16px;flex-shrink:0;}
+.sb-item:hover{background:var(--sb-hover);color:var(--sb-hi);}
+.sb-item.active{
+  background:var(--sb-active);
+  color:var(--sb-hi);font-weight:600;
+}
+.sb-item.active::before{
+  content:"";position:absolute;left:-10px;top:7px;bottom:7px;width:3px;
+  background:var(--red);border-radius:0 2px 2px 0;
+}
+.sb-item .n{
+  margin-left:auto;background:rgba(217,45,32,.85);color:#fff;font-size:9.5px;
+  min-width:17px;height:17px;padding:0 5px;border-radius:9px;
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;
+}
+.sb-foot{
+  margin-top:auto;padding:12px 16px;border-top:1px solid var(--sb-line);
+  display:flex;align-items:center;gap:10px;
+}
+.sb-foot .ava{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,#E5484D,#A61B10);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+  border:1.5px solid rgba(229,72,77,.45);
+}
+.sb-foot .who{flex:1;min-width:0;}
+.sb-foot .who b{color:var(--sb-hi);font-size:12.5px;font-weight:600;display:block;}
+.sb-foot .who span{font-size:10.5px;color:var(--sb-dim);}
+.sb-foot .ver{font-size:10px;color:var(--sb-dim2);}
+
+/* —— 主区 —— */
+.wb-main{display:flex;flex-direction:column;min-width:0;background:var(--page);}
+.wb-top{
+  height:54px;background:#fff;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;padding:0 20px;flex-shrink:0;
+}
+.crumb{font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:6px;white-space:nowrap;}
+.crumb b{color:var(--ink);font-weight:600;}
+.wb-search{
+  flex:1;max-width:380px;height:32px;border-radius:8px;background:var(--sub);
+  border:1px solid transparent;display:flex;align-items:center;gap:8px;
+  padding:0 10px;color:var(--ink-3);transition:all .15s;
+}
+.wb-search input{flex:1;background:transparent;font-size:12.5px;color:var(--ink);}
+.wb-search input::placeholder{color:var(--ink-4);}
+.wb-search:focus-within{background:#fff;border-color:var(--red);box-shadow:0 0 0 3px var(--red-soft);}
+.wb-search svg{width:15px;height:15px;flex-shrink:0;}
+.wb-search kbd{
+  font-size:10.5px;color:var(--ink-3);background:#fff;border:1px solid var(--line);
+  border-radius:4px;padding:1px 5px;font-family:inherit;flex-shrink:0;
+}
+.wb-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.live-badge{
+  font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;
+  background:rgba(0,168,84,.1);color:var(--green);border:1px solid rgba(0,168,84,.3);
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+}
+.live-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.icon-btn{
+  width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  color:var(--ink-2);transition:all .15s;
+}
+.icon-btn:hover{background:var(--sub);color:var(--ink);}
+.icon-btn svg{width:16px;height:16px;}
+
+.wb-body{flex:1;overflow:hidden;padding:18px 20px 20px;display:flex;flex-direction:column;gap:14px;}
+
+/* 欢迎条：深色渐变 + 红色光晕 */
+.welcome{
+  border-radius:var(--r-lg);padding:20px 24px;flex-shrink:0;
+  background:linear-gradient(135deg,#1E1E22 0%,#2C2020 100%);
+  color:#fff;display:flex;align-items:center;justify-content:space-between;
+  position:relative;overflow:hidden;
+}
+.welcome::after{
+  content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;
+  background:radial-gradient(circle,rgba(217,45,32,.35),transparent 70%);
+}
+.welcome .wl{position:relative;z-index:1;}
+.welcome .hello{font-size:17px;font-weight:700;letter-spacing:.3px;}
+.welcome .hi{font-size:12px;color:rgba(255,255,255,.6);margin-top:5px;}
+.welcome .wr{position:relative;z-index:1;display:flex;gap:10px;}
+.btn-red{
+  background:linear-gradient(135deg,var(--red),#B42318);color:#fff;
+  padding:9px 18px;border-radius:9px;font-size:12.5px;font-weight:700;
+  box-shadow:0 4px 14px rgba(217,45,32,.4);transition:.15s;
+}
+.btn-red:hover{filter:brightness(1.06);}
+.btn-ghost{
+  background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.16);
+  padding:9px 18px;border-radius:9px;font-size:12.5px;font-weight:600;transition:.15s;
+}
+.btn-ghost:hover{background:rgba(255,255,255,.14);}
+
+/* KPI 卡：左侧 4px 色条 */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;flex-shrink:0;}
+.kpi{
+  background:#fff;border:1px solid var(--line-2);border-radius:var(--r-lg);
+  padding:15px 18px;position:relative;overflow:hidden;box-shadow:var(--sh-xs);
+}
+.kpi::before{content:"";position:absolute;top:0;left:0;width:4px;height:100%;}
+.kpi.c-exp::before{background:linear-gradient(180deg,#00A854,#00C772);}
+.kpi.c-inc::before{background:linear-gradient(180deg,#D92D20,#E5484D);}
+.kpi.c-chat::before{background:linear-gradient(180deg,#4E5969,#86909C);}
+.kpi.c-paper::before{background:linear-gradient(180deg,#4E5969,#86909C);}
+.kpi .kl{font-size:11.5px;color:var(--ink-3);margin-bottom:8px;}
+.kpi .kv{font-size:23px;font-weight:800;letter-spacing:-.3px;color:var(--ink);display:flex;align-items:baseline;gap:3px;}
+.kpi .kv small{font-size:13px;font-weight:600;color:var(--ink-3);}
+.kpi .kt{font-size:11px;color:var(--ink-3);margin-top:7px;display:flex;align-items:center;gap:4px;}
+.kpi .kt .up{color:var(--red);font-weight:700;}
+.kpi .kt .dn{color:var(--green);font-weight:700;}
+
+/* 内容卡 */
+.wb-cards{display:grid;grid-template-columns:1.15fr 1fr;gap:14px;flex:1;min-height:0;}
+.wb-cards .wide{grid-column:1 / -1;}
+.wcard{
+  background:#fff;border:1px solid var(--line-2);border-radius:var(--r-lg);
+  box-shadow:var(--sh-xs);display:flex;flex-direction:column;overflow:hidden;
+}
+.wcard-head{
+  display:flex;align-items:center;gap:8px;padding:13px 18px;
+  border-bottom:1px solid var(--line-2);flex-shrink:0;
+}
+.wcard-head .dot{width:7px;height:7px;border-radius:50%;background:var(--red);}
+.wcard-head h3{font-size:13px;font-weight:700;}
+.wcard-head .more{margin-left:auto;font-size:11.5px;color:var(--ink-3);cursor:pointer;}
+.wcard-head .more:hover{color:var(--red);}
+.wcard-body{padding:12px 18px 16px;flex:1;min-height:0;}
+
+.row-item{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--line-2);}
+.row-item:last-child{border-bottom:none;padding-bottom:2px;}
+.row-item .sd{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.row-item .sd.g{background:var(--green);}
+.row-item .sd.o{background:#FF8800;}
+.row-item .sd.r{background:var(--red);}
+.row-item .rt{flex:1;min-width:0;}
+.row-item .rt b{font-size:12.5px;font-weight:600;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.row-item .rt span{font-size:11px;color:var(--ink-3);}
+.row-item .chip{
+  font-size:10px;padding:2px 8px;border-radius:6px;background:var(--sub);
+  color:var(--ink-2);white-space:nowrap;flex-shrink:0;
+}
+.row-item .tm{font-size:11px;color:var(--ink-4);flex-shrink:0;}
+
+.chart-wrap{display:flex;align-items:flex-end;gap:14px;height:158px;padding:8px 4px 0;}
+.chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;}
+.chart-col .bar{
+  width:100%;max-width:34px;border-radius:6px 6px 3px 3px;background:rgba(0,168,84,.45);
+  position:relative;transition:.2s;
+}
+.chart-col .bar b{
+  position:absolute;top:-19px;left:50%;transform:translateX(-50%);
+  font-size:9.5px;color:var(--ink-3);font-weight:600;white-space:nowrap;
+}
+.chart-col .bar.today{background:linear-gradient(180deg,#E5484D,#D92D20);}
+.chart-col .bar.today b{color:var(--red);}
+.chart-col .dl{font-size:10.5px;color:var(--ink-3);}
+.chart-note{font-size:11px;color:var(--ink-3);padding:10px 4px 0;display:flex;gap:14px;border-top:1px dashed var(--line);margin-top:8px;}
+.chart-note b{color:var(--green);}
+
+.paper-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2);}
+.paper-item:last-child{border-bottom:none;}
+.paper-item .pn{
+  width:34px;height:42px;border-radius:6px;flex-shrink:0;background:var(--red-soft);
+  border:1px solid rgba(217,45,32,.15);display:flex;align-items:center;justify-content:center;
+  color:var(--red);font-size:9px;font-weight:800;letter-spacing:.5px;
+}
+.paper-item .pt{flex:1;min-width:0;}
+.paper-item .pt b{font-size:12.5px;font-weight:600;color:var(--ink);display:block;line-height:1.45;}
+.paper-item .pt .meta{font-size:11px;color:var(--ink-3);margin-top:4px;}
+.paper-item .kw{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap;}
+.paper-item .kw span{
+  font-size:10px;padding:2px 8px;border-radius:6px;background:var(--red-soft);
+  color:var(--red-deep);font-weight:600;
+}
+
+/* =========================================================
+   手机端 · 悬浮卡（390 屏）
+   ========================================================= */
+.phone-col{width:400px;flex-shrink:0;}
+.phone{
+  width:400px;height:872px;border-radius:48px;background:#0B0B0D;
+  padding:11px;box-shadow:0 32px 72px rgba(23,23,26,.30),inset 0 0 0 2px #2A2A2E;
+}
+.screen{
+  width:378px;height:850px;border-radius:38px;overflow:hidden;position:relative;
+  background:
+    radial-gradient(rgba(217,45,32,.055) 1.4px,transparent 1.8px) 0 0/18px 18px,
+    linear-gradient(180deg,#F5F3F2,#F1EFEE);
+  display:flex;flex-direction:column;
+}
+.status-bar{
+  height:40px;flex-shrink:0;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 26px 5px;font-size:13px;font-weight:600;color:var(--ink);
+}
+.status-bar .sicons{display:flex;align-items:center;gap:5px;color:var(--ink);}
+.m-scroll{flex:1;overflow-y:auto;padding:2px 16px 8px;scrollbar-gutter:stable;}
+.m-sec-title{
+  display:flex;align-items:center;gap:8px;margin:14px 4px 9px;
+  font-size:13px;font-weight:800;color:var(--ink);letter-spacing:.5px;
+}
+.m-sec-title::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--red);}
+.m-sec-title .more{margin-left:auto;font-size:11px;color:var(--ink-3);font-weight:600;}
+
+.m-topbar{display:flex;align-items:center;gap:11px;padding:8px 4px 12px;}
+.m-ava{
+  width:42px;height:42px;border-radius:14px;flex-shrink:0;
+  background:linear-gradient(135deg,#E5484D,#A61B10);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;
+  box-shadow:0 4px 12px rgba(217,45,32,.35);border:2px solid #fff;
+}
+.m-hello{flex:1;min-width:0;}
+.m-hello .hi{font-size:11px;color:var(--ink-3);}
+.m-hello .nm{font-size:16.5px;font-weight:800;margin-top:1px;}
+.m-streak{
+  display:flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--line-2);
+  padding:7px 11px;border-radius:12px;font-size:12px;font-weight:800;color:var(--red);
+  box-shadow:var(--sh-xs);flex-shrink:0;
+}
+.m-streak small{font-size:9px;color:var(--ink-3);font-weight:600;display:block;line-height:1.1;}
+.m-streak .st-r{display:flex;flex-direction:column;}
+
+/* 悬浮白卡 */
+.m-card{
+  background:#fff;border-radius:var(--r-xl);padding:16px;
+  box-shadow:var(--sh-card-m);margin-bottom:11px;position:relative;overflow:hidden;
+}
+.m-card.tight{padding:15px 16px;}
+
+/* 渐变主卡：支出进度环 */
+.m-hero{
+  background:linear-gradient(140deg,#232327 0%,#3B211D 100%);
+  color:#fff;padding:17px 18px;
+}
+.m-hero::after{
+  content:"";position:absolute;right:-46px;top:-46px;width:170px;height:170px;border-radius:50%;
+  background:radial-gradient(circle,rgba(217,45,32,.4),transparent 70%);
+}
+.m-hero .ring-wrap{position:relative;width:96px;height:96px;flex-shrink:0;z-index:1;}
+.m-hero .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.m-hero .ring-center b{font-size:23px;font-weight:800;line-height:1;}
+.m-hero .ring-center small{font-size:9.5px;color:rgba(255,255,255,.6);margin-top:3px;}
+.m-hero .h-info{flex:1;z-index:1;min-width:0;}
+.m-hero .h-t{font-size:14.5px;font-weight:800;letter-spacing:.3px;}
+.m-hero .h-s{font-size:11px;color:rgba(255,255,255,.62);margin-top:4px;line-height:1.6;}
+.m-hero .h-tags{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+.m-hero .htag{
+  font-size:10px;background:rgba(255,255,255,.13);padding:4px 9px;border-radius:8px;
+  font-weight:600;color:rgba(255,255,255,.9);
+}
+.m-hero .htag.r{background:rgba(217,45,32,.32);color:#FFB3AD;}
+.m-flex{display:flex;align-items:center;gap:16px;}
+
+/* 快速记账 */
+.m-quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.m-qbtn{
+  border-radius:14px;padding:13px 8px;text-align:center;font-size:13px;font-weight:800;
+  display:flex;flex-direction:column;align-items:center;gap:5px;transition:.15s;
+}
+.m-qbtn:active{transform:scale(.95);}
+.m-qbtn svg{width:20px;height:20px;}
+.m-qbtn.inc{background:var(--red-soft);color:var(--red-deep);border:1px solid rgba(217,45,32,.18);}
+.m-qbtn.exp{background:var(--green-soft);color:#00753C;border:1px solid rgba(0,168,84,.18);}
+.m-qbtn.ai{
+  grid-column:1/-1;background:linear-gradient(135deg,var(--red),#B42318);color:#fff;
+  flex-direction:row;justify-content:center;gap:8px;padding:13px;
+  box-shadow:0 5px 14px rgba(217,45,32,.35);font-size:13.5px;
+}
+
+/* 对话/论文行 */
+.m-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);}
+.m-row:last-child{border-bottom:none;padding-bottom:1px;}
+.m-row .ic{
+  width:34px;height:34px;border-radius:11px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+}
+.m-row .ic svg{width:16px;height:16px;}
+.m-row .ic.g{background:var(--green-soft);color:#00753C;}
+.m-row .ic.n{background:var(--sub);color:var(--ink-2);}
+.m-row .ic.r{background:var(--red-soft);color:var(--red-deep);}
+.m-row .rt{flex:1;min-width:0;}
+.m-row .rt b{font-size:12.5px;font-weight:700;color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.m-row .rt span{font-size:10.5px;color:var(--ink-3);}
+.m-row .tm{font-size:10px;color:var(--ink-4);flex-shrink:0;}
+.m-kw{display:flex;gap:5px;margin-top:5px;}
+.m-kw span{font-size:9.5px;padding:2px 7px;border-radius:6px;background:var(--red-soft);color:var(--red-deep);font-weight:600;}
+
+/* 玻璃底 Tab */
+.m-tabbar{
+  flex-shrink:0;height:78px;padding:8px 14px calc(14px + env(safe-area-inset-bottom,0px));
+  background:rgba(255,255,255,.82);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-top:1px solid rgba(31,35,41,.06);
+  display:flex;align-items:flex-start;justify-content:space-around;
+}
+.m-tab{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:10px;color:var(--ink-3);font-weight:600;padding-top:3px;min-width:56px;
+}
+.m-tab svg{width:21px;height:21px;}
+.m-tab.active{color:var(--red);}
+.m-tab .home-ind{
+  width:4px;height:4px;border-radius:50%;background:var(--red);margin-top:1px;
+}
+</style>
+</head>
+<body data-sb="graphite">
+
+<div class="sb-switch">
+  <span class="sw-label">侧栏配色</span>
+  <div class="sw-btns">
+    <button data-sb-set="charcoal"><i class="c-charcoal"></i>深炭</button>
+    <button data-sb-set="graphite" class="on"><i class="c-graphite"></i>石墨灰</button>
+    <button data-sb-set="light"><i class="c-light"></i>浅灰白</button>
+  </div>
+  <span class="sw-note">点选后刷新仍保留</span>
+</div>
+
+<div class="doc-head">
+  <div>
+    <h1><span class="mark">流</span>流光咖啡馆 · 红白灰双端视觉方案 <span style="font-size:13px;color:var(--ink-3);font-weight:600;">v2 · 侧栏灰度三选一</span></h1>
+    <p>
+      Web 端借鉴「PAN 个人理财工作台」：深色分组侧栏、白顶栏 + ⌘K 搜索、深渐变欢迎条、KPI 左侧色条卡。<br>
+      手机端借鉴「习惯打卡台」：整屏波点底 + 悬浮白卡、渐变主卡、玻璃底 Tab。配色统一为红 / 白 / 灰 + 深色点缀。
+    </p>
+  </div>
+  <div class="doc-legend">
+    <span><i style="background:#D92D20;"></i>品牌红 · 仅用于主按钮 / 选中态 / 关键数字</span>
+    <span><i style="background:#17171A;"></i>深炭 · 渐变主卡 / 标题文字（侧栏灰度见右下角切换器）</span>
+    <span><i style="background:#F4F4F5;border:1px solid #E5E6EB;"></i>浅灰底 + 白卡</span>
+    <span><i style="background:#00A854;"></i>语义绿 · 支出 / 成功（记账惯例）</span>
+  </div>
+</div>
+
+<div id="stage">
+  <div id="stageInner">
+
+    <!-- ================= Web 端 ================= -->
+    <div class="web-col">
+      <div class="frame-label">WEB 端 · 工作台（桌面 1120）</div>
+      <div class="browser">
+        <div class="browser-bar">
+          <div class="dots"><i style="background:#FF5F57;"></i><i style="background:#FEBC2E;"></i><i style="background:#28C840;"></i></div>
+          <div class="url">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            https://192.168.31.5:8443
+          </div>
+        </div>
+        <div class="wb">
+          <!-- 侧栏 -->
+          <aside class="sb">
+            <div class="sb-brand">
+              <div class="logo">流</div>
+              <div>
+                <div class="t">流光咖啡馆</div>
+                <div class="s">Lumen Cafe · 个人工作台</div>
+              </div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-gt">首页</div>
+              <div class="sb-item active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+                工作台
+              </div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-gt">应用</div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+                对话
+                <span class="n">6</span>
+              </div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+                记账
+              </div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/></svg>
+                论文订阅
+                <span class="n">14</span>
+              </div>
+            </div>
+            <div class="sb-group">
+              <div class="sb-gt">管理</div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="5" rx="1.5"/><rect x="3" y="14" width="18" height="5" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+                模型与密钥
+              </div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 15.2c2.6.3 4.4 1.9 5 4.8"/></svg>
+                用户与角色
+              </div>
+              <div class="sb-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 15-5-5 5-5"/><path d="m15 5 5 5-5 5"/></svg>
+                Skill 中心
+                <span class="n">3</span>
+              </div>
+            </div>
+            <div class="sb-foot">
+              <div class="ava">金</div>
+              <div class="who"><b>老金</b><span>管理员</span></div>
+              <span class="ver">v0.3</span>
+            </div>
+          </aside>
+
+          <!-- 主区 -->
+          <div class="wb-main">
+            <div class="wb-top">
+              <div class="crumb">首页 <span style="color:var(--ink-4);">/</span> <b>工作台</b></div>
+              <div class="wb-search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input placeholder="搜索对话、账单、论文、技能…">
+                <kbd>⌘ K</kbd>
+              </div>
+              <div class="wb-right">
+                <span class="live-badge">推送通道 · 正常</span>
+                <div class="icon-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 9a6 6 0 1 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9z"/><path d="M10 20a2.2 2.2 0 0 0 4 0"/></svg>
+                </div>
+                <div class="icon-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="wb-body">
+              <!-- 欢迎条 -->
+              <div class="welcome">
+                <div class="wl">
+                  <div class="hello">老金，晚上好</div>
+                  <div class="hi">11 月 14 日 星期六 · 今天有 2 篇论文命中订阅、3 条对话待跟进</div>
+                </div>
+                <div class="wr">
+                  <button class="btn-ghost">记一笔</button>
+                  <button class="btn-red">开始对话</button>
+                </div>
+              </div>
+
+              <!-- KPI 行 -->
+              <div class="kpi-grid">
+                <div class="kpi c-exp">
+                  <div class="kl">本月支出</div>
+                  <div class="kv"><small>¥</small>3,286<small>.50</small></div>
+                  <div class="kt"><span class="dn">↓ 12.4%</span> 较上月</div>
+                </div>
+                <div class="kpi c-inc">
+                  <div class="kl">本月收入</div>
+                  <div class="kv" style="color:var(--red);"><small>¥</small>12,000<small>.00</small></div>
+                  <div class="kt"><span class="up">↑ 8.2%</span> 较上月</div>
+                </div>
+                <div class="kpi c-chat">
+                  <div class="kl">进行中对话</div>
+                  <div class="kv">6<small> 个</small></div>
+                  <div class="kt">分布在 2 个应用</div>
+                </div>
+                <div class="kpi c-paper">
+                  <div class="kl">待读论文</div>
+                  <div class="kv">14<small> 篇</small></div>
+                  <div class="kt"><span style="color:var(--red);font-weight:700;">今日新增 3</span></div>
+                </div>
+              </div>
+
+              <!-- 内容卡 -->
+              <div class="wb-cards">
+                <div class="wcard">
+                  <div class="wcard-head"><span class="dot"></span><h3>最近对话</h3><span class="more">查看全部 →</span></div>
+                  <div class="wcard-body">
+                    <div class="row-item">
+                      <span class="sd g"></span>
+                      <div class="rt"><b>帮我看看这周哪类支出超了</b><span>日常记账 · deepseek-v3.2</span></div>
+                      <span class="chip">记账</span>
+                      <span class="tm">2 分钟前</span>
+                    </div>
+                    <div class="row-item">
+                      <span class="sd g"></span>
+                      <div class="rt"><b>arXiv 1706.03762 的注意力机制梳理</b><span>论文订阅助手 · qwen3-max</span></div>
+                      <span class="chip">论文</span>
+                      <span class="tm">1 小时前</span>
+                    </div>
+                    <div class="row-item">
+                      <span class="sd o"></span>
+                      <div class="rt"><b>下载 arXiv 1706.03762 并总结</b><span>Agent 任务 · pi-runner 运行中</span></div>
+                      <span class="chip">Agent</span>
+                      <span class="tm">17:05</span>
+                    </div>
+                    <div class="row-item">
+                      <span class="sd g"></span>
+                      <div class="rt"><b>本月餐饮预算还剩多少</b><span>日常记账 · deepseek-v3.2</span></div>
+                      <span class="chip">记账</span>
+                      <span class="tm">昨天</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="wcard">
+                  <div class="wcard-head"><span class="dot" style="background:var(--green);"></span><h3>本周支出</h3><span class="more">记账 →</span></div>
+                  <div class="wcard-body">
+                    <div class="chart-wrap">
+                      <div class="chart-col"><div class="bar" style="height:38%;"><b>¥86</b></div><span class="dl">一</span></div>
+                      <div class="chart-col"><div class="bar" style="height:60%;"><b>¥132</b></div><span class="dl">二</span></div>
+                      <div class="chart-col"><div class="bar" style="height:34%;"><b>¥74</b></div><span class="dl">三</span></div>
+                      <div class="chart-col"><div class="bar" style="height:74%;"><b>¥168</b></div><span class="dl">四</span></div>
+                      <div class="chart-col"><div class="bar" style="height:52%;"><b>¥118</b></div><span class="dl">五</span></div>
+                      <div class="chart-col"><div class="bar today" style="height:88%;"><b>¥203</b></div><span class="dl">六</span></div>
+                      <div class="chart-col"><div class="bar" style="height:56%;background:rgba(203,206,211,.5);"><b style="color:var(--ink-4);">—</b></div><span class="dl">日</span></div>
+                    </div>
+                    <div class="chart-note">本周合计 <b>¥781</b> · 日均 ¥111 · 今日是本周最高</div>
+                  </div>
+                </div>
+
+                <div class="wcard wide">
+                  <div class="wcard-head"><span class="dot" style="background:#FF8800;"></span><h3>论文订阅 · 今日命中</h3><span class="more">全部 14 篇 →</span></div>
+                  <div class="wcard-body" style="display:flex;gap:20px;">
+                    <div class="paper-item" style="flex:1;">
+                      <div class="pn">PDF</div>
+                      <div class="pt">
+                        <b>Efficient Reasoning with Hidden Chain-of-Thought</b>
+                        <div class="meta">arXiv · 2026-11-13 · 与订阅词「LLM 推理优化」相关</div>
+                        <div class="kw"><span>LLM 推理优化</span><span>agent</span></div>
+                      </div>
+                    </div>
+                    <div class="paper-item" style="flex:1;">
+                      <div class="pn">PDF</div>
+                      <div class="pt">
+                        <b>MinerU 2.0: An Open-Source Solution for PDF Parsing</b>
+                        <div class="meta">arXiv · 2026-11-12 · 与订阅词「PDF 解析」相关</div>
+                        <div class="kw"><span>PDF 解析</span><span>多模态</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= 手机端 ================= -->
+    <div class="phone-col">
+      <div class="frame-label">手机端 · 悬浮卡（390 × 844）</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="status-bar">
+            <span>17:22</span>
+            <span class="sicons">
+              <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="0.8"/><rect x="4.3" y="5" width="3" height="6" rx="0.8"/><rect x="8.6" y="2.5" width="3" height="8.5" rx="0.8"/><rect x="12.9" y="0" width="3" height="11" rx="0.8"/></svg>
+              <svg width="15" height="11" viewBox="0 0 15 11" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1.5 4a9 9 0 0 1 12 0M3.8 6.5a5.8 5.8 0 0 1 7.4 0M6.2 9a2.6 2.6 0 0 1 2.6 0"/></svg>
+              <svg width="24" height="12" viewBox="0 0 24 12" fill="none"><rect x="0.5" y="0.5" width="20" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="13" height="7" rx="1.5" fill="currentColor"/><path d="M22.5 4v4a2.2 2.2 0 0 0 0-4z" fill="currentColor" opacity=".4"/></svg>
+            </span>
+          </div>
+
+          <div class="m-scroll">
+            <div class="m-topbar">
+              <div class="m-ava">金</div>
+              <div class="m-hello">
+                <div class="hi">11 月 14 日 · 星期六</div>
+                <div class="nm">晚上好，老金</div>
+              </div>
+              <div class="m-streak">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 3-1.5 4.5-2.5 6C8 10 8 12 9.5 13.5c-.5-2 .5-3 1.5-3.5 0 2.5 3 3 3 6a5 5 0 0 1-10 0c0-2 1-3.5 2-5 .8-1.2 1-2.5 1-4 1.5 1 2.5 2 3 4 1.5-1.5 2-4 2-9z" transform="translate(0 1)"/></svg>
+                <span class="st-r">21<small>连续记账</small></span>
+              </div>
+            </div>
+
+            <!-- 渐变主卡：支出进度环 -->
+            <div class="m-card m-hero m-flex">
+              <div class="ring-wrap">
+                <svg width="96" height="96" viewBox="0 0 104 104">
+                  <defs>
+                    <linearGradient id="ringRed" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stop-color="#E5484D"/>
+                      <stop offset="100%" stop-color="#D92D20"/>
+                    </linearGradient>
+                  </defs>
+                  <circle cx="52" cy="52" r="46" fill="none" stroke="rgba(255,255,255,.13)" stroke-width="9"/>
+                  <circle cx="52" cy="52" r="46" fill="none" stroke="url(#ringRed)" stroke-width="9"
+                          stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="133"
+                          transform="rotate(-90 52 52)"/>
+                </svg>
+                <div class="ring-center">
+                  <b>54%</b>
+                  <small>预算已用</small>
+                </div>
+              </div>
+              <div class="h-info">
+                <div class="h-t">本月支出</div>
+                <div class="h-s">已用 ¥3,286.50<br>预算 ¥6,000 · 还剩日均 ¥264</div>
+                <div class="h-tags">
+                  <span class="htag r">餐饮 ¥986</span>
+                  <span class="htag">交通 ¥312</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 快速记账 -->
+            <div class="m-card tight">
+              <div class="m-quick">
+                <button class="m-qbtn inc">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                  记收入
+                </button>
+                <button class="m-qbtn exp">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                  记支出
+                </button>
+                <button class="m-qbtn ai">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.7 4.6L18.5 9l-4.8 1.4L12 15l-1.7-4.6L5.5 9l4.8-1.4z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>
+                  AI 记一笔 · 说句话就行
+                </button>
+              </div>
+            </div>
+
+            <div class="m-sec-title">进行中的对话<span class="more">全部 →</span></div>
+            <div class="m-card tight">
+              <div class="m-row">
+                <div class="ic g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg></div>
+                <div class="rt"><b>这周哪类支出超了</b><span>日常记账 · 2 分钟前</span></div>
+                <span class="tm">›</span>
+              </div>
+              <div class="m-row">
+                <div class="ic n"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.3 2.5 14.7 0 17M12 3.5c-2.5 2.3-2.5 14.7 0 17"/></svg></div>
+                <div class="rt"><b>Attention Is All You Need 精读</b><span>论文订阅助手 · 1 小时前</span></div>
+                <span class="tm">›</span>
+              </div>
+            </div>
+
+            <div class="m-sec-title">论文订阅 · 今日命中<span class="more">14 篇 →</span></div>
+            <div class="m-card tight">
+              <div class="m-row" style="align-items:flex-start;">
+                <div class="ic r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></div>
+                <div class="rt">
+                  <b>Efficient Reasoning with Hidden CoT</b>
+                  <div class="m-kw"><span>LLM 推理优化</span><span>agent</span></div>
+                </div>
+                <span class="tm">11-13</span>
+              </div>
+              <div class="m-row" style="align-items:flex-start;">
+                <div class="ic r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/></svg></div>
+                <div class="rt">
+                  <b>MinerU 2.0: PDF Parsing Solution</b>
+                  <div class="m-kw"><span>PDF 解析</span></div>
+                </div>
+                <span class="tm">11-12</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 玻璃底 Tab -->
+          <div class="m-tabbar">
+            <div class="m-tab active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+              首页
+              <span class="home-ind"></span>
+            </div>
+            <div class="m-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg>
+              对话
+            </div>
+            <div class="m-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><path d="M7 15h4"/></svg>
+              记账
+            </div>
+            <div class="m-tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20.5c.8-4 3.8-6 7.5-6s6.7 2 7.5 6"/></svg>
+              我的
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* 侧栏配色切换：记忆选择 */
+(function(){
+  var btns=document.querySelectorAll('.sb-switch button[data-sb-set]');
+  function apply(v){
+    document.body.dataset.sb=v;
+    btns.forEach(function(b){b.classList.toggle('on',b.dataset.sbSet===v);});
+    try{localStorage.setItem('lc-sb-variant',v);}catch(e){}
+  }
+  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.sbSet);});});
+  var saved=null;
+  try{saved=localStorage.getItem('lc-sb-variant');}catch(e){}
+  apply(saved==='charcoal'||saved==='light'?saved:'graphite');
+})();
+
+/* 舞台等比缩放：适配任意窗口 */
+(function(){
+  var stage=document.getElementById('stage');
+  var inner=document.getElementById('stageInner');
+  function fit(){
+    var w=inner.offsetWidth;
+    var h=inner.offsetHeight;
+    var s=Math.min(1,(window.innerWidth-32)/w,(window.innerHeight-150)/h);
+    s=Math.max(s,0.32);
+    inner.style.transform='translateX(-50%) scale('+s+')';
+    stage.style.height=(h*s)+'px';
+    stage.style.width='100%';
+  }
+  window.addEventListener('resize',fit);
+  window.addEventListener('load',fit);
+  fit();
+})();
+</script>
+</body>
+</html>
