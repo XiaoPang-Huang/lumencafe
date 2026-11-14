@@ -31,7 +31,7 @@ startPushScheduler();
 const app = await startServer(
   {
     name: "lumencafe",
-    dataDir: path.join(rootDir, ".data"),
+    dataDir: process.env.DATA_DIR ?? path.join(rootDir, ".data"),
     root: path.join(rootDir, "plugins"),
     listen: { host: "127.0.0.1", port },
     api: {

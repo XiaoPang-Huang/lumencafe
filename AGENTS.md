@@ -22,6 +22,7 @@
 
 - 原型 = `prototype/index.html`（红白灰双端视觉演示稿，2026-11-14 替换旧原型 v2；与 `designs/lumencafe-redstyle/` 同步维护）；真实前端 = `src/static/`（单页应用，hash 路由）。旧原型 v2 已删（git 历史可恢复）。
 - 图标为 JS 注入内联 SVG（`data-ic`）；交互必须事件委托（视图会重渲染）。
+- **测试与源码分离（2026-11-14 立）**：测试代码一律在 `tests/`（`unit/` 纯逻辑、`integration/` 起真实服务全链路），`npm test` 运行（Node 内置运行器，零新增依赖）。**后续每批开发同步补测试用例**，随批提交；隔离三件套（独立测试库/端口/DATA_DIR）与写法规矩见 `tests/README.md`。
 - 改 CSS/JS 后必须 bump `index.html` 里的 `?v=` 版本号（防浏览器缓存导致用户看到旧版）。
 - 中文记账配色：收入红、支出绿。
 - 本地预览：`prototype/` 目录起任意静态服务（如 `python -m http.server 4311`）。
