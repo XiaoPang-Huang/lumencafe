@@ -123,6 +123,14 @@ const roleLabel = () => {
   return state.principal?.kind === "owner" ? "管理员" : "成员";
 };
 
+/* 头像（§20 P2）：有头像渲染图片（后端校验过 data:image/png;base64, 前缀，安全），
+   无则回退首字母 / 图标。data URL 走 img src，CSP img-src 已含 data:。 */
+const isAvatarUrl = (s) => typeof s === "string" && s.startsWith("data:image/png;base64,");
+function avatarInner(fallback) {
+  const a = state.user?.avatar;
+  return isAvatarUrl(a) ? `<img src="${esc(a)}" alt="">` : fallback;
+}
+
 /* 批 3：当前角色是否可用某应用（/api/session 下发的授权列表） */
 const hasApp = (app) => state.apps.includes(app);
 
@@ -152,7 +160,7 @@ function sideNav() {
       ${hasApp("admin") ? item("admin", "管理设置", "#/admin", IC.shield) : ""}
     </div>
     <div class="side-foot">
-      <span class="avatar">${esc(whoAmI().slice(0, 1))}</span>
+      <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
       <span class="who"><b>${esc(whoAmI())}</b><span>${esc(roleLabel())}</span></span>
     </div>
   </aside>
@@ -166,7 +174,7 @@ function topbar(routeName) {
     <span class="page-title">${routeName}</span>
     <div class="topbar-side">
       ${statusDot()}
-      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${IC.user}</span><span>${esc(whoAmI())}</span></a>
+      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${avatarInner(IC.user)}</span><span>${esc(whoAmI())}</span></a>
     </div>
   </header>`;
 }
@@ -278,10 +286,63 @@ const generalOverview = () => `
   <div class="prof-list">
     ${profRow("用户名", `${esc(state.user.username)}<span class="muted">不可改（登录标识）</span>`)}
     ${profRow("显示名", esc(state.user.displayName ?? state.user.username), "name")}
+    ${profRow("头像", `<span class="prof-avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span><span class="muted">64×64 PNG，选图自动裁剪</span>`, "avatar")}
     ${profRow("角色", `${esc(roleLabel())}<span class="muted">由管理设置调整</span>`)}
     ${profRow("密码", `••••••••<span class="muted">定期更换</span>`, "pass")}
     ${profRow("登录方式", `账号密码<span class="muted">chord 会话 cookie</span>`)}
   </div>`;
+
+/* ---------- 头像弹窗（§20 P2，学 RAGFlow avatar-upload：选图 → canvas 裁剪 → 即传即存） ---------- */
+const AVATAR_OUT = 64; // 输出边长（px），与后端 64KB 上限配套
+let avatarDraft = null; // 待上传的裁剪结果 data URL（null = 未选图）
+
+function avatarBlock() {
+  return `
+    <div class="avatar-edit">
+      <span class="avatar-preview" id="avatarPreview">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
+      <div class="avatar-side">
+        <input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <button class="btn btn-ghost" id="avatarPick">选择图片</button>
+        <div class="avatar-hint">PNG / JPG / WebP / GIF，自动居中裁剪为 ${AVATAR_OUT}×${AVATAR_OUT}</div>
+        <div class="form-msg" id="avatarMsg"></div>
+      </div>
+    </div>`;
+}
+
+/** 选图后：Image 解码 → canvas 居中裁正方形 → 缩到 64×64 → PNG data URL → 预览 */
+function cropAvatarFile(file) {
+  const msg = document.getElementById("avatarMsg");
+  const setMsg = (text, ok) => { if (msg) { msg.textContent = text; msg.className = `form-msg ${ok ? "ok" : "err"}`; } };
+  if (!file || !file.type.startsWith("image/")) { setMsg("请选择图片文件", false); return; }
+  if (file.size > 8 * 1024 * 1024) { setMsg("图片过大（上限 8MB）", false); return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const sx = (img.naturalWidth - side) / 2;
+    const sy = (img.naturalHeight - side) / 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = AVATAR_OUT; canvas.height = AVATAR_OUT;
+    const ctx2d = canvas.getContext("2d");
+    ctx2d.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_OUT, AVATAR_OUT);
+    avatarDraft = canvas.toDataURL("image/png");
+    const prev = document.getElementById("avatarPreview");
+    if (prev) prev.innerHTML = `<img src="${avatarDraft}" alt="">`;
+    setMsg("已裁剪，点「保存」上传", true);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); setMsg("图片读取失败，换一张试试", false); };
+  img.src = url;
+}
+
+/** 上传/移除成功后统一收尾：更新 state → 关弹窗 → toast → 重渲染（侧栏顶栏同步） */
+function applyAvatar(avatar) {
+  if (state.user) state.user.avatar = avatar;
+  avatarDraft = null;
+  closeModal();
+  toast(avatar ? "头像已更新" : "头像已移除");
+  render();
+}
 
 /* POST JSON 便捷封装（api() 只认 2xx，错误信息按状态码映射） */
 async function postJson(path, payload, messages = {}, options = {}) {
@@ -464,7 +525,37 @@ document.addEventListener("click", (e) => {
         `<button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" data-dn-submit>保存</button>`);
     } else if (what === "pass") {
       openModal("修改密码", passBlock(), `<button class="btn btn-ghost" data-close>取消</button>`);
+    } else if (what === "avatar") {
+      avatarDraft = null;
+      openModal("修改头像", avatarBlock(),
+        `<button class="btn btn-delete-soft" data-avatar-remove>移除头像</button><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" data-avatar-submit>保存</button>`);
     }
+    return;
+  }
+
+  // 头像：选择图片（触发隐藏 file input）
+  if (e.target.closest("#avatarPick")) {
+    document.getElementById("avatarFile")?.click();
+    return;
+  }
+
+  // 头像：保存（上传裁剪结果）
+  if (e.target.closest("[data-avatar-submit]")) {
+    const msg = document.getElementById("avatarMsg");
+    if (!avatarDraft) { if (msg) { msg.textContent = "请先选择图片"; msg.className = "form-msg err"; } return; }
+    postJson("/api/auth/avatar", { avatar: avatarDraft }, {
+      400: "头像格式不正确或过大",
+      default: "上传失败，请稍后重试",
+    }).then((data) => applyAvatar(data.avatar))
+      .catch((err) => { if (msg) { msg.textContent = err.message; msg.className = "form-msg err"; } });
+    return;
+  }
+
+  // 头像：移除（清空回退首字母）
+  if (e.target.closest("[data-avatar-remove]")) {
+    api("/api/auth/avatar", { method: "DELETE" })
+      .then((data) => applyAvatar(data.avatar))
+      .catch(() => toast("移除失败，请稍后重试"));
     return;
   }
 
@@ -491,6 +582,14 @@ document.addEventListener("click", (e) => {
 });
 
 window.addEventListener("hashchange", render);
+
+// 头像选图（change 事件不走 click 委托；弹窗重渲染后旧节点自动失效，无需解绑）
+document.addEventListener("change", (e) => {
+  if (e.target.id === "avatarFile") {
+    cropAvatarFile(e.target.files?.[0]);
+    e.target.value = ""; // 允许重复选同一文件
+  }
+});
 
 // 供子页面模块（chat.js 等）使用的共享件
 Object.assign(window.LC, { api, apiStream, toast, handleAuth401, openModal, closeModal, esc, IC, getState: () => state });

@@ -112,7 +112,26 @@ export async function userByPrincipal(ctx) {
 
 /** 对外暴露的用户信息（不含密码哈希） */
 function toPublicUser(row) {
-  return { username: row.username, displayName: row.display_name, role: row.role };
+  return {
+    username: row.username,
+    displayName: row.display_name,
+    role: row.role,
+    avatar: row.avatar ?? "",
+  };
+}
+
+/* ---------- 头像（§20 P2） ---------- */
+// 存 data URL：前端 canvas 裁剪输出 64×64 PNG 的 base64（学 RAGFlow avatar-upload）。
+// 只认 PNG data URL 前缀；上限 64KB（64×64 PNG 实际几 KB，留足余量防滥用）。
+const AVATAR_PREFIX = "data:image/png;base64,";
+const AVATAR_MAX_LEN = 64 * 1024;
+
+/** 校验头像 data URL；合法返回 null，否则返回错误文案 */
+function validateAvatar(avatar) {
+  const s = String(avatar ?? "");
+  if (!s.startsWith(AVATAR_PREFIX)) return "头像格式不正确（需 PNG data URL）";
+  if (s.length > AVATAR_MAX_LEN) return "头像过大（上限 64KB）";
+  return null;
 }
 
 /** 尽力取客户端 IP（chord 请求对象暴露 remoteAddress；取不到记 "unknown"） */
@@ -208,6 +227,38 @@ export function authRoutes() {
         [displayName, user.id],
       );
       return { kind: "json", value: { ok: true, displayName } };
+    },
+
+    // 上传头像（§20 P2）：body { avatar: data URL }，校验通过后即存即生效
+    "POST /api/auth/avatar": async (request, ctx) => {
+      const user = await userByPrincipal(ctx);
+      if (!user) {
+        return { kind: "error", status: 403, message: "当前身份不可修改" };
+      }
+      const body = await readJsonBody(request);
+      const avatar = String(body?.avatar ?? "");
+      const err = validateAvatar(avatar);
+      if (err) {
+        return { kind: "error", status: 400, message: err };
+      }
+      await getPg().query(
+        "UPDATE users SET avatar = $1, updated_at = now() WHERE id = $2",
+        [avatar, user.id],
+      );
+      return { kind: "json", value: { ok: true, avatar } };
+    },
+
+    // 移除头像（§20 P2）：清空为空串，前端回退首字母显示
+    "DELETE /api/auth/avatar": async (_request, ctx) => {
+      const user = await userByPrincipal(ctx);
+      if (!user) {
+        return { kind: "error", status: 403, message: "当前身份不可修改" };
+      }
+      await getPg().query(
+        "UPDATE users SET avatar = '', updated_at = now() WHERE id = $1",
+        [user.id],
+      );
+      return { kind: "json", value: { ok: true, avatar: "" } };
     },
 
     // 自助改密：旧密码验证 + 新密码 ≥ 8 位

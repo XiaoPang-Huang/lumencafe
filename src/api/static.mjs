@@ -108,7 +108,7 @@ export function shellRoutes() {
         value: {
           principal: ctx.principal,
           user: user
-            ? { username: user.username, displayName: user.display_name, role: user.role }
+            ? { username: user.username, displayName: user.display_name, role: user.role, avatar: user.avatar ?? "" }
             : null,
           apps,
         },

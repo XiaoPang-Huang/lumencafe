@@ -132,3 +132,37 @@ test("改显示名（§20 P1 概览式设置 Edit）：成功 / 空 400 / 超长
   // 匿名 → 401
   assert.equal((await new Client(server.baseUrl).patch("/api/auth/me", { displayName: "黑客" })).status, 401);
 });
+
+test("头像（§20 P2）：上传 / 移除 / 非法格式 400 / 超限 400 / 匿名 401", async () => {
+  await insertUser(server.databaseUrl, { username: "hank", password: "hank-pass-1" });
+  const h = await loginAs(server, "hank", "hank-pass-1");
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="; // 最小合法前缀样例
+
+  // 初始无头像
+  assert.equal((await h.get("/api/auth/me")).json.user.avatar, "");
+
+  // 上传成功 → me 与 session 都带 avatar
+  const up = await h.post("/api/auth/avatar", { avatar: png });
+  assert.equal(up.status, 200);
+  assert.equal(up.json.avatar, png);
+  assert.equal((await h.get("/api/auth/me")).json.user.avatar, png);
+  assert.equal((await h.get("/api/session")).json.user.avatar, png);
+
+  // 非法格式 → 400（非 PNG data URL）
+  assert.equal((await h.post("/api/auth/avatar", { avatar: "data:image/jpeg;base64,xxx" })).status, 400);
+  assert.equal((await h.post("/api/auth/avatar", { avatar: "not-a-data-url" })).status, 400);
+  // 超限 → 400（前缀 + 超 64KB 填充）
+  const huge = "data:image/png;base64," + "A".repeat(64 * 1024 + 1);
+  assert.equal((await h.post("/api/auth/avatar", { avatar: huge })).status, 400);
+
+  // 移除 → 空串，前端回退首字母
+  const del = await h.req("DELETE", "/api/auth/avatar");
+  assert.equal(del.status, 200);
+  assert.equal(del.json.avatar, "");
+  assert.equal((await h.get("/api/auth/me")).json.user.avatar, "");
+
+  // 匿名 → 401
+  const anon = new Client(server.baseUrl);
+  assert.equal((await anon.post("/api/auth/avatar", { avatar: png })).status, 401);
+  assert.equal((await anon.req("DELETE", "/api/auth/avatar")).status, 401);
+});

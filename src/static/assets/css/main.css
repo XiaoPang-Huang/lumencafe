@@ -137,7 +137,11 @@ a { color: var(--brand); text-decoration: none; }
   color: #fff; font-size: 13px;
   display: flex; align-items: center; justify-content: center;
   border: 1.5px solid rgba(229, 72, 77, .45);
+  overflow: hidden;
 }
+/* §20 P2：头像图片填满圆形容器（data URL PNG，后端已校验） */
+.side-foot .avatar img,
+.user-chip .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .side-foot .who { flex: 1; min-width: 0; }
 .side-foot .who b { color: #fff; font-size: 12.5px; font-weight: 600; display: block; }
 .side-foot .who span { font-size: 10.5px; color: var(--ink-on-dark-dim); }
@@ -205,6 +209,7 @@ a { color: var(--brand); text-decoration: none; }
   width: 24px; height: 24px; border-radius: 50%;
   background: var(--brand); color: #fff; font-size: 12px;
   display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
 }
 
 /* ---------- 舞台：容器卡拉满宽度 ---------- */
@@ -741,6 +746,25 @@ a { color: var(--brand); text-decoration: none; }
   transition: background .15s var(--ease), color .15s var(--ease);
 }
 .prof-edit:hover { background: rgba(31, 35, 41, .05); color: var(--ink); }
+/* §20 P2：概览行内小头像（32px 圆形，有图显图、无图首字母） */
+.prof-avatar {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #e5484d, var(--brand-strong));
+  color: #fff; font-size: 13px; vertical-align: middle; flex-shrink: 0;
+}
+.prof-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* §20 P2：头像弹窗（左预览 + 右操作） */
+.avatar-edit { display: flex; align-items: flex-start; gap: 18px; }
+.avatar-preview {
+  width: 64px; height: 64px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, #e5484d, var(--brand-strong));
+  color: #fff; font-size: 24px; border: var(--hair);
+}
+.avatar-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-side { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.avatar-hint { font-size: 12px; color: var(--ink-3); }
 .boot-banner {
   background: var(--brand-soft);
   border: 1px solid rgba(217, 45, 32, .25);

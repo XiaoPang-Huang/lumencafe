@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="edee605b95643cac059e9d3ff4da14a17f030172a459461aaf3508cd8647dfc6">
+  <meta name="source-sha256" content="1f22c141a790afea7cfbe0c13b6af78c1166ce40121f54e0ad66d8c0666e8867">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -1747,9 +1747,9 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 </tr>
 <tr>
 <td>P2</td>
-<td>头像</td>
-<td>users 表加 avatar 列；裁剪即传即存（RAGFlow 式 canvas 输出小尺寸 base64）</td>
-<td>一次 migration + 一个接口</td>
+<td>头像 ✅ 已落地</td>
+<td>users 表加 avatar 列（migrations/0007）；裁剪即传即存（RAGFlow 式 canvas 输出 64×64 PNG base64）；<code>POST/DELETE /api/auth/avatar</code>（校验 PNG data URL 前缀 + 64KB 上限）；概览行 Edit 弹窗选图裁剪、侧栏/顶栏有图显图无图首字母</td>
+<td>一次 migration + 两个接口；集成测试 49/49</td>
 </tr>
 </tbody>
 </table></div><h3 id="203-全局-token-改造要点随-p1-落地抄-ragflow-骨架换红白灰色值" class="doc-heading">20.3 全局 token 改造要点（随 P1 落地，抄 RAGFlow 骨架换红白灰色值）<a class="heading-anchor" href="#203-全局-token-改造要点随-p1-落地抄-ragflow-骨架换红白灰色值" aria-label="链接到此标题：20.3 全局 token 改造要点（随 P1 落地，抄 RAGFlow 骨架换红白灰色值）"><span aria-hidden="true">#</span></a></h3><ul>
