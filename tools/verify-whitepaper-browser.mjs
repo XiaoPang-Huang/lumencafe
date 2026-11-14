@@ -78,7 +78,7 @@ try {
   await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
   await page.goto(outputUrl, { waitUntil: 'load' });
   await page.waitForSelector('.mermaid-svg');
-  assert.equal(await page.$$eval('main h2', (nodes) => nodes.length), 18);
+  assert.equal(await page.$$eval('main h2', (nodes) => nodes.length), 20);
   assert.equal(await page.$$eval('.mermaid-svg', (nodes) => nodes.length), 10);
   const diagramText = await page.$$eval('.mermaid-svg', (nodes) =>
     nodes.map((node) => ({ text: node.textContent, viewBox: node.getAttribute('viewBox') })),

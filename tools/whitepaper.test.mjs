@@ -66,8 +66,8 @@ test('从 Markdown 完整、确定性地生成可离线阅读的 HTML', () => {
   const htmlChapters = matches(secondHtml, /<h2\b[^>]*>([\s\S]*?)<\/h2>/g).map((match) =>
     textOnly(match[1]),
   );
-  assert.equal(chapterHeadings.length, 18, 'Markdown 应包含 00–17 共 18 个二级章节');
-  assert.deepEqual(htmlChapters, chapterHeadings, 'HTML 必须按原顺序完整呈现 00–17 章节');
+  assert.equal(chapterHeadings.length, 20, 'Markdown 应包含 00–19 共 20 个二级章节');
+  assert.deepEqual(htmlChapters, chapterHeadings, 'HTML 必须按原顺序完整呈现 00–19 章节');
 
   const allSourceHeadings = matches(sourceBefore, /^#{2,3}\s+(.+)$/gm);
   const tocMatch = secondHtml.match(
