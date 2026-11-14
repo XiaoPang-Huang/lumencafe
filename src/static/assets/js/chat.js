@@ -15,6 +15,8 @@
 
   const ownerKey = () => JSON.stringify(LC.getState().principal ?? {});
   const draftKey = (convId) => `lc_draft_${ownerKey()}_${convId}`;
+  /* 草稿键：新会话占位用固定键（创建后迁移到真实 id，A1 配套） */
+  const draftId = () => (S.currentId === NEW_ID ? NEW_ID : S.currentId);
   const readDraft = (convId) => {
     try { return JSON.parse(localStorage.getItem(draftKey(convId)) || "null"); } catch { return null; }
   };
@@ -32,8 +34,22 @@
     messages: [],
     generating: false,
     abort: null,
-    sidebarOpen: false,  // 移动端抽屉
+    sidebarOpen: false,  // 移动端抽屉（入口在顶栏 chat-menu，白皮书 §20 C8 拍板保留）
+    query: "",           // 会话搜索词（过滤与主列表共用同一渲染函数）
   };
+
+  /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
+     发送首条消息时才 POST 创建；与 hub 一样是合成对象 */
+  const NEW_ID = "__new__";
+  const newConvObj = () => ({ id: NEW_ID, title: "新会话", model: null, mode: "chat", app: "chat" });
+
+  /* B7 空态建议问题（内置常量，与 chat 系统提示词同思路；点击填入输入框） */
+  const SUGGESTIONS = [
+    "帮我总结今天的待办",
+    "解释一下什么是向量数据库",
+    "写一封简短的会议邀请邮件",
+    "这个月记账有什么趋势？",
+  ];
 
   let el = null; // 视图容器
 
@@ -41,10 +57,14 @@
   function renderMessages() {
     const box = el.querySelector(".chat-msgs");
     if (!box) return;
-    if (!S.current) {
+    if (!S.current || S.current.id === NEW_ID) {
+      // B7：空态即入口——建议问题 chips，点击填入输入框（学 RAGFlow prologue 思路）
       box.innerHTML = `<div class="chat-empty">
         <div class="chat-empty-logo">开始一段新对话</div>
         <div class="chat-empty-sub">输入框在下方，Enter 发送，Shift+Enter 换行</div>
+        <div class="chat-suggest">
+          ${SUGGESTIONS.map((s) => `<button class="suggest-chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}
+        </div>
       </div>`;
       return;
     }
@@ -72,17 +92,23 @@
       }
       const statusTag = m.status === "stopped" ? `<span class="msg-status">已停止</span>`
         : m.status === "failed" ? `<span class="msg-status msg-status-fail">生成失败</span>` : "";
+      // B3：操作条 hover 显形图标（学 RAGFlow）；失败重试是恢复动作，常显不藏
       const actions = `<div class="msg-actions">
-        <button class="msg-act" data-copy="${m.id}">复制</button>
-        ${m.status === "failed" ? `<button class="msg-act" data-retry="${m.id}">重试</button>` : ""}
-        ${isLastAssistant && m.status === "ok" && !S.generating ? `<button class="msg-act" data-regen="${m.id}">重新生成</button>` : ""}
+        <button class="msg-act" data-copy="${m.id}" title="复制" aria-label="复制">${LC.IC.copy}</button>
+        ${m.status === "failed" ? `<button class="msg-act msg-act-keep" data-retry="${m.id}" title="重试" aria-label="重试">${LC.IC.refresh}</button>` : ""}
+        ${isLastAssistant && m.status === "ok" && !S.generating ? `<button class="msg-act" data-regen="${m.id}" title="重新生成" aria-label="重新生成">${LC.IC.refresh}</button>` : ""}
       </div>`;
       return `<div class="msg msg-ai" data-msg="${m.id}">
         <div class="msg-ai-body" data-render="${m.id}">${renderMd(m.content)}</div>
         ${statusTag}${actions}
       </div>`;
     }).join("");
-    box.innerHTML = rows || `<div class="chat-empty"><div class="chat-empty-sub">这个会话还没有消息。</div></div>`;
+    box.innerHTML = rows || `<div class="chat-empty">
+      <div class="chat-empty-sub">这个会话还没有消息，试试：</div>
+      <div class="chat-suggest">
+        ${SUGGESTIONS.map((s) => `<button class="suggest-chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}
+      </div>
+    </div>`;
     box.scrollTop = box.scrollHeight;
   }
 
@@ -97,17 +123,9 @@
     });
   }
 
-  function renderSidebar() {
-    const list = el.querySelector(".chat-list");
-    if (!list) return;
-    const hubActive = S.current?.app === "hub";
-    list.innerHTML = `
-      <div class="conv-item hub-item ${hubActive ? "active" : ""}" data-hub="1">
-        <span class="conv-title">总对话 · 跨应用查询</span>
-        <span class="tag soon">agent</span>
-      </div>
-      <div class="conv-sep"></div>
-      ${S.conversations.map((c) => `
+  /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复：不再两处重复、过滤不丢 agent 标签） */
+  function convItemHtml(c, hubActive) {
+    return `
       <div class="conv-item ${c.id === S.currentId && !hubActive ? "active" : ""}" data-conv="${c.id}">
         <span class="conv-title">${esc(c.title)}</span>
         ${c.mode === "agent" ? '<span class="tag soon">agent</span>' : ""}
@@ -115,7 +133,23 @@
           <button class="conv-op" data-rename="${c.id}" title="重命名">${LC.IC.sliders}</button>
           <button class="conv-op" data-del="${c.id}" title="删除">${LC.IC.close}</button>
         </span>
-      </div>`).join("") || `<div class="conv-none">还没有会话</div>`}`;
+      </div>`;
+  }
+
+  function renderSidebar() {
+    const list = el.querySelector(".chat-list");
+    if (!list) return;
+    const hubActive = S.current?.app === "hub";
+    const q = S.query.trim();
+    const shown = S.conversations.filter((c) => !q || c.title.includes(q));
+    list.innerHTML = `
+      <div class="conv-item hub-item ${hubActive ? "active" : ""}" data-hub="1">
+        <span class="conv-title">总对话 · 跨应用查询</span>
+        <span class="tag soon">agent</span>
+      </div>
+      <div class="conv-sep"></div>
+      ${shown.map((c) => convItemHtml(c, hubActive)).join("")
+        || `<div class="conv-none">${q ? "没有匹配的会话" : "还没有会话"}</div>`}`;
   }
 
   function renderHeader() {
@@ -141,7 +175,8 @@
   }
 
   const currentModel = () =>
-    (S.conversations.find((c) => c.id === S.currentId)?.model) || S.defaultModel || "";
+    (S.currentId === NEW_ID ? S.current?.model : S.conversations.find((c) => c.id === S.currentId)?.model)
+    || S.defaultModel || "";
 
   function renderComposer() {
     const ta = el.querySelector(".composer-input");
@@ -150,8 +185,8 @@
     const btn = el.querySelector(".composer-send");
     btn.classList.toggle("stop", S.generating);
     btn.innerHTML = S.generating ? `<span class="stop-square"></span>` : LC.IC.arrow;
-    // 草稿恢复（白皮书：切换/刷新后回填）
-    const draft = S.currentId ? readDraft(S.currentId) : null;
+    // 草稿恢复（白皮书：切换/刷新后回填）；占位会话用固定草稿键，创建后迁移到真实 id
+    const draft = draftId() ? readDraft(draftId()) : null;
     if (document.activeElement !== ta) ta.value = draft?.text ?? "";
   }
 
@@ -170,7 +205,10 @@
     S.conversations = data.conversations;
     const hub = await api("/api/chat/hub").catch(() => null);
     S.hubId = hub?.conversation?.id ?? null;
-    if (selectId) {
+    if (selectId === NEW_ID || (!selectId && S.currentId === NEW_ID)) {
+      S.currentId = NEW_ID; // 新会话占位不在服务端列表里，单独保持
+      S.current = newConvObj();
+    } else if (selectId) {
       S.currentId = selectId;
       S.current = S.conversations.find((c) => c.id === selectId) ?? null;
     } else if (S.current?.app === "hub") {
@@ -214,9 +252,14 @@
     const ta = el.querySelector(".composer-input");
     const text = ta.value.trim();
     if (!text || S.generating) return;
-    if (!S.current) {
+    const wasNew = S.current?.id === NEW_ID; // 占位草稿键迁移用（A1 配套）
+    if (!S.current || S.current.id === NEW_ID) {
+      // 懒创建：占位阶段选的模型/模式随创建落库（A1 配套）
+      const payload = S.current?.id === NEW_ID
+        ? { model: S.current.model ?? null, mode: S.current.mode ?? "chat" }
+        : {};
       const { conversation } = await api("/api/chat/conversations", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
       S.currentId = conversation.id;
       S.current = conversation;
@@ -224,6 +267,11 @@
       await loadConversations(S.currentId);
     }
     const convId = S.current.id;
+    // 占位会话创建后，把占位草稿迁到真实 id（reqId 沿用，幂等不变）
+    if (wasNew) {
+      const old = readDraft(NEW_ID);
+      if (old) { writeDraft(convId, old); clearDraft(NEW_ID); }
+    }
     // 草稿记录发送中的文本与请求标识（重试沿用，原文不变不换标识）
     let draft = readDraft(convId) || {};
     if (draft.text !== text || !draft.reqId) draft = { text, reqId: crypto.randomUUID() };
@@ -237,8 +285,10 @@
         body: JSON.stringify({ conversation_id: convId, content: text, req_id: draft.reqId }),
       });
     } catch {
-      // 情况 1：用户消息未保存——原文留在输入框，提示手动重试
-      toast("发送失败，请检查网络后重点发送");
+      // 情况 1：用户消息未保存——原文回填输入框（B4，学 RAGFlow pendingInput），草稿保留供重试
+      ta.value = draft.text;
+      ta.focus();
+      toast("发送失败，原文已回填，可重新发送");
       return;
     }
     clearDraft(convId);
@@ -432,7 +482,10 @@
       const modeBtn = e.target.closest(".agent-toggle [data-mode]");
       if (modeBtn && S.current && S.current.app !== "hub") {
         const mode = modeBtn.dataset.mode;
-        await api(`/api/chat/conversations/${S.current.id}/mode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+        // 新会话占位未落库：模式只记本地，创建时随首条消息带上
+        if (S.current.id !== NEW_ID) {
+          await api(`/api/chat/conversations/${S.current.id}/mode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+        }
         S.current.mode = mode;
         renderHeader();
         toast(mode === "agent" ? "已切 agent 模式：pi 接管，可调用只读工具" : "已切普通模式：单次调用");
@@ -447,15 +500,21 @@
 
       if (stopGen) { S.abort?.abort(); return; }
       if (sendBtn) { await send(); return; }
+      // B7：建议问题 chip → 填入输入框并聚焦（不直接发送，给用户改的机会）
+      const suggest = e.target.closest("[data-suggest]");
+      if (suggest) {
+        const ta = el.querySelector(".composer-input");
+        if (ta) { ta.value = suggest.dataset.suggest; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        return;
+      }
       if (e.target.closest("[data-hub]")) { openHub(); return; }
       if (newBtn) {
-        const { conversation } = await api("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        S.currentId = conversation.id;
-        S.current = conversation;
+        // A1 修复：不落库，本地占位；发送首条消息时才创建（懒创建拍板）
+        S.currentId = NEW_ID;
+        S.current = newConvObj();
         S.messages = [];
-        location.hash = `#/chat/${conversation.id}`;
+        location.hash = "#/chat";
         S.sidebarOpen = false;
-        await loadConversations(S.currentId);
         renderAll();
         el.querySelector(".composer-input")?.focus();
         return;
@@ -496,41 +555,36 @@
     el.addEventListener("change", async (e) => {
       const sel = e.target.closest(".model-select");
       if (!sel || !S.currentId) return;
-      await api(`/api/chat/conversations/${S.currentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: sel.value }),
-      });
-      const c = S.conversations.find((x) => x.id === S.currentId);
-      if (c) c.model = sel.value;
+      // 新会话占位未落库：模型只记本地，创建时随首条消息带上（A1 配套）
+      if (S.currentId !== NEW_ID) {
+        await api(`/api/chat/conversations/${S.currentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: sel.value }),
+        });
+        const c = S.conversations.find((x) => x.id === S.currentId);
+        if (c) c.model = sel.value;
+      } else if (S.current) {
+        S.current.model = sel.value;
+      }
       toast("已切换模型，只影响之后的回答");
     });
 
     el.addEventListener("input", (e) => {
       const ta = e.target.closest(".composer-input");
       if (ta) {
-        if (!ta.value.trim() || !S.currentId) return;
-        // 输入即存草稿（换会话/刷新后恢复）
-        const prev = readDraft(S.currentId) || {};
-        writeDraft(S.currentId, { ...prev, text: ta.value });
+        if (!ta.value.trim() || !draftId()) return;
+        // 输入即存草稿（换会话/刷新后恢复）；占位会话存固定键
+        const prev = readDraft(draftId()) || {};
+        writeDraft(draftId(), { ...prev, text: ta.value });
         ta.style.height = "auto";
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
         return;
       }
       const search = e.target.closest(".conv-search");
       if (search) {
-        const q = search.value.trim();
-        const list = el.querySelector(".chat-list");
-        list.innerHTML = S.conversations
-          .filter((c) => !q || c.title.includes(q))
-          .map((c) => `
-            <div class="conv-item ${c.id === S.currentId ? "active" : ""}" data-conv="${c.id}">
-              <span class="conv-title">${esc(c.title)}</span>
-              <span class="conv-ops">
-                <button class="conv-op" data-rename="${c.id}" title="重命名">${LC.IC.sliders}</button>
-                <button class="conv-op" data-del="${c.id}" title="删除">${LC.IC.close}</button>
-              </span>
-            </div>`).join("") || `<div class="conv-none">没有匹配的会话</div>`;
+        S.query = search.value;
+        renderSidebar(); // 与主列表同一渲染函数，agent 标签不丢
       }
     });
 
@@ -624,7 +678,8 @@
         await ensureDefaults();
         const wanted = (location.hash.match(/#\/chat\/([\w-]+)/) || [])[1] ?? null;
         await loadConversations(wanted);
-        if (S.currentId) await loadMessages(S.currentId);
+        // 占位会话未落库，不请求消息列表（A1 配套，防 404）
+        if (S.currentId && S.currentId !== NEW_ID) await loadMessages(S.currentId);
         renderAll();
         // 草稿恢复（含无会话时的新建会话草稿不需要）
         renderComposer();

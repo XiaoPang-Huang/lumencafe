@@ -54,7 +54,7 @@ export function chatRoutes() {
 
     "POST /api/chat/conversations": async (request, ctx) => {
       const body = await request.json().catch(() => ({}));
-      return json({ conversation: conv.create(ownerKeyOf(ctx), { title: body?.title, model: body?.model ?? null }) }, 201);
+      return json({ conversation: conv.create(ownerKeyOf(ctx), { title: body?.title, model: body?.model ?? null, mode: body?.mode }) }, 201);
     },
 
     "PATCH /api/chat/conversations/:id": async (request, ctx) => {

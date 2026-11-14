@@ -35,6 +35,8 @@ const IC = {
   arrow: svg('<path d="m9 6 6 6-6 6"/>', 18),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>', 16),
   check: svg('<path d="m5 12 5 5L20 7"/>', 16),
+  copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 14),
+  refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 5v6h-6"/>', 14),
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

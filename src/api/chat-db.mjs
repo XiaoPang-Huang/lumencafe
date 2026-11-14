@@ -69,12 +69,13 @@ export const conv = {
     const r = chatDb.prepare("SELECT * FROM conversations WHERE owner_key = ? AND id = ?").get(ownerKey, id);
     return r ? rowToConv(r) : null;
   },
-  create(ownerKey, { title = "新会话", model = null, app = "chat" } = {}) {
+  create(ownerKey, { title = "新会话", model = null, app = "chat", mode = "chat" } = {}) {
     const id = uuid();
     const t = now();
+    // 懒创建配套：新会话占位阶段选的模型/模式随首条消息落库（A1 修复）
     chatDb.prepare(
-      "INSERT INTO conversations (id, owner_key, title, model, app, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?,?)",
-    ).run(id, ownerKey, title, model, app, t, t, t);
+      "INSERT INTO conversations (id, owner_key, title, model, app, mode, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?,?,?)",
+    ).run(id, ownerKey, title, model, app, mode === "agent" ? "agent" : "chat", t, t, t);
     return conv.get(ownerKey, id);
   },
   /** 应用专属对话（每人每应用一条，如记账对话） */
