@@ -707,3 +707,37 @@ a { color: var(--brand); text-decoration: none; }
 }
 .boot-banner-t { font-size: 14px; font-weight: 600; color: var(--brand-strong); }
 .boot-banner-d { font-size: 12.5px; color: var(--ink-2); }
+
+/* ---------- 管理页（批 4：用户与角色 + 角色权限矩阵） ---------- */
+/* 参考：Supabase Auth Users（表格+徽章+行操作）、thefrontkit 团队设置（角色×权限复选网格） */
+.admin-toolbar { display: flex; align-items: center; gap: 10px; margin: 14px 0; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th {
+  text-align: left; color: var(--ink-2); font-weight: 500; font-size: 12.5px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+}
+.tbl td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.tbl tbody tr:last-child td { border-bottom: none; }
+.tbl-dim { color: var(--ink-3); font-weight: 400; }
+.badge { display: inline-flex; align-items: center; font-size: 12px; border-radius: 999px; padding: 2px 10px; }
+.badge-role-admin { background: var(--brand-soft); color: var(--brand-strong); font-weight: 600; }
+.badge-role-member { background: var(--bg-soft, #f2f3f5); color: var(--ink-3); }
+.badge-on { background: var(--ok-soft); color: var(--ok); }
+.badge-off { background: var(--bg-soft, #f2f3f5); color: var(--ink-3); }
+.me-tag { margin-left: 6px; }
+.row-acts { display: flex; gap: 4px; flex-wrap: wrap; }
+.row-act { font-size: 12.5px; color: var(--brand); padding: 3px 8px; border-radius: 7px; }
+.row-act:hover { background: var(--brand-soft); }
+.row-act.danger { color: var(--danger); }
+.row-act.danger:hover { background: var(--brand-soft); }
+.card-title-gap { margin-bottom: 12px; gap: 8px; align-items: baseline; }
+.card-sub { font-size: 12.5px; }
+.card-gap { margin-top: 16px; }
+.p-note { margin: 0 0 12px; font-size: 13px; }
+.p-note-plain { margin: 0; }
+.matrix-hint { margin: 10px 0 0; font-size: 12.5px; }
+.grant-tbl td { text-align: center; }
+.grant-tbl th { text-align: center; }
+.grant-tbl td:first-child, .grant-tbl th:first-child { text-align: left; }
+.grant-chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+.grant-chk.grant-lock { opacity: .55; cursor: not-allowed; }

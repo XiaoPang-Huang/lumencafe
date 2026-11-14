@@ -264,18 +264,6 @@ function meView() {
   </main>`;
 }
 
-function adminView() {
-  if (state.principal?.kind !== "owner") return meView(); // 成员看不到入口，防御性兜底
-  return `
-  <main class="stage">
-    <div class="stage-head">
-      <h1 class="stage-title">管理设置</h1>
-      <p class="stage-sub">模型管理、用户与角色、调用统计——第 1 批随对话应用开放。</p>
-    </div>
-    <div class="empty-hint">这里会是管理后台。现在还是空壳，等第 1 批来填。</div>
-  </main>`;
-}
-
 let mountedView = null; // 当前挂载的子页面模块（chat 等），切走时清理
 
 /* 批 3 直访拦截：路由 → 所属应用（#/me 与首页不属于应用，不拦） */
@@ -318,11 +306,11 @@ function render() {
     $app.innerHTML = shell('<div id="view" class="view-host"></div>');
     sub.mount(document.getElementById("view"), { hash, state });
     mountedView = sub;
-    document.title = `流光咖啡馆 · ${{ chat: "对话", money: "记账", papers: "论文", reader: "阅读" }[route] ?? ""}`;
+    document.title = `流光咖啡馆 · ${{ chat: "对话", money: "记账", papers: "论文", reader: "阅读", admin: "管理" }[route] ?? ""}`;
     return;
   }
 
-  const view = state.route === "me" ? meView() : state.route === "admin" ? adminView() : homeView();
+  const view = state.route === "me" ? meView() : homeView();
   $app.innerHTML = shell(view);
   document.title = `流光咖啡馆 · ${state.route === "me" ? "我的" : state.route === "admin" ? "管理" : "工作台"}`;
 }

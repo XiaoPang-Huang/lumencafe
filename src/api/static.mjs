@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authRoutes, userByPrincipal } from "./auth.mjs";
 import { requireAdmin, gateApp, allowedApps } from "./gateway.mjs";
+import { adminRoutes as appAdminRoutes } from "./admin.mjs";
 
 const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "static");
 const indexFile = path.join(staticDir, "index.html");
@@ -116,6 +117,8 @@ export function shellRoutes() {
     // 管理面探针：双层门槛——角色 admin（requireAdmin）+ admin 应用授权（gateApp，批 3）
     // 匿名 401（chord 默认拒绝）；已登录非管理员或无 admin 应用授权 403；通过 200
     ...adminRoutes(),
+    // 批 4 管理页 API：用户/角色/权限矩阵（admin.mjs 内部已带 gateApp("admin")+requireAdmin 双层）
+    ...appAdminRoutes(),
   };
 }
 
