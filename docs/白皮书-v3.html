@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="d0b46da3e0019a39cf4a4faf60c45ab37473dda4cd19edd584362fc9784d0811">
+  <meta name="source-sha256" content="9c638158761220cdefc5e93cc9b10b75e0fcc9adf1b0a528b9823974aecf091e">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -286,7 +286,8 @@ tbody tr:hover { background: #fbfcfe; }
 <li><strong>容器起好后必须验</strong>：<code>SELECT version()</code> 显示 18.7、<code>CREATE EXTENSION vector</code> 显示 0.8.7（18.7 改了扩展 ABI，镜像底层若还是 18.6 需换浮动 tag 或自建镜像）。</li>
 <li><strong>Node 用 nvm-windows 管理</strong>（本机已有 v22.22.2 不冲突），<code>nvm install 24.22.3</code> + <code>nvm use</code>。</li>
 </ol>
-<p><strong>待定两条</strong>（如实记录，未定不猜）：LLM provider 密钥渠道——配置环境时定；COS mock 接口边界——3b 开工前定。</p>
+<p><strong>待定两条</strong>（如实记录，未定不猜）：COS mock 接口边界——3b 开工前定；备份脚本落地时间——生产部署前必须落地。
+<strong>已定一条</strong>（2026-11-14）：LLM provider 密钥渠道——多家可配（pi-ai 按 OpenAI 兼容接口逐家配置，密钥只进 <code>.env</code> 不入库），<strong>DeepSeek 官方为第一家</strong>；具体配置项第 1 批开工时随对话应用定稿。</p>
 <p><strong>搭建步骤</strong>（装 WSL2 → Docker → Node → 起 PG 容器 → 装依赖配 <code>.env</code> → 验证）全文不进白皮书，避免运维手册把产品契约文档撑臃肿；按本清单执行即可，docker run 锚点命令见上。</p>
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#01-一句话定位"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">01 一句话定位</span></a><a class="chapter-nav-link chapter-nav-next" href="#03-pi-全家桶清单2026-11-10-核实官方-readme"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">03 pi 全家桶清单（2026-11-10 核实官方 README）</span></a></nav></section><section class="chapter" aria-labelledby="03-pi-全家桶清单2026-11-10-核实官方-readme" data-chapter="3"><h2 id="03-pi-全家桶清单2026-11-10-核实官方-readme" class="doc-heading">03 pi 全家桶清单（2026-11-10 核实官方 README）<a class="heading-anchor" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" aria-label="链接到此标题：03 pi 全家桶清单（2026-11-10 核实官方 README）"><span aria-hidden="true">#</span></a></h2><p>pi 是一个开源大仓库（<code>github.com/earendil-works/pi</code>，原 <code>badlogic/pi-mono</code>），MIT 协议，TypeScript。</p>
@@ -1397,7 +1398,7 @@ tbody tr:hover { background: #fbfcfe; }
 <p>AstrBot 这种大框架先不用，两人规模一个 Webhook 调用就够。</p>
 <p>（注：OpenClaw / Octop 这类框架的<strong>架构思路</strong>仍可参考——消息路由、通道适配层、配对白名单——只是它的个人微信通道不能照搬。）</p>
 <p><strong>5. 部署与备份</strong>
-Caddy 保留（HTTPS + 反代）；主程序用 systemd 管；SQLite 和 PG 定时备份到 COS，要落成具体脚本，不能只是&quot;有备份&quot;一句话。</p>
+Caddy 保留（HTTPS + 反代）；<strong>主程序打成镜像随 compose 跑</strong>（2026-11-14 拍板修订：用户要求服务器环境干净，不用 systemd 直跑；compose 三件套 = Caddy + 主程序 + PG，部署文件 0C 后补在 <code>deploy/</code>）；SQLite 和 PG 定时备份到 COS，要落成具体脚本，不能只是&quot;有备份&quot;一句话。</p>
 <p><strong>6. 数据迁移脚本</strong>
 现有 PG 里的账本和论文数据，如果表结构变了要能导过去。两人规模数据量小，一个脚本的事，但要写进第 0 步。</p>
 <h3 id="砍掉或推迟的六样" class="doc-heading">砍掉或推迟的六样<a class="heading-anchor" href="#砍掉或推迟的六样" aria-label="链接到此标题：砍掉或推迟的六样"><span aria-hidden="true">#</span></a></h3><p><strong>1. chord 的&quot;热替换&quot;——不依赖</strong></p>

@@ -1,0 +1,9 @@
+# 流光咖啡馆 · 生产 Caddy 配置
+# 纯 IP 访问（2026-10-25 拍板：不用域名）：Caddy 对 IP 用自签证书（tls internal），
+# 浏览器首次访问会提示风险，点「继续访问」即可。
+# 参考：旧生产同为 IP 直连 + Caddy 自签，沿用同一形态。
+
+:443 {
+	tls internal
+	reverse_proxy app:8480
+}

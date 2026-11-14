@@ -1,0 +1,61 @@
+# 流光咖啡馆 · 生产 compose（2026-11-14 拍板：三件套全容器，服务器只装 docker）
+# 三件套：Caddy（HTTPS+反代）+ 主程序（自构建镜像）+ PG（pgvector）
+# 版本全部钉死精确 tag；升级走白皮书 §14 影响面评估流程。
+# 用法见 deploy/README.md
+
+name: lumencafe
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: lumencafe-app:0.1.0
+    env_file: .env
+    environment:
+      # 容器内网直连 PG 服务名；口令从 deploy/.env 的 POSTGRES_PASSWORD 注入
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@pg:5432/lumencafe
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      PORT: "8480"
+    depends_on:
+      pg:
+        condition: service_healthy
+    restart: unless-stopped
+    # 默认不对外曝端口，只由 Caddy 反代；服务器上调试可解开下一行
+    # ports: ["127.0.0.1:8480:8480"]
+    volumes:
+      - appdata:/app/.data # chord 框架态 SQLite（登录/会话/对话记录/检查点）
+
+  pg:
+    image: pgvector/pgvector:0.8.7-pg18-bookworm
+    env_file: .env
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: lumencafe
+    volumes:
+      - pgdata:/var/lib/postgresql # 与本地开发同一挂法（注意不是 /data）
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.9
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  appdata:
+  caddydata:
+  caddyconfig:

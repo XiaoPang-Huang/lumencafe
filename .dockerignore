@@ -1,0 +1,13 @@
+# 构建上下文瘦身：这些不进镜像
+node_modules/
+.data/
+qa_tmp/
+.playwright-cli/
+docs/
+prototype/
+tools/
+.git/
+.workbuddy/
+*.log
+.env
+.env.*
