@@ -3,9 +3,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { authRoutes, userByPrincipal } from "./auth.mjs";
 
 const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "static");
 const indexFile = path.join(staticDir, "index.html");
+const loginFile = path.join(staticDir, "login.html");
 
 const MIME = {
   ".css": "text/css; charset=utf-8",
@@ -47,7 +49,7 @@ const resolveAsset = (requestPath) => {
 // 外壳插件的路由表（返回给 plugins/shell 的 facet 用）
 export function shellRoutes() {
   return {
-    // 首页：公开（未登录也要能加载，前端检测登录态后跳 chord 的 /_chord/owner 登录页）
+    // 首页：公开（未登录也要能加载，前端检测登录态后跳 /login 登录页）
     "GET /": {
       public: true,
       page: true,
@@ -60,6 +62,21 @@ export function shellRoutes() {
         },
       }),
     },
+    // 登录页：公开（批 1 账号登录，取代 chord 链接登录）
+    "GET /login": {
+      public: true,
+      page: true,
+      handler: async () => ({
+        kind: "html",
+        body: fs.readFileSync(loginFile, "utf8"),
+        headers: {
+          "Content-Security-Policy": PAGE_CSP,
+          "Cache-Control": "no-cache",
+        },
+      }),
+    },
+    // 批 1 账号体系路由（登录/登出/改密/bootstrap）
+    ...authRoutes(),
     // 静态资源：公开 + 长缓存（靠 ?v= 版本号刷新）
     "GET /assets/*": {
       public: true,
@@ -79,10 +96,19 @@ export function shellRoutes() {
       },
     },
     // 登录态探测：默认拒绝——未登录 401，前端据此跳登录
-    "GET /api/session": async (_request, ctx) => ({
-      kind: "json",
-      value: { principal: ctx.principal },
-    }),
+    // value = { principal, user }：user 为 principal 映射到的自有账号（无则 null）
+    "GET /api/session": async (_request, ctx) => {
+      const user = await userByPrincipal(ctx);
+      return {
+        kind: "json",
+        value: {
+          principal: ctx.principal,
+          user: user
+            ? { username: user.username, displayName: user.display_name, role: user.role }
+            : null,
+        },
+      };
+    },
     // 管理面探针：RBAC 单点判断的样板（白皮书 §06 规矩：角色规则只在网关一处判断）
     // 匿名 401（chord 默认拒绝）；已登录非主人 403；主人 200
     "GET /api/admin/probe": async (_request, ctx) =>

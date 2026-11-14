@@ -650,3 +650,60 @@ a { color: var(--brand); text-decoration: none; }
 .tool-name { font-family: var(--mono); color: var(--brand); font-weight: 500; flex-shrink: 0; }
 .tool-args { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .tool-status { color: var(--ink-3); flex-shrink: 0; }
+
+/* ---------- 登录页（批 1 账号登录；公开页 CSP 禁内联样式，全走外链） ----------
+   参考：Supabase/Stripe SaaS 模板登录页（浅灰底 + 居中单白卡 + 全宽主按钮）、
+   Linear/Spotify 极简登录（无干扰单表单）；配色用项目红白灰体系 */
+.login-body {
+  min-height: 100vh;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--stage);
+  padding: 24px;
+}
+.login-wrap { width: 100%; max-width: 380px; }
+.login-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 34px 30px 30px;
+}
+.login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.login-logo {
+  width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 10px rgba(217, 45, 32, .35);
+}
+.login-name { font-size: 17px; font-weight: 700; line-height: 1.2; }
+.login-sub { font-size: 11px; color: var(--ink-3); margin-top: 2px; letter-spacing: .04em; }
+.login-title { font-size: 15px; font-weight: 600; margin: 0 0 16px; }
+.login-form { display: flex; flex-direction: column; gap: 14px; }
+.login-field { display: flex; flex-direction: column; gap: 5px; }
+.login-label { font-size: 12.5px; color: var(--ink-2); }
+.login-error {
+  font-size: 12.5px; color: var(--danger);
+  background: var(--brand-soft); border-radius: 8px; padding: 8px 12px;
+}
+.login-error[hidden] { display: none; }
+.login-btn { justify-content: center; width: 100%; padding: 10px 16px; font-size: 14px; }
+.login-btn:disabled { opacity: .6; cursor: default; }
+
+/* 「我的」通用设置里的账号区块（修改密码 / owner 引导建号） */
+.me-sec {
+  margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.me-sec-t { font-size: 13.5px; font-weight: 600; }
+.me-sec-acts { display: flex; align-items: center; gap: 12px; }
+.form-msg { font-size: 12.5px; color: var(--ink-2); }
+.form-msg.ok { color: var(--ok); }
+.form-msg.err { color: var(--danger); }
+.boot-banner {
+  background: var(--brand-soft);
+  border: 1px solid rgba(217, 45, 32, .25);
+  border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.boot-banner-t { font-size: 14px; font-weight: 600; color: var(--brand-strong); }
+.boot-banner-d { font-size: 12.5px; color: var(--ink-2); }

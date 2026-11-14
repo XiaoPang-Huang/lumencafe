@@ -9,8 +9,10 @@ const $app = document.getElementById("app");
 const $modal = document.getElementById("modal");
 
 const state = {
-  principal: null, // 登录身份（chord principal，如 { kind: "owner" }）
-  pong: "wait",    // 探针状态：wait / on / off
+  principal: null,        // 登录身份（chord principal，如 { kind: "owner" }）
+  user: null,             // 自有账号（/api/session 返回，{ username, displayName, role }；无则 null）
+  bootstrapNeeded: false, // owner 引导：users 表为空，需要创建首个管理员
+  pong: "wait",           // 探针状态：wait / on / off
   route: "home",
 };
 
@@ -73,7 +75,15 @@ const APPS = [
 ];
 
 const ROUTE_TITLES = { home: "工作台", chat: "对话", money: "记账", papers: "论文", reader: "阅读", me: "我的", admin: "管理设置" };
-const whoAmI = () => state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员");
+// 身份显示优先用自有账号显示名（有 user 时）；其次 chord principal
+const whoAmI = () =>
+  state.user?.displayName
+  ?? (state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员"));
+// 身份角标：自有账号角色优先，兜底按 principal 判断
+const roleLabel = () => {
+  if (state.user) return state.user.role === "admin" ? "管理员" : "成员";
+  return state.principal?.kind === "owner" ? "管理员" : "成员";
+};
 
 /* 石墨灰侧栏（桌面常驻；窄屏变抽屉，项目规矩允许的导航抽屉） */
 function sideNav() {
@@ -103,7 +113,7 @@ function sideNav() {
     </div>
     <div class="side-foot">
       <span class="avatar">${esc(whoAmI().slice(0, 1))}</span>
-      <span class="who"><b>${esc(whoAmI())}</b><span>${isOwner ? "管理员" : "成员"}</span></span>
+      <span class="who"><b>${esc(whoAmI())}</b><span>${esc(roleLabel())}</span></span>
     </div>
   </aside>
   <div class="side-backdrop" id="sideBackdrop"></div>`;
@@ -184,10 +194,50 @@ function homeView() {
 }
 
 const DOMAINS = [
-  { key: "general", icon: IC.user, name: "通用设置", desc: "账号与登录（chord 身份地基）" },
+  { key: "general", icon: IC.user, name: "通用设置", desc: "账号与登录（批 1 起为账号密码）" },
   { key: "apps", icon: IC.sliders, name: "应用设置", desc: "各应用偏好，随应用批次开放" },
   { key: "admin", icon: IC.shield, name: "管理设置", desc: "模型、用户、费用统计（管理页）", admin: true },
 ];
+
+/* 「我的」通用设置面板：owner 引导建首个管理员 + 自助改密（批 1 账号登录） */
+const bootstrapBlock = () => `
+  <div class="boot-banner">
+    <div class="boot-banner-t">创建首个管理员</div>
+    <div class="boot-banner-d">系统还没有任何账号。请创建一个管理员账号；创建成功后请退出当前主人会话，用新账号登录。</div>
+    <label class="login-field" for="bsUser"><span class="login-label">用户名</span><input class="text-input" id="bsUser" autocomplete="off"></label>
+    <label class="login-field" for="bsName"><span class="login-label">显示名（可选）</span><input class="text-input" id="bsName" autocomplete="off"></label>
+    <label class="login-field" for="bsPass"><span class="login-label">密码（至少 8 位）</span><input class="text-input" type="password" id="bsPass" autocomplete="new-password"></label>
+    <div class="me-sec-acts">
+      <button class="btn btn-primary" data-bootstrap-submit>创建</button>
+      <span class="form-msg" id="bsMsg"></span>
+    </div>
+  </div>`;
+
+const passBlock = () => `
+  <div class="me-sec">
+    <div class="me-sec-t">修改密码</div>
+    <label class="login-field" for="pwOld"><span class="login-label">旧密码</span><input class="text-input" type="password" id="pwOld" autocomplete="current-password"></label>
+    <label class="login-field" for="pwNew"><span class="login-label">新密码</span><input class="text-input" type="password" id="pwNew" autocomplete="new-password"></label>
+    <label class="login-field" for="pwNew2"><span class="login-label">确认新密码</span><input class="text-input" type="password" id="pwNew2" autocomplete="new-password"></label>
+    <div class="me-sec-acts">
+      <button class="btn btn-primary" data-pass-submit>提交</button>
+      <span class="form-msg" id="pwMsg"></span>
+    </div>
+  </div>`;
+
+/* POST JSON 便捷封装（api() 只认 2xx，错误信息按状态码映射） */
+async function postJson(path, payload, messages = {}) {
+  try {
+    return await api(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    const msg = messages[err.status] ?? messages.default ?? `请求失败（HTTP ${err.status}）`;
+    throw Object.assign(new Error(msg), { status: err.status });
+  }
+}
 
 function meView() {
   const isOwner = state.principal?.kind === "owner";
@@ -265,6 +315,56 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#sideBackdrop")) { closeSide(); return; }
   if (e.target.closest(".side-nav a.side-item")) closeSide();
 
+  // 通用设置 · 修改密码（批 1）
+  if (e.target.closest("[data-pass-submit]")) {
+    e.preventDefault();
+    const msg = document.getElementById("pwMsg");
+    const setMsg = (text, ok) => {
+      msg.textContent = text;
+      msg.className = `form-msg ${ok ? "ok" : "err"}`;
+    };
+    const oldPassword = document.getElementById("pwOld")?.value ?? "";
+    const pw1 = document.getElementById("pwNew")?.value ?? "";
+    const pw2 = document.getElementById("pwNew2")?.value ?? "";
+    if (pw1.length < 8) { setMsg("新密码至少 8 位", false); return; }
+    if (pw1 !== pw2) { setMsg("两次输入的新密码不一致", false); return; }
+    postJson("/api/auth/password", { oldPassword, newPassword: pw1 }, {
+      401: "旧密码错误",
+      403: "该登录方式无密码",
+      400: "新密码至少 8 位",
+      default: "修改失败，请稍后重试",
+    }).then(() => {
+      setMsg("已更新，下次登录请用新密码", true);
+      document.getElementById("pwOld").value = "";
+      document.getElementById("pwNew").value = "";
+      document.getElementById("pwNew2").value = "";
+    }).catch((err) => setMsg(err.message, false));
+    return;
+  }
+
+  // 通用设置 · owner 引导创建首个管理员（批 1）
+  if (e.target.closest("[data-bootstrap-submit]")) {
+    e.preventDefault();
+    const msg = document.getElementById("bsMsg");
+    const setMsg = (text, ok) => {
+      msg.textContent = text;
+      msg.className = `form-msg ${ok ? "ok" : "err"}`;
+    };
+    const username = document.getElementById("bsUser")?.value.trim() ?? "";
+    const displayName = document.getElementById("bsName")?.value.trim() ?? "";
+    const password = document.getElementById("bsPass")?.value ?? "";
+    postJson("/api/auth/bootstrap", { username, displayName, password }, {
+      400: "用户名需为 2-32 位小写字母、数字或下划线，密码至少 8 位",
+      403: "仅主人可用",
+      409: "首个管理员已创建",
+      default: "创建失败，请稍后重试",
+    }).then(() => {
+      state.bootstrapNeeded = false;
+      setMsg("已创建，请退出后用新账号登录", true);
+    }).catch((err) => setMsg(err.message, false));
+    return;
+  }
+
   const domain = e.target.closest("[data-domain]");
   if (domain) {
     const key = domain.dataset.domain;
@@ -272,9 +372,10 @@ document.addEventListener("click", (e) => {
     const isOwner = state.principal?.kind === "owner";
     const bodies = {
       general: `
-        <div class="kv-row"><span class="kv-k">当前身份</span><span class="kv-v">${esc(JSON.stringify(state.principal))}</span></div>
-        <div class="kv-row"><span class="kv-k">登录方式</span><span class="kv-v">chord 会话（cookie）</span></div>
-        <p style="margin:12px 0 0;font-size:13px">成员账号、邀请链接随第 1 批「用户插件」开放。</p>`,
+        ${state.bootstrapNeeded ? bootstrapBlock() : ""}
+        <div class="kv-row"><span class="kv-k">当前身份</span><span class="kv-v">${esc(whoAmI())}（${esc(roleLabel())}）</span></div>
+        <div class="kv-row"><span class="kv-k">登录方式</span><span class="kv-v">账号密码（chord 会话 cookie）</span></div>
+        ${state.user ? passBlock() : `<p class="me-note">当前身份无密码（chord 主人/邀请会话）。</p>`}`,
       apps: `<p>应用偏好设置会按批次加入：对话、记账、论文各管各的。</p>`,
       admin: isOwner ? `<p>管理后台骨架在 <a href="#/admin">#/admin</a>。</p>` : `<p>仅主人可用。</p>`,
     };
@@ -288,19 +389,29 @@ window.addEventListener("hashchange", render);
 // 供子页面模块（chat.js 等）使用的共享件
 Object.assign(window.LC, { api, openModal, closeModal, esc, IC, getState: () => state });
 
-/* ---------- 启动：登录态检测 → 未登录跳 chord 登录页 ---------- */
+/* ---------- 启动：登录态检测 → 未登录跳 /login 登录页 ---------- */
 (async function boot() {
   try {
     const data = await api("/api/session");
     state.principal = data.principal;
+    state.user = data.user ?? null;
   } catch (err) {
     if (err.status === 401) {
-      location.replace("/_chord/owner"); // chord 自带登录页（token 贴入框）
+      location.replace("/login"); // 批 1 自有登录页（取代 chord /_chord/owner 链接登录）
       return;
     }
     $app.querySelector(".boot-hint").innerHTML =
       `<span class="boot-error">连不上服务，请确认主程序已启动。</span>`;
     return;
+  }
+  // owner 引导：users 表为空 → 通用设置面板顶部提示创建首个管理员
+  if (state.principal?.kind === "owner") {
+    try {
+      const bs = await api("/api/auth/bootstrap");
+      state.bootstrapNeeded = bs.needed === true;
+    } catch {
+      state.bootstrapNeeded = false;
+    }
   }
   render();
   // 后台探活
