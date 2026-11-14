@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="9c638158761220cdefc5e93cc9b10b75e0fcc9adf1b0a528b9823974aecf091e">
+  <meta name="source-sha256" content="32b9397a35be3454526f570cdfb599c1b3502db885bee1e4b86ebb0170f6b0a1">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -186,14 +186,14 @@ tbody tr:hover { background: #fbfcfe; }
   <div class="page-shell">
     <aside class="sidebar" id="site-nav" aria-label="白皮书导航">
       <div class="sidebar-inner">
-        <div class="sidebar-heading"><span>白皮书目录</span><span>18 章</span></div>
-        <nav id="whitepaper-toc" aria-label="全部章节"><ol class="toc-list"><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#00-这份文档干什么用" data-heading-id="00-这份文档干什么用">00 这份文档干什么用</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#01-一句话定位" data-heading-id="01-一句话定位">01 一句话定位</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#02-硬件与红线" data-heading-id="02-硬件与红线">02 硬件与红线</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#环境基线2026-11-13-拍板本地开发与-2c4g-生产共用" data-heading-id="环境基线2026-11-13-拍板本地开发与-2c4g-生产共用">环境基线（2026-11-13 拍板，本地开发与 2C4G 生产共用）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" data-heading-id="03-pi-全家桶清单2026-11-10-核实官方-readme">03 pi 全家桶清单（2026-11-10 核实官方 README）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#七个包逐个说" data-heading-id="七个包逐个说">七个包，逐个说</a></li><li><a class="toc-link toc-link-child" href="#引哪几个一句话" data-heading-id="引哪几个一句话">引哪几个，一句话</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#04-官方明确不管的事决定我们要自己写多少" data-heading-id="04-官方明确不管的事决定我们要自己写多少">04 官方明确不管的事（决定我们要自己写多少）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#05-数据存哪2026-11-11-拍板方案-a" data-heading-id="05-数据存哪2026-11-11-拍板方案-a">05 数据存哪（2026-11-11 拍板：方案 A）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#两个用户的数据怎么分" data-heading-id="两个用户的数据怎么分">两个用户的数据怎么分</a></li><li><a class="toc-link toc-link-child" href="#没选的方案留档" data-heading-id="没选的方案留档">没选的方案（留档）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#06-整体分几层" data-heading-id="06-整体分几层">06 整体分几层</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#总体架构图主请求链路容器视图" data-heading-id="总体架构图主请求链路容器视图">总体架构图：主请求链路（容器视图）</a></li><li><a class="toc-link toc-link-child" href="#数据与运行边界补充视图" data-heading-id="数据与运行边界补充视图">数据与运行边界（补充视图）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#07-实际开几个程序2c4g-版" data-heading-id="07-实际开几个程序2c4g-版">07 实际开几个程序（2C4G 版）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#08-三个应用做什么已拍板" data-heading-id="08-三个应用做什么已拍板">08 三个应用做什么（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#判活规矩所有功能先过这一条" data-heading-id="判活规矩所有功能先过这一条">判活规矩（所有功能先过这一条）</a></li><li><a class="toc-link toc-link-child" href="#对话应用打磨顺序-15" data-heading-id="对话应用打磨顺序-15">对话应用（打磨顺序 1、5）</a></li><li><a class="toc-link toc-link-child" href="#普通聊天时序图保存确认后再生成基础版" data-heading-id="普通聊天时序图保存确认后再生成基础版">普通聊天时序图：保存确认后再生成（基础版）</a></li><li><a class="toc-link toc-link-child" href="#失败重试与草稿恢复时序图三种状态全手动重试基础版" data-heading-id="失败重试与草稿恢复时序图三种状态全手动重试基础版">失败重试与草稿恢复时序图：三种状态全手动重试（基础版）</a></li><li><a class="toc-link toc-link-child" href="#记账应用打磨顺序-2" data-heading-id="记账应用打磨顺序-2">记账应用（打磨顺序 2）</a></li><li><a class="toc-link toc-link-child" href="#ai-记一笔时序图先出草稿点确认才入账幂等" data-heading-id="ai-记一笔时序图先出草稿点确认才入账幂等">AI 记一笔时序图：先出草稿，点确认才入账（幂等）</a></li><li><a class="toc-link toc-link-child" href="#对话统计时序图模型只出三条件代码执行聚合方案-c" data-heading-id="对话统计时序图模型只出三条件代码执行聚合方案-c">对话统计时序图：模型只出三条件，代码执行聚合（方案 C）</a></li><li><a class="toc-link toc-link-child" href="#论文应用打磨顺序-34" data-heading-id="论文应用打磨顺序-34">论文应用（打磨顺序 3、4）</a></li><li><a class="toc-link toc-link-child" href="#论文下载解析时序图pi-agent-护栏内换源探索mineru-解析入库慢活" data-heading-id="论文下载解析时序图pi-agent-护栏内换源探索mineru-解析入库慢活">论文下载解析时序图：pi agent 护栏内换源探索，MinerU 解析入库（慢活）</a></li><li><a class="toc-link toc-link-child" href="#单篇问答时序图双路检索加云端重排出处点回原文段落block-级" data-heading-id="单篇问答时序图双路检索加云端重排出处点回原文段落block-级">单篇问答时序图：双路检索加云端重排，出处点回原文段落（block 级）</a></li><li><a class="toc-link toc-link-child" href="#定时抓取推送时序图每日早八点一轮push_logs-幂等防重" data-heading-id="定时抓取推送时序图每日早八点一轮push_logs-幂等防重">定时抓取推送时序图：每日早八点一轮，push_logs 幂等防重</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#09-对话怎么组织方案-c已拍板" data-heading-id="09-对话怎么组织方案-c已拍板">09 对话怎么组织（方案 C，已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#总对话只读查询时序图写操作在网关拒绝方案-c-边界" data-heading-id="总对话只读查询时序图写操作在网关拒绝方案-c-边界">总对话只读查询时序图：写操作在网关拒绝（方案 C 边界）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#10-慢活怎么办没有-redis-也能行" data-heading-id="10-慢活怎么办没有-redis-也能行">10 慢活怎么办（没有 Redis 也能行）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#其他并发硬线" data-heading-id="其他并发硬线">其他并发硬线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#11-找资料怎么做rag" data-heading-id="11-找资料怎么做rag">11 找资料怎么做（RAG）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#lightrag-怎么处理2026-11-11-核实官方-readme-后定" data-heading-id="lightrag-怎么处理2026-11-11-核实官方-readme-后定">LightRAG 怎么处理（2026-11-11 核实官方 README 后定）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#12-危险动作怎么关起来" data-heading-id="12-危险动作怎么关起来">12 危险动作怎么关起来</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#官方给的四种隔离方式" data-heading-id="官方给的四种隔离方式">官方给的四种隔离方式</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#13-打磨顺序已拍板" data-heading-id="13-打磨顺序已拍板">13 打磨顺序（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#每步验证什么" data-heading-id="每步验证什么">每步验证什么</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#14-升级纪律" data-heading-id="14-升级纪律">14 升级纪律</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#就认两条验收线" data-heading-id="就认两条验收线">就认两条验收线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#15-2c4g-上的增补与裁剪" data-heading-id="15-2c4g-上的增补与裁剪">15 2C4G 上的增补与裁剪</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#要补的六块架构文档没写透" data-heading-id="要补的六块架构文档没写透">要补的六块（架构文档没写透）</a></li><li><a class="toc-link toc-link-child" href="#砍掉或推迟的六样" data-heading-id="砍掉或推迟的六样">砍掉或推迟的六样</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#16-未决问题清单" data-heading-id="16-未决问题清单">16 未决问题清单</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#17-参考了哪些项目" data-heading-id="17-参考了哪些项目">17 参考了哪些项目</a></li></ol></nav>
+        <div class="sidebar-heading"><span>白皮书目录</span><span>19 章</span></div>
+        <nav id="whitepaper-toc" aria-label="全部章节"><ol class="toc-list"><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#00-这份文档干什么用" data-heading-id="00-这份文档干什么用">00 这份文档干什么用</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#01-一句话定位" data-heading-id="01-一句话定位">01 一句话定位</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#02-硬件与红线" data-heading-id="02-硬件与红线">02 硬件与红线</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#环境基线2026-11-13-拍板本地开发与-2c4g-生产共用" data-heading-id="环境基线2026-11-13-拍板本地开发与-2c4g-生产共用">环境基线（2026-11-13 拍板，本地开发与 2C4G 生产共用）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" data-heading-id="03-pi-全家桶清单2026-11-10-核实官方-readme">03 pi 全家桶清单（2026-11-10 核实官方 README）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#七个包逐个说" data-heading-id="七个包逐个说">七个包，逐个说</a></li><li><a class="toc-link toc-link-child" href="#引哪几个一句话" data-heading-id="引哪几个一句话">引哪几个，一句话</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#04-官方明确不管的事决定我们要自己写多少" data-heading-id="04-官方明确不管的事决定我们要自己写多少">04 官方明确不管的事（决定我们要自己写多少）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#05-数据存哪2026-11-11-拍板方案-a" data-heading-id="05-数据存哪2026-11-11-拍板方案-a">05 数据存哪（2026-11-11 拍板：方案 A）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#两个用户的数据怎么分" data-heading-id="两个用户的数据怎么分">两个用户的数据怎么分</a></li><li><a class="toc-link toc-link-child" href="#没选的方案留档" data-heading-id="没选的方案留档">没选的方案（留档）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#06-整体分几层" data-heading-id="06-整体分几层">06 整体分几层</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#总体架构图主请求链路容器视图" data-heading-id="总体架构图主请求链路容器视图">总体架构图：主请求链路（容器视图）</a></li><li><a class="toc-link toc-link-child" href="#数据与运行边界补充视图" data-heading-id="数据与运行边界补充视图">数据与运行边界（补充视图）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#07-实际开几个程序2c4g-版" data-heading-id="07-实际开几个程序2c4g-版">07 实际开几个程序（2C4G 版）</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#08-三个应用做什么已拍板" data-heading-id="08-三个应用做什么已拍板">08 三个应用做什么（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#判活规矩所有功能先过这一条" data-heading-id="判活规矩所有功能先过这一条">判活规矩（所有功能先过这一条）</a></li><li><a class="toc-link toc-link-child" href="#对话应用打磨顺序-15" data-heading-id="对话应用打磨顺序-15">对话应用（打磨顺序 1、5）</a></li><li><a class="toc-link toc-link-child" href="#普通聊天时序图保存确认后再生成基础版" data-heading-id="普通聊天时序图保存确认后再生成基础版">普通聊天时序图：保存确认后再生成（基础版）</a></li><li><a class="toc-link toc-link-child" href="#失败重试与草稿恢复时序图三种状态全手动重试基础版" data-heading-id="失败重试与草稿恢复时序图三种状态全手动重试基础版">失败重试与草稿恢复时序图：三种状态全手动重试（基础版）</a></li><li><a class="toc-link toc-link-child" href="#记账应用打磨顺序-2" data-heading-id="记账应用打磨顺序-2">记账应用（打磨顺序 2）</a></li><li><a class="toc-link toc-link-child" href="#ai-记一笔时序图先出草稿点确认才入账幂等" data-heading-id="ai-记一笔时序图先出草稿点确认才入账幂等">AI 记一笔时序图：先出草稿，点确认才入账（幂等）</a></li><li><a class="toc-link toc-link-child" href="#对话统计时序图模型只出三条件代码执行聚合方案-c" data-heading-id="对话统计时序图模型只出三条件代码执行聚合方案-c">对话统计时序图：模型只出三条件，代码执行聚合（方案 C）</a></li><li><a class="toc-link toc-link-child" href="#论文应用打磨顺序-34" data-heading-id="论文应用打磨顺序-34">论文应用（打磨顺序 3、4）</a></li><li><a class="toc-link toc-link-child" href="#论文下载解析时序图pi-agent-护栏内换源探索mineru-解析入库慢活" data-heading-id="论文下载解析时序图pi-agent-护栏内换源探索mineru-解析入库慢活">论文下载解析时序图：pi agent 护栏内换源探索，MinerU 解析入库（慢活）</a></li><li><a class="toc-link toc-link-child" href="#单篇问答时序图双路检索加云端重排出处点回原文段落block-级" data-heading-id="单篇问答时序图双路检索加云端重排出处点回原文段落block-级">单篇问答时序图：双路检索加云端重排，出处点回原文段落（block 级）</a></li><li><a class="toc-link toc-link-child" href="#定时抓取推送时序图每日早八点一轮push_logs-幂等防重" data-heading-id="定时抓取推送时序图每日早八点一轮push_logs-幂等防重">定时抓取推送时序图：每日早八点一轮，push_logs 幂等防重</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#09-对话怎么组织方案-c已拍板" data-heading-id="09-对话怎么组织方案-c已拍板">09 对话怎么组织（方案 C，已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#总对话只读查询时序图写操作在网关拒绝方案-c-边界" data-heading-id="总对话只读查询时序图写操作在网关拒绝方案-c-边界">总对话只读查询时序图：写操作在网关拒绝（方案 C 边界）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#10-慢活怎么办没有-redis-也能行" data-heading-id="10-慢活怎么办没有-redis-也能行">10 慢活怎么办（没有 Redis 也能行）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#其他并发硬线" data-heading-id="其他并发硬线">其他并发硬线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#11-找资料怎么做rag" data-heading-id="11-找资料怎么做rag">11 找资料怎么做（RAG）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#lightrag-怎么处理2026-11-11-核实官方-readme-后定" data-heading-id="lightrag-怎么处理2026-11-11-核实官方-readme-后定">LightRAG 怎么处理（2026-11-11 核实官方 README 后定）</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#12-危险动作怎么关起来" data-heading-id="12-危险动作怎么关起来">12 危险动作怎么关起来</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#官方给的四种隔离方式" data-heading-id="官方给的四种隔离方式">官方给的四种隔离方式</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#13-打磨顺序已拍板" data-heading-id="13-打磨顺序已拍板">13 打磨顺序（已拍板）</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#每步验证什么" data-heading-id="每步验证什么">每步验证什么</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#14-升级纪律" data-heading-id="14-升级纪律">14 升级纪律</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#就认两条验收线" data-heading-id="就认两条验收线">就认两条验收线</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#15-2c4g-上的增补与裁剪" data-heading-id="15-2c4g-上的增补与裁剪">15 2C4G 上的增补与裁剪</a><ol class="toc-children"><li><a class="toc-link toc-link-child" href="#要补的六块架构文档没写透" data-heading-id="要补的六块架构文档没写透">要补的六块（架构文档没写透）</a></li><li><a class="toc-link toc-link-child" href="#砍掉或推迟的六样" data-heading-id="砍掉或推迟的六样">砍掉或推迟的六样</a></li></ol></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#16-未决问题清单" data-heading-id="16-未决问题清单">16 未决问题清单</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#17-参考了哪些项目" data-heading-id="17-参考了哪些项目">17 参考了哪些项目</a></li><li class="toc-chapter"><a class="toc-link toc-link-chapter" href="#18-视觉与界面风格2026-11-14-拍板" data-heading-id="18-视觉与界面风格2026-11-14-拍板">18 视觉与界面风格（2026-11-14 拍板）</a></li></ol></nav>
       </div>
     </aside>
     <main id="whitepaper-content">
       <article class="whitepaper"><h1 id="流光咖啡馆-白皮书-v3个人-agent-工作台" class="doc-heading">流光咖啡馆 · 白皮书 v3（个人 Agent 工作台）<a class="heading-anchor" href="#流光咖啡馆-白皮书-v3个人-agent-工作台" aria-label="链接到此标题：流光咖啡馆 · 白皮书 v3（个人 Agent 工作台）"><span aria-hidden="true">#</span></a></h1><blockquote>
 <p>状态：<strong>讨论稿</strong>（存储分层 Q1、文档归属 Q6 已拍板；其余 ★ 条目见 §16）
-生成时间：2026-11-10，最近更新 2026-11-11
+生成时间：2026-11-10，最近更新 2026-11-14
 上游讨论稿：<code>docs/pi-workbench-architecture.html</code>（架构说明大白话版 v1.2，已降为参考件）
 旧版处置：白皮书 v2 已删除，备份在 <code>.workbuddy/backup-docs-20261110/</code>（该目录不进 git）</p>
 </blockquote>
@@ -1570,8 +1570,63 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 </tr>
 </tbody>
 </table></div><hr>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#16-未决问题清单"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">16 未决问题清单</span></a><a class="chapter-nav-link chapter-nav-next" href="#18-视觉与界面风格2026-11-14-拍板"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">18 视觉与界面风格（2026-11-14 拍板）</span></a></nav></section><section class="chapter" aria-labelledby="18-视觉与界面风格2026-11-14-拍板" data-chapter="18"><h2 id="18-视觉与界面风格2026-11-14-拍板" class="doc-heading">18 视觉与界面风格（2026-11-14 拍板）<a class="heading-anchor" href="#18-视觉与界面风格2026-11-14-拍板" aria-label="链接到此标题：18 视觉与界面风格（2026-11-14 拍板）"><span aria-hidden="true">#</span></a></h2><p><strong>决定：整体配色从火山蓝改为 红 / 白 / 灰 + 深色点缀；web 端侧栏定为石墨灰（三候选：深炭 #17171A / 石墨灰 #2E2E33 / 浅灰白 #F7F7F8，用户最终选石墨灰）。</strong></p>
+<p>参考来源（业界案例对照，符合 AGENTS.md 设计强制规则）：</p>
+<ul>
+<li>web 端骨架：PAN 个人理财工作台——深色分组侧栏 + 红色左缘选中条、白顶栏（⌘K 搜索、状态灯）、深渐变欢迎条、KPI 卡左缘色条、白卡浅灰页</li>
+<li>手机端：习惯打卡台——整屏底纹 + 悬浮白卡、渐变主卡、玻璃底 Tab</li>
+<li>骨架沿用火山方舟 / Arco 的排版与组件密度，仅配色替换</li>
+</ul>
+<p>颜色 token（<code>src/static/assets/css/main.css</code> 的 <code>:root</code> 为唯一实现源）：</p>
+<div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>
+<tr>
+<th>角色</th>
+<th>色值</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>品牌红</td>
+<td><code>#D92D20</code></td>
+<td>仅主按钮、选中态、关键数字、链接</td>
+</tr>
+<tr>
+<td>品牌红 hover/浅底</td>
+<td><code>#B42318</code> / <code>#FDECEA</code></td>
+<td>悬停、选中浅底</td>
+</tr>
+<tr>
+<td>石墨灰</td>
+<td><code>#2E2E33</code></td>
+<td>web 侧栏底、深色渐变组件（欢迎条等）</td>
+</tr>
+<tr>
+<td>深炭</td>
+<td><code>#1F2329</code></td>
+<td>标题与正文文字（不用纯黑）</td>
+</tr>
+<tr>
+<td>页面底/卡片</td>
+<td><code>#F4F4F5</code> / <code>#FFFFFF</code></td>
+<td>浅灰页 + 白卡</td>
+</tr>
+<tr>
+<td>语义绿</td>
+<td><code>#00B42A</code></td>
+<td>支出、成功（记账惯例：收入红、支出绿，不变）</td>
+</tr>
+</tbody>
+</table></div><p>适用范围：</p>
+<ul>
+<li><strong>web 端</strong>：外壳（石墨灰侧栏 + 白顶栏）+ 工作台/对话/记账/论文/阅读器/我的/管理全部页面，同一套 token。</li>
+<li><strong>移动端</strong>：同一套 token；布局沿用「背景 + 悬浮白卡」，导航在窄屏为抽屉（项目既有规矩）。</li>
+<li>双端统一：任何新页面只能从上面 token 取色，不得新增品牌色。</li>
+</ul>
+<p>决策过程稿：<code>designs/lumencafe-redstyle/</code>（v1 三色稿、v2 侧栏灰度三档切换稿）。</p>
+<hr>
 <p><em>文档结束。改动请先在 §16 未决问题清单里过一遍，拍板后再写进正文。</em></p>
-<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#16-未决问题清单"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">16 未决问题清单</span></a><span class="chapter-nav-placeholder" aria-hidden="true"></span></nav></section></article>
+<nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#17-参考了哪些项目"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">17 参考了哪些项目</span></a><span class="chapter-nav-placeholder" aria-hidden="true"></span></nav></section></article>
       <footer class="document-footer">内容以 <code>docs/白皮书-v3.md</code> 为准 · 本页由生成工具同步重建，可直接离线阅读与打印。</footer>
     </main>
   </div>
