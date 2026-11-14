@@ -8,7 +8,7 @@
   const LC = window.LC;
   if (!LC) return;
 
-  const { api, openModal, esc } = LC;
+  const { api, apiStream, openModal, esc } = LC;
 
   const md = new LCVendor.MarkdownIt({ html: false, linkify: true, breaks: true });
   const hljs = LCVendor.hljs;
@@ -215,9 +215,9 @@
     const text = ta.value.trim();
     if (!text || S.generating) return;
     if (!S.current) {
-      const { conversation } = await (await fetch("/api/chat/conversations", {
+      const { conversation } = await api("/api/chat/conversations", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
-      })).json();
+      });
       S.currentId = conversation.id;
       S.current = conversation;
       location.hash = `#/chat/${conversation.id}`;
@@ -287,7 +287,7 @@
 
     let failed = false;
     try {
-      const res = await fetch("/api/chat/agent", {
+      const res = await apiStream("/api/chat/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: S.current.id, content: userText, req_id: crypto.randomUUID() }),
@@ -346,7 +346,7 @@
     }, 80);
 
     try {
-      const res = await fetch("/api/chat/generate", {
+      const res = await apiStream("/api/chat/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -449,8 +449,7 @@
       if (sendBtn) { await send(); return; }
       if (e.target.closest("[data-hub]")) { openHub(); return; }
       if (newBtn) {
-        const res = await fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        const { conversation } = await res.json();
+        const { conversation } = await api("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
         S.currentId = conversation.id;
         S.current = conversation;
         S.messages = [];

@@ -41,13 +41,50 @@ const IC = {
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 /* ---------- API ---------- */
+/* 全局 401 处理（白皮书 §20 P0，学 RAGFlow utils/request.ts 拦截器）：
+   会话过期 → toast 提示 → 跳 /login；isRedirecting 防并发请求重复触发 */
+let authRedirecting = false;
+function handleAuth401() {
+  if (authRedirecting) return;
+  authRedirecting = true;
+  toast("登录已过期，正在跳转登录页…");
+  setTimeout(() => location.replace("/login"), 1200);
+}
+
+/* 全局 toast：顶部居中 2.5s（RAGFlow 规格；chat 页内另有局部 toast 不冲突） */
+let lcToastTimer = null;
+function toast(text) {
+  let t = document.querySelector(".lc-toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.className = "lc-toast";
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.classList.add("show");
+  clearTimeout(lcToastTimer);
+  lcToastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: { Accept: "application/json", ...(options.headers ?? {}) },
     ...options,
   });
+  // silent401：boot 冷启动探测登录态用——未登录直接跳，不弹 toast
+  if (res.status === 401 && !options.silent401) handleAuth401();
   if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
   return res.json();
+}
+
+/* 流式请求（SSE/agent）：返回原始 Response 供 res.body 读取；401 同样收口 */
+async function apiStream(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { Accept: "application/json", ...(options.headers ?? {}) },
+    ...options,
+  });
+  if (res.status === 401) handleAuth401();
+  return res;
 }
 
 /* ---------- 弹窗基建（原生 dialog；Esc/焦点陷阱/背景禁交互走原生） ---------- */
@@ -229,12 +266,14 @@ const passBlock = () => `
   </div>`;
 
 /* POST JSON 便捷封装（api() 只认 2xx，错误信息按状态码映射） */
-async function postJson(path, payload, messages = {}) {
+async function postJson(path, payload, messages = {}, options = {}) {
   try {
     return await api(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      // silent401：401 有业务含义（如改密的「旧密码错误」）时跳过全局踢登录
+      ...(options.silent401 ? { silent401: true } : {}),
     });
   } catch (err) {
     const msg = messages[err.status] ?? messages.default ?? `请求失败（HTTP ${err.status}）`;
@@ -347,7 +386,7 @@ document.addEventListener("click", (e) => {
       403: "该登录方式无密码",
       400: "新密码至少 8 位",
       default: "修改失败，请稍后重试",
-    }).then(() => {
+    }, { silent401: true }).then(() => {
       setMsg("已更新，下次登录请用新密码", true);
       document.getElementById("pwOld").value = "";
       document.getElementById("pwNew").value = "";
@@ -401,12 +440,12 @@ document.addEventListener("click", (e) => {
 window.addEventListener("hashchange", render);
 
 // 供子页面模块（chat.js 等）使用的共享件
-Object.assign(window.LC, { api, openModal, closeModal, esc, IC, getState: () => state });
+Object.assign(window.LC, { api, apiStream, toast, handleAuth401, openModal, closeModal, esc, IC, getState: () => state });
 
 /* ---------- 启动：登录态检测 → 未登录跳 /login 登录页 ---------- */
 (async function boot() {
   try {
-    const data = await api("/api/session");
+    const data = await api("/api/session", { silent401: true });
     state.principal = data.principal;
     state.user = data.user ?? null;
     state.apps = Array.isArray(data.apps) ? data.apps : [];

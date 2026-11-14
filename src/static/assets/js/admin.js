@@ -13,12 +13,14 @@
   const { openModal, closeModal, esc, IC } = LC;
 
   /* 带服务端错误文案的请求封装：LC.api 的 err.message 只有 "HTTP 409"，
-     管理页要直接把后端 409/400 文案展示在表单旁，故这里自己解析 */
+     管理页要直接把后端 409/400 文案展示在表单旁，故这里自己解析。
+     401（会话过期）交回全局处理：toast + 跳 /login（白皮书 §20 P0） */
   async function req(path, options = {}) {
     const res = await fetch(path, {
       headers: { Accept: "application/json", ...(options.headers ?? {}) },
       ...options,
     });
+    if (res.status === 401 && LC.handleAuth401) { LC.handleAuth401(); }
     let data = null;
     try { data = await res.json(); } catch { /* 非 JSON 响应 */ }
     if (!res.ok) {

@@ -458,6 +458,16 @@ a { color: var(--brand); text-decoration: none; }
 .chat-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .chat-main { position: relative; }
 
+/* 全局 toast（白皮书 §20 P0）：顶部居中 2.5s，RAGFlow 规格；z-index 高于弹窗 */
+.lc-toast {
+  position: fixed; left: 50%; top: 24px; transform: translateX(-50%) translateY(-8px);
+  background: var(--ink); color: #fff; font-size: 13px; z-index: 9999;
+  border-radius: 8px; padding: 9px 18px; opacity: 0; pointer-events: none;
+  box-shadow: var(--shadow-pop);
+  transition: opacity .2s var(--ease), transform .2s var(--ease);
+}
+.lc-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 .text-input {
   width: 100%; font-family: inherit; font-size: 14px; color: var(--ink);
   border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
