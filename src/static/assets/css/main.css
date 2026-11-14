@@ -741,3 +741,14 @@ a { color: var(--brand); text-decoration: none; }
 .grant-tbl td:first-child, .grant-tbl th:first-child { text-align: left; }
 .grant-chk { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
 .grant-chk.grant-lock { opacity: .55; cursor: not-allowed; }
+
+/* ---------- 自动发钥匙（批 5：邀请链接 + 推送开关） ---------- */
+.chk-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.chk-line input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; }
+.chk-line.chk-off { opacity: .55; cursor: not-allowed; }
+.invite-box { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.invite-url {
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink);
+  background: var(--bg-soft, #f2f3f5); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; word-break: break-all; user-select: all;
+}

@@ -54,6 +54,10 @@ const app = await startServer(
 console.log(`\n流光咖啡馆主程序已启动（端口 ${port}）`);
 console.log(`主人登录链接（一次性，10 分钟内有效）：\n  ${app.ownerLink()}\n`);
 
+// 批 5 自动发钥匙：邀请签发器（owner token 自调用 chord /_chord/invites）
+const { initInviteIssuer } = await import("./api/invite-issuer.mjs");
+initInviteIssuer({ baseUrl: `http://127.0.0.1:${port}`, tokenFile: app.ownerTokenFile });
+
 const shutdown = async () => {
   await app.close(BACKGROUND_CONTEXT);
   process.exit(0);

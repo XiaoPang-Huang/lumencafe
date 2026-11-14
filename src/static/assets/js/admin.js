@@ -181,6 +181,18 @@
     ).join("");
   }
 
+  /* 批 5：invite 复选随角色联动——邀请 principal 是 member，admin 角色禁用 */
+  function syncInviteChk() {
+    const role = document.getElementById("auRole")?.value;
+    const chk = document.getElementById("auInvite");
+    if (!chk) return;
+    const off = role === "admin";
+    chk.disabled = off;
+    if (off) chk.checked = false;
+    chk.title = off ? "邀请链接仅适用于成员账号" : "";
+    chk.closest(".chk-line")?.classList.toggle("chk-off", off);
+  }
+
   function addUserModal() {
     openModal("添加用户", `
       ${field("auName", "用户名（2-32 位小写字母/数字/下划线）")}
@@ -190,9 +202,42 @@
         <span class="login-label">角色</span>
         <select class="text-input" id="auRole">${roleOptions("member")}</select>
       </label>
+      <label class="chk-line" for="auInvite">
+        <input type="checkbox" id="auInvite" data-au-invite>
+        <span>生成邀请链接（免密进系统，仅成员）</span>
+      </label>
+      <label class="chk-line" for="auPush">
+        <input type="checkbox" id="auPush" data-au-push>
+        <span>把登录信息推送到微信（企业微信/Server 酱）</span>
+      </label>
       <div class="form-msg" id="auMsg"></div>`,
       `<button class="btn btn-ghost" data-close>取消</button>
        <button class="btn btn-primary" data-au-submit>创建</button>`);
+    syncInviteChk();
+  }
+
+  /* 批 5：建号成功且带邀请链接 → 结果视图（链接全文 + 一键复制 + 推送三态提示） */
+  function showInviteResult(res) {
+    const body = document.querySelector("#modal .modal-body");
+    const foot = document.querySelector("#modal .modal-foot");
+    if (!body || !foot) return;
+    const pushedText = res.pushed === "ok" ? "登录信息已推送到微信"
+      : res.pushed === "none" ? "未配置推送通道，本次跳过推送"
+      : res.pushed === "failed" ? "推送失败，请手动复制链接发给成员" : "";
+    body.innerHTML = `
+      <p class="p-note p-note-plain">账号 <b>${esc(res.user.username)}</b> 已创建。</p>
+      <div class="invite-box">
+        <div class="login-label">邀请链接（7 天内一次性有效，打开即免密登录）</div>
+        <div class="invite-url" id="inviteUrlText">${esc(res.inviteUrl)}</div>
+        <div class="me-sec-acts">
+          <button class="btn btn-ghost" data-copy-invite>复制链接</button>
+          <span class="form-msg" id="copyMsg"></span>
+        </div>
+      </div>
+      ${res.inviteError ? `<div class="form-msg err">${esc(res.inviteError)}</div>` : ""}
+      ${pushedText ? `<div class="form-msg">${esc(pushedText)}</div>` : ""}`;
+    foot.innerHTML = `<button class="btn btn-primary" data-close>完成</button>`;
+    loadAll(); // 用户表后台刷新
   }
 
   function editRoleModal(user) {
@@ -257,10 +302,32 @@
   }
 
   /* ---------- 事件委托 ---------- */
+  // 注意：弹窗挂在 #modal（stage 外），故委托绑在 document 上、靠 data-* 属性区分，
+  // cleanup 时随视图卸载一并移除
   function onClick(e) {
-    if (!el || !el.contains(e.target)) return;
-
     if (e.target.closest("[data-add-user]")) { addUserModal(); return; }
+
+    // 批 5：复制邀请链接（clipboard API，失败退化临时 textarea）
+    if (e.target.closest("[data-copy-invite]")) {
+      const text = document.getElementById("inviteUrlText")?.textContent ?? "";
+      const msg = document.getElementById("copyMsg");
+      const done = () => { if (msg) { msg.textContent = "已复制"; msg.className = "form-msg ok"; } };
+      const fail = () => { if (msg) { msg.textContent = "复制失败，请手动全选链接复制"; msg.className = "form-msg err"; } };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).then(done, fail);
+      } else {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+          done();
+        } catch { fail(); }
+      }
+      return;
+    }
 
     const er = e.target.closest("[data-edit-role]");
     if (er) { const u = userOf(er.dataset.editRole); if (u) editRoleModal(u); return; }
@@ -274,19 +341,22 @@
     const en = e.target.closest("[data-enable]");
     if (en) { const u = userOf(en.dataset.enable); if (u) toggleConfirmModal(u, true); return; }
 
-    // 添加用户提交
+    // 添加用户提交（批 5：invite/push 开关一并提交）
     if (e.target.closest("[data-au-submit]")) {
       const payload = {
         username: document.getElementById("auName")?.value.trim() ?? "",
         displayName: document.getElementById("auDisp")?.value.trim() ?? "",
         password: document.getElementById("auPass")?.value ?? "",
         role: document.getElementById("auRole")?.value ?? "member",
+        invite: document.getElementById("auInvite")?.checked === true,
+        push: document.getElementById("auPush")?.checked === true,
       };
       req("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      }).then(() => {
+      }).then((res) => {
+        if (res?.inviteUrl) { showInviteResult(res); return; }
         setMsg("auMsg", "已创建", true);
         setTimeout(() => { closeModal(); loadAll(); }, 450);
       }).catch((err) => setMsg("auMsg", err.message, false));
@@ -327,8 +397,10 @@
   }
 
   async function onChange(e) {
+    // 批 5：添加用户弹窗里切角色 → invite 复选联动禁用
+    if (e.target?.id === "auRole") { syncInviteChk(); return; }
     const chk = e.target.closest?.("[data-grant-app]");
-    if (!chk || !el?.contains(chk) || chk.disabled) return;
+    if (!chk || chk.disabled) return;
     const payload = {
       app: chk.dataset.grantApp,
       role: chk.dataset.grantRole,
@@ -367,17 +439,14 @@
         </div>
         <div class="admin-body"></div>
       </main>`;
-    el.addEventListener("click", onClick);
-    el.addEventListener("change", onChange);
-    el.querySelector("[data-refresh]")?.addEventListener("click", loadAll);
+    document.addEventListener("click", onClick);
+    document.addEventListener("change", onChange);
     loadAll();
   }
 
   function cleanup() {
-    if (el) {
-      el.removeEventListener("click", onClick);
-      el.removeEventListener("change", onChange);
-    }
+    document.removeEventListener("click", onClick);
+    document.removeEventListener("change", onChange);
     el = null;
   }
 

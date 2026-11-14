@@ -5,6 +5,8 @@
 import { getPg } from "../db.mjs";
 import { hashPassword, userByPrincipal } from "./auth.mjs";
 import { requireAdmin, gateApp } from "./gateway.mjs";
+import { issueMemberInvite } from "./invite-issuer.mjs";
+import { notify } from "./notify.mjs";
 
 const bad = (status, message) => ({ kind: "error", status, message });
 const json = (value, status = 200) => ({ kind: "json", value, status });
@@ -57,27 +59,61 @@ export function adminRoutes() {
     }),
 
     // 添加用户（校验规则同 auth.mjs 注册：用户名小写化、密码 ≥8、role 白名单）
+    // 批 5 可选开关：invite=true 生成 chord 邀请链接（仅 member，principal 是 member），
+    // push=true 经 notify 推送登录信息（企业微信主/Server 酱备）；两者失败都不阻断建号
     "POST /api/admin/users": requireAdmin(async (request) => {
       const body = await request.json().catch(() => null);
       const username = String(body?.username ?? "").trim().toLowerCase();
       const displayName = String(body?.displayName ?? "").trim() || username;
       const password = String(body?.password ?? "");
       const role = ROLES.includes(body?.role) ? body.role : null;
+      const wantInvite = body?.invite === true;
+      const wantPush = body?.push === true;
       if (!USERNAME_RE.test(username)) {
         return bad(400, "用户名需为 2-32 位小写字母、数字或下划线");
       }
       if (password.length < 8) return bad(400, "密码至少 8 位");
       if (!role) return bad(400, "角色只能是 admin 或 member");
+      if (wantInvite && role !== "member") {
+        // 邀请 principal 是 { kind: "member", name }，与 admin 的 owner principal 不匹配
+        return bad(400, "邀请链接仅适用于成员账号");
+      }
+      let user;
       try {
         const { rows } = await getPg().query(
           "INSERT INTO users (username, display_name, password_hash, role) VALUES ($1,$2,$3,$4) RETURNING *",
           [username, displayName, hashPassword(password), role],
         );
-        return json({ user: toPublicUser(rows[0]) }, 201);
+        user = rows[0];
       } catch (error) {
         if (/unique|duplicate/i.test(error.message)) return bad(409, "用户名已存在");
         throw error;
       }
+      const result = { user: toPublicUser(user) };
+      if (wantInvite) {
+        try {
+          const invite = await issueMemberInvite({ username, displayName });
+          result.inviteUrl = invite.url;
+        } catch (error) {
+          result.inviteError = error.message; // 兜底：链接生成失败不阻断建号
+        }
+      }
+      if (wantPush) {
+        const lines = [
+          "流光咖啡馆 · 新成员邀请",
+          `用户名：${username}`,
+          `初始密码：${password}`,
+        ];
+        if (result.inviteUrl) lines.push(`邀请链接：${result.inviteUrl}`);
+        lines.push("提示：邀请链接 7 天内一次性有效，打开即免密登录；也可用用户名+密码直接登录。");
+        try {
+          const pushed = await notify(lines.join("\n"));
+          result.pushed = pushed.ok ? "ok" : pushed.channel === "none" ? "none" : "failed";
+        } catch {
+          result.pushed = "failed";
+        }
+      }
+      return json(result, 201);
     }),
 
     // 改角色：不能改自己；不能把最后一名启用管理员降级
