@@ -4,6 +4,7 @@
 import { getPg } from "../db.mjs";
 import { notify } from "./notify.mjs";
 import { streamChat } from "./llm.mjs";
+import { requireAdmin } from "./gateway.mjs";
 
 const MOCK = process.env.CRAWL_MOCK === "1";
 
@@ -162,23 +163,21 @@ export function pushRoutes() {
     },
 
     // 手动触发一轮（验收/补推用；幂等：今日推过会跳过，force=1 重推）
-    "POST /api/push/run-now": async (request, ctx) => {
-      if (ctx.principal?.kind !== "owner") return bad(403, "仅主人可手动触发");
+    // 角色门槛：批 2 起一律经网关 requireAdmin（白皮书 §12 单点判断）
+    "POST /api/push/run-now": requireAdmin(async (request) => {
       const body = await request.json().catch(() => ({}));
       const result = await runDailyDigest({ force: body?.force === true });
       return json({ result });
-    },
+    }),
 
-    "GET /api/push/logs": async (_r, ctx) => {
-      if (ctx.principal?.kind !== "owner") return bad(403, "仅主人可看推送记录");
+    "GET /api/push/logs": requireAdmin(async () => {
       const { rows } = await getPg().query("SELECT * FROM push_logs ORDER BY created_at DESC LIMIT 30");
       return json({ logs: rows });
-    },
-    "GET /api/push/crawl-runs": async (_r, ctx) => {
-      if (ctx.principal?.kind !== "owner") return bad(403, "仅主人可看抓取记录");
+    }),
+    "GET /api/push/crawl-runs": requireAdmin(async () => {
       const { rows } = await getPg().query("SELECT * FROM crawl_runs ORDER BY started_at DESC LIMIT 30");
       return json({ runs: rows });
-    },
+    }),
   };
 }
 

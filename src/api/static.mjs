@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authRoutes, userByPrincipal } from "./auth.mjs";
+import { requireAdmin } from "./gateway.mjs";
 
 const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "static");
 const indexFile = path.join(staticDir, "index.html");
@@ -109,11 +110,11 @@ export function shellRoutes() {
         },
       };
     },
-    // 管理面探针：RBAC 单点判断的样板（白皮书 §06 规矩：角色规则只在网关一处判断）
-    // 匿名 401（chord 默认拒绝）；已登录非主人 403；主人 200
-    "GET /api/admin/probe": async (_request, ctx) =>
-      ctx.principal?.kind === "owner"
-        ? { kind: "json", value: { ok: true, role: "owner" } }
-        : { kind: "error", status: 403, message: "仅主人可用" },
+    // 管理面探针：角色规则只在网关一处判断（批 2 收敛进 requireAdmin）
+    // 匿名 401（chord 默认拒绝）；已登录非管理员 403（网关）；管理员 200
+    "GET /api/admin/probe": requireAdmin(async () => ({
+      kind: "json",
+      value: { ok: true, role: "admin" },
+    })),
   };
 }

@@ -258,7 +258,7 @@ function meView() {
         <span class="domain-arrow">${IC.arrow}</span>
       </button>`).join("")}
     </div>
-    ${!isOwner ? `<p class="me-note">管理设置仅主人可见；成员访问受保护接口一律 401（chord 默认拒绝）。</p>` : ""}
+    ${!isOwner ? `<p class="me-note">管理设置仅管理员可见；匿名访问受保护接口 401，已登录但无权限 403（网关单点判断）。</p>` : ""}
   </main>`;
 }
 

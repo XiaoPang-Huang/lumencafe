@@ -7,6 +7,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { Sessions } from "@earendil-works/chord/app";
 import { getPg } from "../db.mjs";
+import { requireAdmin } from "./gateway.mjs";
 
 /* ---------- scrypt 密码哈希 ---------- */
 const SCRYPT_N = 16384;
@@ -92,6 +93,7 @@ const LOCK_MESSAGE = "尝试次数过多，请 5 分钟后再试";
 export async function userByPrincipal(ctx) {
   const pg = getPg();
   const principal = ctx.principal;
+  // 这是身份映射（principal → 账号行），不是权限判断；角色门槛一律走 gateway.mjs
   if (principal?.kind === "owner") {
     const { rows } = await pg.query(
       "SELECT * FROM users WHERE role = 'admin' ORDER BY id LIMIT 1",
@@ -212,19 +214,14 @@ export function authRoutes() {
     },
 
     // owner 引导建首个管理员：users 表为空时 needed=true
-    "GET /api/auth/bootstrap": async (_request, ctx) => {
-      if (ctx.principal?.kind !== "owner") {
-        return { kind: "error", status: 403, message: "仅主人可用" };
-      }
+    // 门槛走网关 requireAdmin（批 2 收敛；匿名仍由 chord 默认 401 挡在更外层）
+    "GET /api/auth/bootstrap": requireAdmin(async () => {
       const { rows } = await getPg().query("SELECT count(*)::int AS n FROM users");
       return { kind: "json", value: { needed: rows[0]?.n === 0 } };
-    },
+    }),
 
-    // 创建首个管理员（仅 owner，仅当 users 表为空；幂等性由 409 保证）
-    "POST /api/auth/bootstrap": async (request, ctx) => {
-      if (ctx.principal?.kind !== "owner") {
-        return { kind: "error", status: 403, message: "仅主人可用" };
-      }
+    // 创建首个管理员（仅管理员，仅当 users 表为空；幂等性由 409 保证）
+    "POST /api/auth/bootstrap": requireAdmin(async (request) => {
       const { rows } = await getPg().query("SELECT count(*)::int AS n FROM users");
       if ((rows[0]?.n ?? 0) > 0) {
         return { kind: "error", status: 409, message: "首个管理员已创建" };
@@ -248,6 +245,6 @@ export function authRoutes() {
         [username, displayName, hashPassword(password)],
       );
       return { kind: "json", value: { ok: true } };
-    },
+    }),
   };
 }

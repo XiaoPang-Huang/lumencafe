@@ -6,6 +6,7 @@ import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
 import { getModelByRef, streamSimple, DEFAULT_MODEL_REF, primeFaux } from "./llm.mjs";
 import { toolsFor } from "./agent-tools.mjs";
+import { roleOfPrincipal } from "./gateway.mjs";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 
 const GUARD_MAX_STEPS = 10;
@@ -71,9 +72,11 @@ async function runAgent({ ctx, conversation, userText, body }) {
     beforeToolCall: async ({ toolCall }) => {
       steps++;
       const tool = tools.find((x) => x.name === toolCall.name);
-      if (tool?.ownerOnly && ctx.principal?.kind !== "owner") {
-        await logToolCall(ctx, toolCall.name, toolCall.arguments, true, "仅主人可用");
-        return { block: true, reason: "这个工具仅主人可用，已拒绝", terminate: true };
+      // 角色复核走网关单点（批 2）：ownerOnly 工具要求 admin 角色。
+      // ctx 是 HTTP 路由 ctx（runAgent 闭包捕获），ctx.principal 即 chord 解析的登录身份。
+      if (tool?.ownerOnly && (await roleOfPrincipal(ctx.principal)) !== "admin") {
+        await logToolCall(ctx, toolCall.name, toolCall.arguments, true, "仅管理员可用");
+        return { block: true, reason: "这个工具仅管理员可用，已拒绝", terminate: true };
       }
       if (steps > GUARD_MAX_STEPS) {
         await logToolCall(ctx, toolCall.name, toolCall.arguments, true, "超过步数护栏");
