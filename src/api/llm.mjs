@@ -77,6 +77,13 @@ function fauxCanned(systemPrompt, userText) {
     if (m) return `（假模型回答）这段时间一共花了 ${m[1]} 元，共 ${m[2]} 笔。配置 DEEPSEEK_API_KEY 后是真实回答。`;
     return "（假模型回答）没查到这笔数。配置 DEEPSEEK_API_KEY 后是真实回答。";
   }
+  // 论文问答：引用候选段落里的前两个 block 号，保证出处链路可演示
+  if (systemPrompt.includes("论文阅读助手")) {
+    const ids = [...new Set([...userText.matchAll(/【段落(\d+)】/g)].map((x) => Number(x[1])))].slice(0, 2);
+    if (ids.length) return `根据〔${ids.join("〕和〔")}〕的说明：（假模型回答）相关段落见引用，点右侧出处可跳回原文。`;
+    return "（假模型回答）候选段落里没有直接答案。";
+  }
+  if (systemPrompt.includes("论文翻译助手")) return `【机翻·未配置模型】${userText.slice(0, 200)}`;
   return `（假模型，未配置 DEEPSEEK_API_KEY）你说：${userText}\n\n配置 key 后走 DeepSeek 真模型。支持 Markdown：\n\n\`\`\`js\nconsole.log("hello");\n\`\`\`\n\n- 列表项一\n- 列表项二`;
 }
 

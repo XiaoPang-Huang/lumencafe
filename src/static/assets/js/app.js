@@ -67,7 +67,7 @@ $modal.addEventListener("click", (e) => { if (e.target === $modal) closeModal();
 const APPS = [
   { key: "chat", icon: IC.chat, name: "对话", desc: "通用聊天：会话、流式回答、停止与重新生成。", href: "#/chat", live: true },
   { key: "money", icon: IC.wallet, name: "记账", desc: "对话记一笔、月度统计，表单与 AI 一条写路径。", href: "#/money", live: true },
-  { key: "papers", icon: IC.book, name: "论文", desc: "订阅推送、下载解析、笔记问答，第二批开放。" },
+  { key: "papers", icon: IC.book, name: "论文", desc: "下载解析、批注笔记、单篇问答带出处。", href: "#/papers", live: true },
 ];
 
 function statusDot() {
@@ -81,6 +81,7 @@ function topbar() {
     ["home", "工作台", "#/"],
     ["chat", "对话", "#/chat"],
     ["money", "记账", "#/money"],
+    ["papers", "论文", "#/papers"],
     ["me", "我的", "#/me"],
   ];
   const who = state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员");
@@ -175,6 +176,7 @@ let mountedView = null; // 当前挂载的子页面模块（chat 等），切走
 function render() {
   const hash = location.hash || "#/";
   const route = hash.startsWith("#/me") ? "me" : hash.startsWith("#/admin") ? "admin"
+    : hash.startsWith("#/papers/") ? "reader" : hash.startsWith("#/papers") ? "papers"
     : hash.startsWith("#/chat") ? "chat" : hash.startsWith("#/money") ? "money" : "home";
   const sub = window.LC.views?.[route];
 
@@ -187,7 +189,7 @@ function render() {
     $app.innerHTML = topbar() + '<div id="view" class="view-host"></div>';
     sub.mount(document.getElementById("view"), { hash, state });
     mountedView = sub;
-    document.title = `流光咖啡馆 · ${{ chat: "对话", money: "记账" }[route] ?? ""}`;
+    document.title = `流光咖啡馆 · ${{ chat: "对话", money: "记账", papers: "论文", reader: "阅读" }[route] ?? ""}`;
     return;
   }
 

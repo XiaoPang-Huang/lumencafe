@@ -444,3 +444,67 @@ a { color: var(--brand); text-decoration: none; }
   .money-actions { margin-left: 0; width: 100%; }
   .entry-cat { width: 84px; }
 }
+
+/* ---------- 论文库与阅读器（第 3 批） ---------- */
+.paper-add { margin-left: auto; display: flex; gap: 8px; flex: 1; max-width: 520px; }
+.paper-add-input { flex: 1; }
+.paper-list { display: flex; flex-direction: column; gap: 12px; }
+.paper-card { display: flex; gap: 14px; background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 16px 18px; }
+.paper-main { flex: 1; min-width: 0; }
+.paper-title { font-size: 15px; font-weight: 600; }
+.paper-meta { font-size: 12.5px; color: var(--ink-3); margin: 3px 0 10px; }
+.paper-ops { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
+.paper-error { font-size: 12.5px; color: var(--danger); background: var(--danger-soft, rgba(216,57,49,.1)); border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
+.paper-ok { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+
+.phase-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.phase-seg { font-size: 12px; color: var(--ink-3); background: var(--bg-soft); border-radius: 999px; padding: 3px 10px; }
+.phase-seg.lit { background: var(--brand-soft); color: var(--brand); }
+.phase-seg.cur { outline: 1.5px solid var(--brand); }
+.phase-seg.fail { background: var(--danger-soft, rgba(216,57,49,.1)); color: var(--danger); }
+.phase-arrow { color: var(--ink-3); font-size: 11px; }
+
+.reader-wrap { display: flex; height: calc(100vh - 56px); }
+.reader-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reader-head { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.reader-head .icon-btn svg { transform: rotate(180deg); }
+.reader-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-body { flex: 1; overflow-y: auto; padding: 24px 20px 80px; max-width: 780px; margin: 0 auto; width: 100%; }
+.paper-block { position: relative; font-size: 14.5px; line-height: 1.8; margin: 0 0 12px; color: var(--ink); }
+.paper-block.heading { font-weight: 600; margin-top: 22px; }
+.paper-block.lvl1 { font-size: 18px; }
+.paper-block.lvl2 { font-size: 16px; }
+.paper-block.flash { animation: block-flash 1.6s ease; border-radius: 8px; }
+@keyframes block-flash { 0%, 60% { background: var(--brand-soft); box-shadow: 0 0 0 4px var(--brand-soft); } }
+
+.anno-dot { position: absolute; top: 2px; right: -6px; transform: translateX(100%); width: 26px; height: 26px; border-radius: 8px; display: none; align-items: center; justify-content: center; color: var(--ink-3); }
+.paper-block:hover .anno-dot { display: inline-flex; }
+.anno-dot:hover { background: var(--brand-soft); color: var(--brand); }
+.anno-dot svg { width: 14px; height: 14px; }
+.anno-count { font-size: 10px; background: var(--brand); color: #fff; border-radius: 999px; padding: 0 4px; margin-left: 2px; }
+
+.reader-side { width: 360px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; }
+.side-tabs { display: flex; gap: 4px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.side-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.qa-msgs { flex: 1; overflow-y: auto; padding: 14px; }
+.qa-composer { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.qa-input { flex: 1; }
+.qa-answer { font-size: 13.5px; }
+.citations { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cite-chip { font-size: 12px; color: var(--brand); background: var(--brand-soft); border-radius: 999px; padding: 3px 10px; }
+.cite-chip:hover { background: var(--brand); color: #fff; }
+.notes-list { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.note-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--bg-soft); }
+.note-quote { font-size: 12px; color: var(--ink-3); border-left: 3px solid var(--brand); padding-left: 8px; margin-bottom: 6px; }
+.note-body { font-size: 13.5px; white-space: pre-wrap; }
+.anno-pop { position: fixed; right: 380px; bottom: 24px; width: 340px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-pop); padding: 14px; z-index: 40; }
+.anno-pop-head { font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+.anno-input { resize: vertical; margin-bottom: 10px; }
+
+@media (max-width: 900px) {
+  .reader-wrap { flex-direction: column; height: auto; }
+  .reader-body { max-width: none; overflow: visible; }
+  .reader-side { width: 100%; border-left: none; border-top: 1px solid var(--line); height: 60vh; }
+  .anno-pop { right: 16px; left: 16px; width: auto; }
+  .anno-dot { display: inline-flex; position: static; transform: none; margin-left: 6px; }
+}

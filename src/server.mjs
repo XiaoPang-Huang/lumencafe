@@ -28,6 +28,10 @@ try {
   process.exit(1);
 }
 
+// 后台下载解析工人（慢活并发 1；白皮书 §10 三规矩）
+import { startPaperWorker } from "./api/pipeline.mjs";
+startPaperWorker();
+
 const app = await startServer(
   {
     name: "lumencafe",
