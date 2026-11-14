@@ -1,8 +1,8 @@
 /* ============================================================
-   流光咖啡馆 · 页面外壳样式（0C）
-   参考：midday（外壳）、gethomepage（玻璃 Bento + 状态灯）、
-         Homarr（卡片网格）、macOS 系统设置（设置三域骨架）
-   配色：火山方舟品牌蓝 + 中性灰白（沿用原型 v2 已拍板 token）
+   流光咖啡馆 · 页面外壳与全部页面样式
+   视觉基线（2026-11-14 拍板，白皮书 §18）：红白灰 + 深色点缀
+   品牌红 #D92D20 / 石墨灰侧栏 #2E2E33 / 白卡浅灰页 #F4F4F5
+   参考：PAN 理财工作台（深色侧栏+红选中条）、习惯打卡台（悬浮卡）
    ============================================================ */
 
 @font-face {
@@ -12,18 +12,28 @@
 }
 
 :root {
-  --stage: #f0f1f3;
+  --stage: #f4f4f5;
   --surface: #ffffff;
-  --ink: #1d2129;
+  --ink: #1f2329;
   --ink-2: #4e5969;
   --ink-3: #86909c;
   --line: #e5e6eb;
-  --brand: #1664ff;
-  --brand-strong: #0e4fd8;
-  --brand-soft: #f0f6ff;
+  /* 品牌红（仅主按钮/选中态/关键数字） */
+  --brand: #d92d20;
+  --brand-strong: #b42318;
+  --brand-soft: #fdecea;
+  /* 石墨灰：web 侧栏与深色组件底 */
+  --graphite: #2e2e33;
+  --graphite-deep: #232327;
+  --graphite-line: rgba(255, 255, 255, .09);
+  --ink-on-dark: #c4c7ce;
+  --ink-on-dark-dim: #8a8f99;
+  /* 语义 */
   --ok: #00b42a;
   --ok-soft: #e8f8ee;
   --danger: #d83931;
+  --income: #d83931;
+  --expense: #00b42a;
   --mask: rgba(15, 20, 30, .34);
   --glass-strong: rgba(255, 255, 255, .76);
   --shadow-card: 0 1px 2px rgba(15, 20, 30, .05), 0 10px 28px rgba(15, 20, 30, .06);
@@ -56,30 +66,114 @@ a { color: var(--brand); text-decoration: none; }
 .boot-hint { font-size: 13px; color: var(--ink-3); }
 .boot-error { color: var(--danger); }
 
-/* ---------- 顶栏（参考 midday 外壳 + gethomepage 毛玻璃） ---------- */
+/* ---------- 工作台外壳：石墨灰侧栏 + 白顶栏（2026-11-14 拍板视觉，白皮书 §18） ---------- */
+.app-shell { display: grid; grid-template-columns: 224px minmax(0, 1fr); min-height: 100vh; }
+.shell-col { display: flex; flex-direction: column; min-width: 0; }
+
+.side-nav {
+  background: var(--graphite);
+  color: var(--ink-on-dark);
+  display: flex; flex-direction: column;
+  padding: 16px 0 0;
+  position: sticky; top: 0; height: 100vh;
+  overflow-y: auto;
+}
+.side-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 18px 16px;
+  border-bottom: 1px solid var(--graphite-line);
+  margin-bottom: 10px;
+}
+.side-brand .brand-dot {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 10px rgba(217, 45, 32, .35);
+}
+.side-brand .t { color: #fff; font-size: 14.5px; font-weight: 700; line-height: 1.2; }
+.side-brand .s { font-size: 10.5px; color: var(--ink-on-dark-dim); margin-top: 2px; }
+
+.side-group { padding: 6px 10px; }
+.side-gt {
+  font-size: 10.5px; color: var(--ink-on-dark-dim);
+  letter-spacing: 1.5px; padding: 6px 12px 4px;
+}
+.side-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8.5px 12px; margin: 1px 0;
+  border-radius: 8px; font-size: 13px;
+  color: var(--ink-on-dark);
+  position: relative;
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.side-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.side-item:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.side-item.active {
+  background: linear-gradient(90deg, rgba(217, 45, 32, .20), rgba(217, 45, 32, .04));
+  color: #fff; font-weight: 600;
+}
+.side-item.active::before {
+  content: ""; position: absolute; left: -10px; top: 7px; bottom: 7px;
+  width: 3px; background: var(--brand); border-radius: 0 2px 2px 0;
+}
+
+.side-foot {
+  margin-top: auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--graphite-line);
+  display: flex; align-items: center; gap: 10px;
+}
+.side-foot .avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #e5484d, var(--brand-strong));
+  color: #fff; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid rgba(229, 72, 77, .45);
+}
+.side-foot .who { flex: 1; min-width: 0; }
+.side-foot .who b { color: #fff; font-size: 12.5px; font-weight: 600; display: block; }
+.side-foot .who span { font-size: 10.5px; color: var(--ink-on-dark-dim); }
+
+/* 窄屏：侧栏变抽屉（项目规矩允许的导航抽屉） */
+.side-backdrop { display: none; }
+@media (max-width: 900px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .side-nav {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+    width: min(280px, 84vw); height: auto;
+    transform: translateX(-100%);
+    transition: transform .24s var(--ease);
+    box-shadow: var(--shadow-pop);
+  }
+  .side-nav.open { transform: translateX(0); }
+  .side-backdrop {
+    display: block;
+    position: fixed; inset: 0; z-index: 49;
+    background: var(--mask);
+    opacity: 0; pointer-events: none;
+    transition: opacity .24s var(--ease);
+  }
+  .side-backdrop.show { opacity: 1; pointer-events: auto; }
+}
+
+/* ---------- 顶栏（白底毛玻璃，参考 gethomepage 状态灯 + midday） ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; gap: 18px;
+  display: flex; align-items: center; gap: 14px;
   padding: 0 20px; height: 56px;
   background: var(--glass-strong);
   -webkit-backdrop-filter: saturate(1.6) blur(14px);
   backdrop-filter: saturate(1.6) blur(14px);
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 9px; font-size: 15.5px; font-weight: 600; }
-.brand-dot {
-  width: 26px; height: 26px; border-radius: 8px;
-  background: var(--brand); color: #fff;
-  display: flex; align-items: center; justify-content: center;
+.menu-btn { display: none; }
+.page-title { font-size: 15px; font-weight: 600; }
+.topbar-side { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+@media (max-width: 900px) {
+  .menu-btn { display: inline-flex; }
+  .page-title { font-size: 14.5px; }
 }
-.nav { display: flex; gap: 4px; flex: 1; }
-.nav-btn {
-  padding: 7px 14px; border-radius: 9px; font-size: 14px; color: var(--ink-2);
-  transition: background .18s var(--ease), color .18s var(--ease);
-}
-.nav-btn:hover { background: rgba(29, 33, 41, .05); }
-.nav-btn.active { background: var(--brand-soft); color: var(--brand); font-weight: 500; }
-.topbar-side { display: flex; align-items: center; gap: 10px; }
 
 /* 状态灯（gethomepage 参考） */
 .status-pill {
@@ -111,6 +205,31 @@ a { color: var(--brand); text-decoration: none; }
 .stage-head { margin: 6px 2px 18px; }
 .stage-title { font-size: 22px; font-weight: 600; margin: 0; }
 .stage-sub { font-size: 13px; color: var(--ink-3); margin: 4px 0 0; }
+
+/* 工作台欢迎条：深炭渐变 + 红色光晕（拍板视觉的深色点缀组件） */
+.welcome-bar {
+  position: relative; overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--graphite-deep) 0%, #33241f 100%);
+  color: #fff;
+  padding: 20px 24px; margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+.welcome-bar::after {
+  content: ""; position: absolute; right: -60px; top: -60px;
+  width: 260px; height: 260px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(217, 45, 32, .35), transparent 70%);
+  pointer-events: none;
+}
+.welcome-hello { font-size: 17px; font-weight: 700; position: relative; z-index: 1; }
+.welcome-sub { font-size: 12px; color: rgba(255, 255, 255, .6); margin-top: 4px; position: relative; z-index: 1; }
+.welcome-acts { display: flex; gap: 10px; position: relative; z-index: 1; }
+.welcome-acts .btn-ghost-w {
+  background: rgba(255, 255, 255, .08); color: #fff;
+  border: 1px solid rgba(255, 255, 255, .16);
+}
+.welcome-acts .btn-ghost-w:hover { background: rgba(255, 255, 255, .14); }
 
 /* ---------- 卡片网格（Homarr / gethomepage 参考） ---------- */
 .card-grid {
@@ -222,11 +341,11 @@ a { color: var(--brand); text-decoration: none; }
 /* ---------- 窄屏（双端同一套卡片布局，只调间距与网格） ---------- */
 @media (max-width: 640px) {
   .topbar { padding: 0 12px; gap: 10px; }
-  .brand span { display: none; }
   .stage { padding: 16px 12px 40px; }
   .card-grid { grid-template-columns: 1fr; gap: 12px; }
   .stage-title { font-size: 19px; }
   .status-pill .status-text { display: none; }
+  .welcome-bar { padding: 16px 18px; }
 }
 
 /* ---------- 对话页（第 1 批；参考 DeepSeek 网页版布局） ---------- */

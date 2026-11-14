@@ -20,6 +20,8 @@ const svg = (body, size = 20) =>
 
 const IC = {
   logo: svg('<path d="M12 3c-1.8 0-3 1.4-3 3 0 .5.1 1 .3 1.4C7.9 8.4 7 10.1 7 12v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-6c0-1.9-.9-3.6-2.3-4.6.2-.4.3-.9.3-1.4 0-1.6-1.2-3-3-3Z"/><path d="M9 18h6"/>', 16),
+  home: svg('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>', 18),
+  menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>', 18),
   chat: svg('<path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5Z"/>'),
   wallet: svg('<rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h.01M3 9h18"/>'),
   book: svg('<path d="M4 19V5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2Zm0 0a2 2 0 0 0 2 2h13"/>'),
@@ -70,37 +72,88 @@ const APPS = [
   { key: "papers", icon: IC.book, name: "论文", desc: "下载解析、批注笔记、单篇问答带出处。", href: "#/papers", live: true },
 ];
 
+const ROUTE_TITLES = { home: "工作台", chat: "对话", money: "记账", papers: "论文", reader: "阅读", me: "我的", admin: "管理设置" };
+const whoAmI = () => state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员");
+
+/* 石墨灰侧栏（桌面常驻；窄屏变抽屉，项目规矩允许的导航抽屉） */
+function sideNav() {
+  const isOwner = state.principal?.kind === "owner";
+  const item = (r, name, href, icon) =>
+    `<a class="side-item ${state.route === r ? "active" : ""}" href="${href}">${icon}<span>${name}</span></a>`;
+  return `
+  <aside class="side-nav" id="sideNav">
+    <div class="side-brand">
+      <span class="brand-dot">${IC.logo}</span>
+      <span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span>
+    </div>
+    <div class="side-group">
+      <div class="side-gt">首页</div>
+      ${item("home", "工作台", "#/", IC.home)}
+    </div>
+    <div class="side-group">
+      <div class="side-gt">应用</div>
+      ${item("chat", "对话", "#/chat", IC.chat)}
+      ${item("money", "记账", "#/money", IC.wallet)}
+      ${item("papers", "论文", "#/papers", IC.book)}
+    </div>
+    <div class="side-group">
+      <div class="side-gt">管理</div>
+      ${item("me", "我的", "#/me", IC.user)}
+      ${isOwner ? item("admin", "管理设置", "#/admin", IC.shield) : ""}
+    </div>
+    <div class="side-foot">
+      <span class="avatar">${esc(whoAmI().slice(0, 1))}</span>
+      <span class="who"><b>${esc(whoAmI())}</b><span>${isOwner ? "管理员" : "成员"}</span></span>
+    </div>
+  </aside>
+  <div class="side-backdrop" id="sideBackdrop"></div>`;
+}
+
+function topbar(routeName) {
+  return `
+  <header class="topbar">
+    <button class="icon-btn menu-btn" data-side-toggle aria-label="菜单">${IC.menu}</button>
+    <span class="page-title">${routeName}</span>
+    <div class="topbar-side">
+      ${statusDot()}
+      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${IC.user}</span><span>${esc(whoAmI())}</span></a>
+    </div>
+  </header>`;
+}
+
+/* 外壳 = 侧栏 + 主列（顶栏 + 内容） */
+function shell(contentHtml) {
+  return `<div class="app-shell">${sideNav()}<div class="shell-col">${topbar(ROUTE_TITLES[state.route] ?? "")}${contentHtml}</div></div>`;
+}
+
+function closeSide() {
+  document.getElementById("sideNav")?.classList.remove("open");
+  document.getElementById("sideBackdrop")?.classList.remove("show");
+}
+
 function statusDot() {
   const cls = state.pong === "on" ? "on" : state.pong === "off" ? "off" : "wait";
   const text = state.pong === "on" ? "服务正常" : state.pong === "off" ? "连接异常" : "连接中";
   return `<span class="status-pill" title="探针 /api/ping"><span class="status-dot ${cls}"></span><span class="status-text">${text}</span></span>`;
 }
 
-function topbar() {
-  const nav = [
-    ["home", "工作台", "#/"],
-    ["chat", "对话", "#/chat"],
-    ["money", "记账", "#/money"],
-    ["papers", "论文", "#/papers"],
-    ["me", "我的", "#/me"],
-  ];
-  const who = state.principal?.kind === "owner" ? "主人" : (state.principal?.name ?? "成员");
-  return `
-  <header class="topbar">
-    <div class="brand"><span class="brand-dot">${IC.logo}</span><span>流光咖啡馆</span></div>
-    <nav class="nav">
-      ${nav.map(([r, name, href]) => `<a class="nav-btn ${state.route === r ? "active" : ""}" href="${href}">${name}</a>`).join("")}
-    </nav>
-    <div class="topbar-side">
-      ${statusDot()}
-      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${IC.user}</span><span>${esc(who)}</span></a>
-    </div>
-  </header>`;
-}
-
 function homeView() {
+  const now = new Date();
+  const h = now.getHours();
+  const greet = h < 6 ? "夜深了" : h < 12 ? "早上好" : h < 14 ? "中午好" : h < 18 ? "下午好" : "晚上好";
+  const dateStr = now.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" });
   return `
   <main class="stage">
+    <div class="welcome-bar">
+      <div>
+        <div class="welcome-hello">${greet}，${esc(whoAmI())}</div>
+        <div class="welcome-sub">${dateStr} · 对话、记账、论文三个应用都在线</div>
+      </div>
+      <div class="welcome-acts">
+        <a class="btn btn-ghost btn-ghost-w" href="#/money">记一笔</a>
+        <a class="btn btn-primary" href="#/chat">开始对话</a>
+      </div>
+    </div>
     <div class="stage-head">
       <h1 class="stage-title">工作台</h1>
       <p class="stage-sub">三个应用会陆续在这里亮起来。</p>
@@ -186,7 +239,7 @@ function render() {
   state.route = route;
 
   if (sub) {
-    $app.innerHTML = topbar() + '<div id="view" class="view-host"></div>';
+    $app.innerHTML = shell('<div id="view" class="view-host"></div>');
     sub.mount(document.getElementById("view"), { hash, state });
     mountedView = sub;
     document.title = `流光咖啡馆 · ${{ chat: "对话", money: "记账", papers: "论文", reader: "阅读" }[route] ?? ""}`;
@@ -194,7 +247,7 @@ function render() {
   }
 
   const view = state.route === "me" ? meView() : state.route === "admin" ? adminView() : homeView();
-  $app.innerHTML = topbar() + view;
+  $app.innerHTML = shell(view);
   document.title = `流光咖啡馆 · ${state.route === "me" ? "我的" : state.route === "admin" ? "管理" : "工作台"}`;
 }
 
@@ -202,6 +255,15 @@ function render() {
 document.addEventListener("click", (e) => {
   const closeBtn = e.target.closest("[data-close]");
   if (closeBtn) { closeModal(); return; }
+
+  // 窄屏导航抽屉：开关、遮罩、点链接后收起
+  if (e.target.closest("[data-side-toggle]")) {
+    document.getElementById("sideNav")?.classList.toggle("open");
+    document.getElementById("sideBackdrop")?.classList.toggle("show");
+    return;
+  }
+  if (e.target.closest("#sideBackdrop")) { closeSide(); return; }
+  if (e.target.closest(".side-nav a.side-item")) closeSide();
 
   const domain = e.target.closest("[data-domain]");
   if (domain) {
