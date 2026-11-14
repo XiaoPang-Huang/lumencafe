@@ -42,6 +42,7 @@ chatDb.exec(`
 for (const ddl of [
   "ALTER TABLE conversations ADD COLUMN app TEXT NOT NULL DEFAULT 'chat'",
   "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
+  "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'", // chat=单次调用 agent=pi 接管（第 5 批）
 ]) {
   try { chatDb.exec(ddl); } catch { /* 列已存在 */ }
 }
@@ -50,7 +51,7 @@ const now = () => Date.now();
 const uuid = () => crypto.randomUUID();
 
 const rowToConv = (r) => ({
-  id: r.id, title: r.title, model: r.model, app: r.app,
+  id: r.id, title: r.title, model: r.model, app: r.app, mode: r.mode,
   created_at: r.created_at, updated_at: r.updated_at, last_msg_at: r.last_msg_at,
 });
 const rowToMsg = (r) => ({

@@ -17,6 +17,21 @@ if (process.env.DEEPSEEK_API_KEY) {
 
 export const hasRealLlm = Boolean(process.env.DEEPSEEK_API_KEY);
 
+/** 供 agent 模式复用同一个 models 集合（agent 底座：白皮书第 5 批） */
+export function getModelByRef(ref) {
+  const all = models.getModels();
+  if (!ref) return all[0] ?? null;
+  const [provider, modelId] = String(ref).split("/");
+  return models.getModel(provider, modelId) ?? all[0] ?? null;
+}
+
+export const streamSimple = (model, context, options) => models.streamSimple(model, context, options);
+
+/** 测试辅助：无 key 时给 faux 预排剧本（E2E 确定性驱动 agent 多步） */
+export function primeFaux(steps) {
+  if (faux) faux.appendResponses(steps);
+}
+
 /** 前端模型选择器用：当前可用的模型清单 */
 export function listModels() {
   return models.getModels().map((m) => ({

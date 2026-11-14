@@ -26,7 +26,9 @@
     models: [],
     defaultModel: null,
     realLlm: true,
-    currentId: null,     // 当前会话 id；null = 未选中
+    hubId: null,       // 总对话 id（恒 agent）
+    currentId: null,   // 当前会话 id；null = 未选中
+    current: null,     // 当前会话对象（含 mode/app；hub 为合成对象）
     messages: [],
     generating: false,
     abort: null,
@@ -39,7 +41,7 @@
   function renderMessages() {
     const box = el.querySelector(".chat-msgs");
     if (!box) return;
-    if (!S.currentId) {
+    if (!S.current) {
       box.innerHTML = `<div class="chat-empty">
         <div class="chat-empty-logo">开始一段新对话</div>
         <div class="chat-empty-sub">输入框在下方，Enter 发送，Shift+Enter 换行</div>
@@ -51,6 +53,23 @@
         return `<div class="msg msg-user"><div class="msg-user-bubble">${esc(m.content)}</div></div>`;
       }
       const isLastAssistant = m.role === "assistant" && i === S.messages.map((x) => x.role).lastIndexOf("assistant");
+      // agent 消息：结构化内容（回答 + 工具轨迹）渲染为持久工具卡片
+      if (m.kind === "agent" && m.id !== "pending") {
+        let parsed = null;
+        try { parsed = JSON.parse(m.content); } catch { /* 旧格式 */ }
+        if (parsed) {
+          const traceHtml = (parsed.trace ?? []).map((x) => `
+            <div class="tool-card">
+              <span class="tool-name">${esc(x.name ?? "?")}</span>
+              <span class="tool-args">${esc(JSON.stringify(x.args ?? {})).slice(0, 140)}</span>
+              <span class="tool-status">${x.result === undefined ? "执行中…" : x.result.startsWith("失败") ? "失败" : "完成"}</span>
+            </div>`).join("");
+          return `<div class="msg msg-ai" data-msg="${m.id}">
+            <div class="tool-trace">${traceHtml}</div>
+            <div class="msg-ai-body" data-render="${m.id}">${renderMd(parsed.answer ?? "")}</div>
+          </div>`;
+        }
+      }
       const statusTag = m.status === "stopped" ? `<span class="msg-status">已停止</span>`
         : m.status === "failed" ? `<span class="msg-status msg-status-fail">生成失败</span>` : "";
       const actions = `<div class="msg-actions">
@@ -81,27 +100,44 @@
   function renderSidebar() {
     const list = el.querySelector(".chat-list");
     if (!list) return;
-    list.innerHTML = S.conversations.map((c) => `
-      <div class="conv-item ${c.id === S.currentId ? "active" : ""}" data-conv="${c.id}">
+    const hubActive = S.current?.app === "hub";
+    list.innerHTML = `
+      <div class="conv-item hub-item ${hubActive ? "active" : ""}" data-hub="1">
+        <span class="conv-title">总对话 · 跨应用查询</span>
+        <span class="tag soon">agent</span>
+      </div>
+      <div class="conv-sep"></div>
+      ${S.conversations.map((c) => `
+      <div class="conv-item ${c.id === S.currentId && !hubActive ? "active" : ""}" data-conv="${c.id}">
         <span class="conv-title">${esc(c.title)}</span>
+        ${c.mode === "agent" ? '<span class="tag soon">agent</span>' : ""}
         <span class="conv-ops">
           <button class="conv-op" data-rename="${c.id}" title="重命名">${LC.IC.sliders}</button>
           <button class="conv-op" data-del="${c.id}" title="删除">${LC.IC.close}</button>
         </span>
-      </div>`).join("") || `<div class="conv-none">还没有会话</div>`;
+      </div>`).join("") || `<div class="conv-none">还没有会话</div>`}`;
   }
 
   function renderHeader() {
     const sel = el.querySelector(".model-select");
-    if (!sel) return;
-    sel.innerHTML = S.models.map((m) =>
-      `<option value="${esc(m.id)}" ${m.id === currentModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
-    sel.disabled = S.generating;
-    const conv = S.conversations.find((c) => c.id === S.currentId);
+    if (sel) {
+      sel.innerHTML = S.models.map((m) =>
+        `<option value="${esc(m.id)}" ${m.id === currentModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
+      sel.disabled = S.generating;
+    }
+    const conv = S.current;
     const titleEl = el.querySelector(".chat-title");
-    if (titleEl) titleEl.textContent = conv?.title ?? "";
+    if (titleEl) titleEl.textContent = conv?.app === "hub" ? "总对话（只读工具，跨应用查询）" : (conv?.title ?? "");
     const banner = el.querySelector(".chat-banner");
     if (banner) banner.hidden = S.realLlm;
+    // agent 开关（总对话恒 agent，不显示开关）
+    const toggle = el.querySelector(".agent-toggle");
+    if (toggle) {
+      const isHub = conv?.app === "hub";
+      toggle.style.display = isHub ? "none" : "";
+      toggle.querySelectorAll(".vt-btn").forEach((b) =>
+        b.classList.toggle("on", (conv?.mode ?? "chat") === b.dataset.mode));
+    }
   }
 
   const currentModel = () =>
@@ -132,15 +168,35 @@
   async function loadConversations(selectId = null) {
     const data = await api("/api/chat/conversations");
     S.conversations = data.conversations;
-    if (selectId) S.currentId = selectId;
-    else if (S.currentId && !S.conversations.some((c) => c.id === S.currentId)) S.currentId = null;
+    const hub = await api("/api/chat/hub").catch(() => null);
+    S.hubId = hub?.conversation?.id ?? null;
+    if (selectId) {
+      S.currentId = selectId;
+      S.current = S.conversations.find((c) => c.id === selectId) ?? null;
+    } else if (S.current?.app === "hub") {
+      // 保持总对话选中
+    } else if (S.currentId && !S.conversations.some((c) => c.id === S.currentId)) {
+      S.currentId = null;
+      S.current = null;
+    }
     renderSidebar();
     renderHeader();
+  }
+
+  function openHub() {
+    S.currentId = null;
+    S.current = { id: S.hubId, app: "hub", mode: "agent", title: "总对话" };
+    S.sidebarOpen = false;
+    location.hash = "#/chat";
+    api(`/api/chat/conversations/${S.hubId}/messages`)
+      .then((d) => { S.messages = d.messages; renderAll(); })
+      .catch(() => { S.messages = []; renderAll(); });
   }
 
   async function loadMessages(convId) {
     const data = await api(`/api/chat/conversations/${convId}/messages`);
     S.messages = data.messages;
+    S.current = S.conversations.find((c) => c.id === convId) ?? S.current;
     renderMessages();
     highlightAll();
     renderComposer(); // 恢复本机会话草稿
@@ -158,38 +214,114 @@
     const ta = el.querySelector(".composer-input");
     const text = ta.value.trim();
     if (!text || S.generating) return;
-    if (!S.currentId) {
+    if (!S.current) {
       const { conversation } = await (await fetch("/api/chat/conversations", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       })).json();
       S.currentId = conversation.id;
-      await loadConversations(S.currentId);
+      S.current = conversation;
       location.hash = `#/chat/${conversation.id}`;
+      await loadConversations(S.currentId);
     }
+    const convId = S.current.id;
     // 草稿记录发送中的文本与请求标识（重试沿用，原文不变不换标识）
-    let draft = readDraft(S.currentId) || {};
+    let draft = readDraft(convId) || {};
     if (draft.text !== text || !draft.reqId) draft = { text, reqId: crypto.randomUUID() };
-    writeDraft(S.currentId, draft);
+    writeDraft(convId, draft);
 
     let saved;
     try {
       saved = await api("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: S.currentId, content: text, req_id: draft.reqId }),
+        body: JSON.stringify({ conversation_id: convId, content: text, req_id: draft.reqId }),
       });
     } catch {
       // 情况 1：用户消息未保存——原文留在输入框，提示手动重试
       toast("发送失败，请检查网络后重点发送");
       return;
     }
-    clearDraft(S.currentId);
+    clearDraft(convId);
     ta.value = "";
     draft = null;
     await loadConversations(); // 标题可能自动生成
     S.messages.push(saved.message);
     renderMessages();
-    await generate();
+    if (S.current?.mode === "agent" || S.current?.app === "hub") await agentSend(text);
+    else await generate();
+  }
+
+  /* ---------- agent 模式（pi 接管：文本增量 + 工具卡片，SSE） ---------- */
+  async function agentSend(userText) {
+    if (!S.current?.id || S.generating) return;
+    S.generating = true;
+    S.abort = new AbortController();
+    renderHeader();
+    renderComposer();
+
+    const placeholder = { id: "pending", role: "assistant", content: "", status: "ok", kind: "agent" };
+    S.messages.push(placeholder);
+    renderMessages();
+    const msgEl = el.querySelector('[data-msg="pending"]');
+    let traceBox = null;
+    const answerEl = msgEl?.querySelector('[data-render="pending"]');
+    let answerText = "";
+    const flush = throttle(() => {
+      if (answerEl) answerEl.innerHTML = renderMd(answerText) || '<span class="msg-thinking">正在输入…</span>';
+      const box = el.querySelector(".chat-msgs");
+      if (box) box.scrollTop = box.scrollHeight;
+    }, 80);
+    const addToolCard = (name, args) => {
+      if (!msgEl) return null;
+      if (!traceBox) {
+        traceBox = document.createElement("div");
+        traceBox.className = "tool-trace";
+        msgEl.insertBefore(traceBox, answerEl ?? null);
+      }
+      const card = document.createElement("div");
+      card.className = "tool-card";
+      card.innerHTML = `<span class="tool-name">${esc(name)}</span><span class="tool-args">${esc(JSON.stringify(args ?? {})).slice(0, 140)}</span><span class="tool-status">执行中…</span>`;
+      traceBox.appendChild(card);
+      return card;
+    };
+
+    let failed = false;
+    try {
+      const res = await fetch("/api/chat/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: S.current.id, content: userText, req_id: crypto.randomUUID() }),
+        signal: S.abort.signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let lastCard = null;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) >= 0) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const line of frame.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            const evt = JSON.parse(line.slice(6));
+            if (evt.delta) { answerText += evt.delta; flush(); }
+            else if (evt.tool) lastCard = addToolCard(evt.tool, evt.args);
+            else if (evt.tool_end && lastCard) lastCard.querySelector(".tool-status").textContent = evt.ok ? "完成" : "失败";
+            else if (evt.error) { failed = true; }
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name !== "AbortError") failed = true;
+    }
+    finishGen();
+    await loadMessages(S.current.id);
+    await loadConversations();
   }
 
   async function generate(opts = {}) {
@@ -297,6 +429,15 @@
   /* ---------- 事件 ---------- */
   function bind() {
     el.addEventListener("click", async (e) => {
+      const modeBtn = e.target.closest(".agent-toggle [data-mode]");
+      if (modeBtn && S.current && S.current.app !== "hub") {
+        const mode = modeBtn.dataset.mode;
+        await api(`/api/chat/conversations/${S.current.id}/mode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
+        S.current.mode = mode;
+        renderHeader();
+        toast(mode === "agent" ? "已切 agent 模式：pi 接管，可调用只读工具" : "已切普通模式：单次调用");
+        return;
+      }
       const convEl = e.target.closest("[data-conv]");
       const newBtn = e.target.closest("[data-new]");
       const sendBtn = e.target.closest(".composer-send");
@@ -306,10 +447,12 @@
 
       if (stopGen) { S.abort?.abort(); return; }
       if (sendBtn) { await send(); return; }
+      if (e.target.closest("[data-hub]")) { openHub(); return; }
       if (newBtn) {
         const res = await fetch("/api/chat/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
         const { conversation } = await res.json();
         S.currentId = conversation.id;
+        S.current = conversation;
         S.messages = [];
         location.hash = `#/chat/${conversation.id}`;
         S.sidebarOpen = false;
@@ -343,6 +486,7 @@
       const id = convEl.dataset.conv;
       if (id !== S.currentId) {
         S.currentId = id;
+        S.current = S.conversations.find((c) => c.id === id) ?? null;
         S.sidebarOpen = false;
         location.hash = `#/chat/${id}`;
         await loadMessages(id);
@@ -457,6 +601,10 @@
           <div class="chat-head">
             <button class="icon-btn chat-menu" data-menu title="会话列表">${LC.IC.grid}</button>
             <span class="chat-title"></span>
+            <div class="agent-toggle view-toggle" title="普通 = 单次调用；agent = pi 接管、自主多步、只读工具">
+              <button class="vt-btn on" data-mode="chat">单次</button>
+              <button class="vt-btn" data-mode="agent">Agent</button>
+            </div>
             <select class="model-select" title="模型选择（按会话生效）"></select>
           </div>
           <div class="chat-banner" hidden>未配置 DEEPSEEK_API_KEY，当前为本地假模型——全链路可跑，回答不真实。</div>
