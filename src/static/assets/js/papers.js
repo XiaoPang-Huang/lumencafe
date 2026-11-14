@@ -16,7 +16,7 @@
   ];
 
   /* ================= 论文库页 ================= */
-  const lib = { items: [], poll: null };
+  const lib = { items: [], subs: [], logs: [], isOwner: false, poll: null };
 
   function phaseBar(item) {
     const idx = PHASES.findIndex(([k]) => k === item.phase);
@@ -42,6 +42,33 @@
           <button class="btn btn-primary" data-add-paper>添加并解析</button>
         </div>
       </div>
+
+      <div class="sub-box">
+        <div class="sub-head">
+          <span>订阅推送（每日早 8 点抓新论文推 digest）</span>
+          <span class="sub-add">
+            <input class="text-input sub-input" placeholder="订阅关键词">
+            <button class="btn btn-ghost" data-sub-add>订阅</button>
+            ${lib.isOwner ? `<button class="btn btn-primary" data-run-now>立即抓取推送</button>` : ""}
+          </span>
+        </div>
+        <div class="sub-list">
+          ${lib.subs.map((s) => `
+          <span class="sub-chip ${s.enabled ? "" : "off"}">
+            ${esc(s.keyword)}
+            <button class="sub-toggle" data-sub-toggle="${s.id}" title="${s.enabled ? "停用" : "启用"}">${s.enabled ? "●" : "○"}</button>
+            <button class="sub-del" data-sub-del="${s.id}">×</button>
+          </span>`).join("") || `<span class="chart-none">还没有订阅关键词</span>`}
+        </div>
+        ${lib.isOwner && lib.logs.length ? `
+        <div class="push-logs">
+          ${lib.logs.slice(0, 5).map((l) => `<div class="push-log-row">
+            <span>${esc(l.push_key)}</span><span>${l.ok ? "成功" : "失败"}（${esc(l.channel)}）</span>
+            <span>新增 ${l.new_count} 篇</span><span>${esc(l.detail)}</span>
+          </div>`).join("")}
+        </div>` : ""}
+      </div>
+
       <div class="paper-list">
         ${lib.items.map((it) => `
         <article class="paper-card" data-item="${it.id}">
@@ -66,6 +93,13 @@
   async function loadLibrary() {
     const data = await api("/api/papers/library");
     lib.items = data.items;
+    lib.isOwner = LC.getState().principal?.kind === "owner";
+    const subs = await api("/api/push/subscriptions");
+    lib.subs = subs.subscriptions;
+    if (lib.isOwner) {
+      const logs = await api("/api/push/logs").catch(() => ({ logs: [] }));
+      lib.logs = logs.logs;
+    }
   }
 
   function startPoll(render) {
@@ -127,6 +161,41 @@
           await api(`/api/papers/library/${del.dataset.delPaper}`, { method: "DELETE" });
           LC.closeModal(); await loadLibrary(); render();
         });
+        return;
+      }
+      // 订阅推送
+      if (e.target.closest("[data-sub-add]")) {
+        const input = container.querySelector(".sub-input");
+        const kw = input.value.trim();
+        if (!kw) return;
+        await api("/api/push/subscriptions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ keyword: kw }) }).catch((err) => alert(err.message));
+        input.value = "";
+        await loadLibrary(); render();
+        return;
+      }
+      const subToggle = e.target.closest("[data-sub-toggle]");
+      if (subToggle) {
+        const s = lib.subs.find((x) => String(x.id) === subToggle.dataset.subToggle);
+        await api(`/api/push/subscriptions/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: !s.enabled }) });
+        await loadLibrary(); render();
+        return;
+      }
+      const subDel = e.target.closest("[data-sub-del]");
+      if (subDel) {
+        await api(`/api/push/subscriptions/${subDel.dataset.subDel}`, { method: "DELETE" });
+        await loadLibrary(); render();
+        return;
+      }
+      if (e.target.closest("[data-run-now]")) {
+        const btn = e.target.closest("[data-run-now]");
+        btn.disabled = true;
+        try {
+          const r = await api("/api/push/run-now", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+          alert(r.result.skipped ? "今天已经推过了（幂等防重）。想重推用 force。" : r.result.pushed ? `已推送（${r.result.channel}），新增 ${r.result.new_count} 篇` : `推送失败：${r.result.detail}`);
+        } finally {
+          btn.disabled = false;
+          await loadLibrary(); render();
+        }
       }
     });
   }

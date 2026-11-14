@@ -508,3 +508,16 @@ a { color: var(--brand); text-decoration: none; }
   .anno-pop { right: 16px; left: 16px; width: auto; }
   .anno-dot { display: inline-flex; position: static; transform: none; margin-left: 6px; }
 }
+
+/* ---------- 订阅推送（第 4 批） ---------- */
+.sub-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 14px 18px; margin-bottom: 16px; }
+.sub-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--ink-2); }
+.sub-add { display: flex; gap: 8px; align-items: center; }
+.sub-input { width: 160px; }
+.sub-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.sub-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; background: var(--brand-soft); color: var(--brand); border-radius: 999px; padding: 4px 10px; }
+.sub-chip.off { background: var(--bg-soft); color: var(--ink-3); }
+.sub-toggle, .sub-del { color: inherit; font-size: 12px; padding: 0 2px; }
+.sub-del:hover { color: var(--danger); }
+.push-logs { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.push-log-row { display: flex; gap: 14px; font-size: 12px; color: var(--ink-3); padding: 2px 0; flex-wrap: wrap; }

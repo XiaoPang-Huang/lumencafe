@@ -84,6 +84,11 @@ function fauxCanned(systemPrompt, userText) {
     return "（假模型回答）候选段落里没有直接答案。";
   }
   if (systemPrompt.includes("论文翻译助手")) return `【机翻·未配置模型】${userText.slice(0, 200)}`;
+  // 论文推送 digest：点名今日命中与篇目
+  if (systemPrompt.includes("论文推送助手")) {
+    const titles = [...userText.matchAll(/标题：(.+)/g)].map((m) => m[1].trim());
+    return `今日命中 ${titles.length} 篇：${titles.slice(0, 3).join("；")}${titles.length > 3 ? " 等" : ""}。（假模型摘要，配置 DEEPSEEK_API_KEY 后为真实摘要）`;
+  }
   return `（假模型，未配置 DEEPSEEK_API_KEY）你说：${userText}\n\n配置 key 后走 DeepSeek 真模型。支持 Markdown：\n\n\`\`\`js\nconsole.log("hello");\n\`\`\`\n\n- 列表项一\n- 列表项二`;
 }
 

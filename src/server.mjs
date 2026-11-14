@@ -32,6 +32,10 @@ try {
 import { startPaperWorker } from "./api/pipeline.mjs";
 startPaperWorker();
 
+// 定时推送（每日早 8 点 digest；主程序内定时器，不开新进程）
+import { startPushScheduler } from "./api/digest.mjs";
+startPushScheduler();
+
 const app = await startServer(
   {
     name: "lumencafe",

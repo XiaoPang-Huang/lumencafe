@@ -8,6 +8,7 @@ export { chatRoutes } from "./chat.mjs";
 export { moneyRoutes } from "./money.mjs";
 export { papersRoutes } from "./papers.mjs";
 export { readerRoutes } from "./reader.mjs";
+export { pushRoutes } from "./digest.mjs";
 
 // chord 自带的成员邀请插件（第 1 批接入：成员账号用邀请链接建，见 plugins/invite）
 export const inviteFacet = () => chordInviteFacet();
