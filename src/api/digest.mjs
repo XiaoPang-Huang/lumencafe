@@ -4,7 +4,7 @@
 import { getPg } from "../db.mjs";
 import { notify } from "./notify.mjs";
 import { streamChat } from "./llm.mjs";
-import { requireAdmin } from "./gateway.mjs";
+import { requireAdmin, gateApp } from "./gateway.mjs";
 
 const MOCK = process.env.CRAWL_MOCK === "1";
 
@@ -132,7 +132,9 @@ const json = (value, status = 200) => ({ kind: "json", value, status });
 const keyOf = (ctx) => JSON.stringify(ctx.principal);
 
 export function pushRoutes() {
-  return {
+  // 批 3：成员订阅推送归 papers 域的应用门槛（网关单点）
+  // 其中 requireAdmin 的三路由是两层叠加：admin 角色 + papers 授权（默认种子下语义一致）
+  return gateApp("papers", {
     "GET /api/push/subscriptions": async (_r, ctx) => {
       const { rows } = await getPg().query(
         "SELECT * FROM subscriptions WHERE user_id = $1 ORDER BY id", [keyOf(ctx)]);
@@ -178,7 +180,7 @@ export function pushRoutes() {
       const { rows } = await getPg().query("SELECT * FROM crawl_runs ORDER BY started_at DESC LIMIT 30");
       return json({ runs: rows });
     }),
-  };
+  });
 }
 
 /* ---------- 定时器：主程序内，每日早 8 点（本地时区）；不开新进程 ---------- */

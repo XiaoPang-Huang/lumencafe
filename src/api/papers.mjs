@@ -1,13 +1,15 @@
 // 论文库路由（第 3 批 3a/3b）
 import { getPg } from "../db.mjs";
 import { resolveMeta, enqueueFetch } from "./pipeline.mjs";
+import { gateApp } from "./gateway.mjs";
 
 const bad = (status, message) => ({ kind: "error", status, message });
 const json = (value, status = 200) => ({ kind: "json", value, status });
 const keyOf = (ctx) => JSON.stringify(ctx.principal);
 
 export function papersRoutes() {
-  return {
+  // 批 3：论文应用门槛（网关单点，无授权 403「无权访问该应用」）
+  return gateApp("papers", {
     // 我的库 + 共享给我的（默认私人，逐篇 shared 对齐记账先例）
     "GET /api/papers/library": async (_r, ctx) => {
       const userId = keyOf(ctx);
@@ -108,5 +110,5 @@ export function papersRoutes() {
       const r = await getPg().query("DELETE FROM library_items WHERE id = $1 AND user_id = $2 RETURNING id", [request.params.id, keyOf(ctx)]);
       return r.rows[0] ? json({ ok: true }) : bad(404, "条目不存在（共享条目请找创建人）");
     },
-  };
+  });
 }

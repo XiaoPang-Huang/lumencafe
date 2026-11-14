@@ -4,6 +4,7 @@
 import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
 import { streamChat } from "./llm.mjs";
+import { gateApp } from "./gateway.mjs";
 
 const PRESET_EXPENSE = ["餐饮", "交通", "购物", "居住", "日用", "娱乐", "医疗", "教育", "人情", "其他支出"];
 const PRESET_INCOME = ["工资", "奖金", "兼职", "理财", "其他收入"];
@@ -126,7 +127,8 @@ async function moneyConversation(ownerKey) {
 
 /* ---------- 路由 ---------- */
 export function moneyRoutes() {
-  return {
+  // 批 3：记账应用门槛（网关单点，无授权 403「无权访问该应用」）
+  return gateApp("money", {
     "GET /api/money/categories": async (_r, ctx) =>
       json({ categories: await listCategories(keyOf(ctx)) }),
 
@@ -337,7 +339,7 @@ export function moneyRoutes() {
 
     "GET /api/money/conversation": async (_r, ctx) =>
       json({ conversation: await moneyConversation(keyOf(ctx)) }),
-  };
+  });
 }
 
 function monthEnd(month) {

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { authRoutes, userByPrincipal } from "./auth.mjs";
-import { requireAdmin } from "./gateway.mjs";
+import { requireAdmin, gateApp, allowedApps } from "./gateway.mjs";
 
 const staticDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "static");
 const indexFile = path.join(staticDir, "index.html");
@@ -97,9 +97,11 @@ export function shellRoutes() {
       },
     },
     // 登录态探测：默认拒绝——未登录 401，前端据此跳登录
-    // value = { principal, user }：user 为 principal 映射到的自有账号（无则 null）
+    // value = { principal, user, apps }：user 为 principal 映射到的自有账号（无则 null）；
+    // apps 为当前角色可用的应用 key（批 3 权限矩阵，前端侧栏过滤与直访拦截用）
     "GET /api/session": async (_request, ctx) => {
       const user = await userByPrincipal(ctx);
+      const apps = await allowedApps(ctx);
       return {
         kind: "json",
         value: {
@@ -107,14 +109,22 @@ export function shellRoutes() {
           user: user
             ? { username: user.username, displayName: user.display_name, role: user.role }
             : null,
+          apps,
         },
       };
     },
-    // 管理面探针：角色规则只在网关一处判断（批 2 收敛进 requireAdmin）
-    // 匿名 401（chord 默认拒绝）；已登录非管理员 403（网关）；管理员 200
+    // 管理面探针：双层门槛——角色 admin（requireAdmin）+ admin 应用授权（gateApp，批 3）
+    // 匿名 401（chord 默认拒绝）；已登录非管理员或无 admin 应用授权 403；通过 200
+    ...adminRoutes(),
+  };
+}
+
+// 管理面路由：双层叠加（角色 + 应用授权），规则只在网关一处
+function adminRoutes() {
+  return gateApp("admin", {
     "GET /api/admin/probe": requireAdmin(async () => ({
       kind: "json",
       value: { ok: true, role: "admin" },
     })),
-  };
+  });
 }

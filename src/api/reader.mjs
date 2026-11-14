@@ -4,6 +4,7 @@
 import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
 import { streamChat } from "./llm.mjs";
+import { gateApp } from "./gateway.mjs";
 
 const bad = (status, message) => ({ kind: "error", status, message });
 const json = (value, status = 200) => ({ kind: "json", value, status });
@@ -38,7 +39,8 @@ async function embedQuery(text) {
 }
 
 export function readerRoutes() {
-  return {
+  // 批 3：阅读器归属论文应用，同走 papers 门槛
+  return gateApp("papers", {
     // 论文问答会话（每人一条，消息存 SQLite 框架态）
     "GET /api/papers/conversation": async (_r, ctx) =>
       json({ conversation: chatConv.ensureApp(keyOf(ctx), "papers", "论文问答") }),
@@ -214,5 +216,5 @@ export function readerRoutes() {
         details: candidates.filter((c2) => citations.includes(c2.block_idx)),
       });
     },
-  };
+  });
 }

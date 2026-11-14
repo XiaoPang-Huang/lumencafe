@@ -10,6 +10,8 @@ export { papersRoutes } from "./papers.mjs";
 export { readerRoutes } from "./reader.mjs";
 export { pushRoutes } from "./digest.mjs";
 export { agentRoutes } from "./agent.mjs";
+// 批 3：插件侧如需应用门槛可经 v1 取 gateApp（gateway.mjs 只依赖 db.mjs，无循环 import）
+export { gateApp } from "./gateway.mjs";
 
 // chord 自带的成员邀请插件（第 1 批接入：成员账号用邀请链接建，见 plugins/invite）
 export const inviteFacet = () => chordInviteFacet();

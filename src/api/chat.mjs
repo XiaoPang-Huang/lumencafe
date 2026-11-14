@@ -2,6 +2,7 @@
 // 链路：先保存用户消息（请求标识幂等）→ 返回保存确认 → 再发起流式生成
 import { chatDb, conv, msg } from "./chat-db.mjs";
 import { streamChat, listModels, DEFAULT_MODEL_REF, hasRealLlm } from "./llm.mjs";
+import { gateApp } from "./gateway.mjs";
 
 const ownerKeyOf = (ctx) => JSON.stringify(ctx.principal);
 const bad = (status, message) => ({ kind: "error", status, message });
@@ -40,7 +41,8 @@ const SSE_HEADERS = {
 };
 
 export function chatRoutes() {
-  return {
+  // 批 3：对话应用门槛（网关单点，无授权 403「无权访问该应用」）
+  return gateApp("chat", {
     "GET /api/chat/models": async () =>
       json({ models: listModels(), default_model: DEFAULT_MODEL_REF, real: hasRealLlm }),
 
@@ -159,5 +161,5 @@ export function chatRoutes() {
         headers: SSE_HEADERS,
       };
     },
-  };
+  });
 }

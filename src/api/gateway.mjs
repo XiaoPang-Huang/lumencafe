@@ -50,3 +50,57 @@ export function requireRole(handler, ...roles) {
 
 /** 管理员门槛（当前唯一角色门槛；后续角色扩展继续走 requireRole） */
 export const requireAdmin = (handler) => requireRole(handler, "admin");
+
+/* ---------- 批 3 应用级授权（权限矩阵） ---------- */
+// 授权数据在 app_grants 表（migrations/0006）：**缺行 = 默认拒绝**。
+// 未来新增应用必须给种子行，否则所有角色都被拒。
+
+/** 受应用门槛管辖的应用 key（与 app_grants CHECK 约束一致） */
+const GATED_APPS = ["chat", "money", "papers", "admin"];
+
+/**
+ * 某角色对某应用是否有授权：查 app_grants 的 allowed；
+ * 无行（缺行）→ false；role 为 null（非人 principal）→ false。
+ */
+export async function appAllowedForRole(role, app) {
+  if (role === null || role === undefined) return false;
+  const { rows } = await getPg().query(
+    "SELECT allowed FROM app_grants WHERE app = $1 AND role = $2",
+    [app, role],
+  );
+  return rows[0]?.allowed === true;
+}
+
+/** 当前 ctx 角色可用的应用 key 数组（四个应用逐个直查，量小不做缓存避免失效） */
+export async function allowedApps(ctx) {
+  const role = await roleOf(ctx);
+  const out = [];
+  for (const app of GATED_APPS) {
+    if (await appAllowedForRole(role, app)) out.push(app);
+  }
+  return out;
+}
+
+/**
+ * 应用门槛：把路由表里所有「裸 handler」条目统一包上应用授权判断——
+ * 角色对该 app 无授权 → 403 { message: "无权访问该应用" }，否则原 handler。
+ * 对象形态条目（带 public/page 字段的）原样放行不包装：
+ * 如 agent.mjs 的 dev hook 是 public 调试路由，不属于应用门槛范围。
+ */
+export function gateApp(app, routes) {
+  const out = {};
+  for (const [key, value] of Object.entries(routes)) {
+    out[key] = typeof value === "function" ? gateHandler(app, value) : value;
+  }
+  return out;
+}
+
+function gateHandler(app, handler) {
+  return async (request, ctx) => {
+    const role = await roleOf(ctx);
+    if (!(await appAllowedForRole(role, app))) {
+      return { kind: "error", status: 403, message: "无权访问该应用" };
+    }
+    return handler(request, ctx);
+  };
+}

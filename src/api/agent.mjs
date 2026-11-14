@@ -6,7 +6,7 @@ import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
 import { getModelByRef, streamSimple, DEFAULT_MODEL_REF, primeFaux } from "./llm.mjs";
 import { toolsFor } from "./agent-tools.mjs";
-import { roleOfPrincipal } from "./gateway.mjs";
+import { roleOfPrincipal, gateApp } from "./gateway.mjs";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 
 const GUARD_MAX_STEPS = 10;
@@ -117,7 +117,8 @@ async function runAgent({ ctx, conversation, userText, body }) {
 }
 
 export function agentRoutes() {
-  return {
+  // 批 3：agent 总对话与对话工具归 chat 应用门槛；public 条目（dev hook）不包装
+  return gateApp("chat", {
     // 开发/验收辅助：给 faux 预排剧本（仅 DEV_HOOKS=1 时开放；开发环境公开，生产不开此开关）
     "POST /api/dev/prime-faux": {
       public: true,
@@ -187,5 +188,5 @@ export function agentRoutes() {
       chatDb.prepare("UPDATE conversations SET mode = ?, updated_at = ? WHERE id = ?").run(mode, Date.now(), c.id);
       return json({ ok: true, mode });
     },
-  };
+  });
 }

@@ -11,6 +11,7 @@ const $modal = document.getElementById("modal");
 const state = {
   principal: null,        // 登录身份（chord principal，如 { kind: "owner" }）
   user: null,             // 自有账号（/api/session 返回，{ username, displayName, role }；无则 null）
+  apps: [],               // 当前角色可用的应用 key（批 3 权限矩阵：chat/money/papers/admin 的子集）
   bootstrapNeeded: false, // owner 引导：users 表为空，需要创建首个管理员
   pong: "wait",           // 探针状态：wait / on / off
   route: "home",
@@ -85,9 +86,11 @@ const roleLabel = () => {
   return state.principal?.kind === "owner" ? "管理员" : "成员";
 };
 
+/* 批 3：当前角色是否可用某应用（/api/session 下发的授权列表） */
+const hasApp = (app) => state.apps.includes(app);
+
 /* 石墨灰侧栏（桌面常驻；窄屏变抽屉，项目规矩允许的导航抽屉） */
 function sideNav() {
-  const isOwner = state.principal?.kind === "owner";
   const item = (r, name, href, icon) =>
     `<a class="side-item ${state.route === r ? "active" : ""}" href="${href}">${icon}<span>${name}</span></a>`;
   return `
@@ -102,14 +105,14 @@ function sideNav() {
     </div>
     <div class="side-group">
       <div class="side-gt">应用</div>
-      ${item("chat", "对话", "#/chat", IC.chat)}
-      ${item("money", "记账", "#/money", IC.wallet)}
-      ${item("papers", "论文", "#/papers", IC.book)}
+      ${hasApp("chat") ? item("chat", "对话", "#/chat", IC.chat) : ""}
+      ${hasApp("money") ? item("money", "记账", "#/money", IC.wallet) : ""}
+      ${hasApp("papers") ? item("papers", "论文", "#/papers", IC.book) : ""}
     </div>
     <div class="side-group">
       <div class="side-gt">管理</div>
       ${item("me", "我的", "#/me", IC.user)}
-      ${isOwner ? item("admin", "管理设置", "#/admin", IC.shield) : ""}
+      ${hasApp("admin") ? item("admin", "管理设置", "#/admin", IC.shield) : ""}
     </div>
     <div class="side-foot">
       <span class="avatar">${esc(whoAmI().slice(0, 1))}</span>
@@ -240,7 +243,6 @@ async function postJson(path, payload, messages = {}) {
 }
 
 function meView() {
-  const isOwner = state.principal?.kind === "owner";
   return `
   <main class="stage">
     <div class="stage-head">
@@ -248,7 +250,7 @@ function meView() {
       <p class="stage-sub">设置分三个域，和 macOS 系统设置一个思路。</p>
     </div>
     <div class="domain-list">
-      ${DOMAINS.filter((d) => !d.admin || isOwner).map((d) => `
+      ${DOMAINS.filter((d) => !d.admin || hasApp("admin")).map((d) => `
       <button class="domain-item" data-domain="${d.key}">
         <span class="card-icon">${d.icon}</span>
         <span class="domain-text">
@@ -258,7 +260,7 @@ function meView() {
         <span class="domain-arrow">${IC.arrow}</span>
       </button>`).join("")}
     </div>
-    ${!isOwner ? `<p class="me-note">管理设置仅管理员可见；匿名访问受保护接口 401，已登录但无权限 403（网关单点判断）。</p>` : ""}
+    ${!hasApp("admin") ? `<p class="me-note">管理设置仅管理员可见；匿名访问受保护接口 401，已登录但无权限 403（网关单点判断）。</p>` : ""}
   </main>`;
 }
 
@@ -276,6 +278,22 @@ function adminView() {
 
 let mountedView = null; // 当前挂载的子页面模块（chat 等），切走时清理
 
+/* 批 3 直访拦截：路由 → 所属应用（#/me 与首页不属于应用，不拦） */
+const ROUTE_APP = { chat: "chat", money: "money", papers: "papers", reader: "papers", admin: "admin" };
+const APP_NAMES = { chat: "对话", money: "记账", papers: "论文", admin: "管理设置" };
+
+/* 无权限占位视图：不跳走，用户可点左侧其它入口 */
+function deniedView(appKey) {
+  return `
+  <main class="stage">
+    <div class="stage-head">
+      <h1 class="stage-title">无权限访问</h1>
+      <p class="stage-sub">「${APP_NAMES[appKey] ?? appKey}」应用未对你的角色开放，请联系管理员调整权限矩阵。</p>
+    </div>
+    <div class="empty-hint">可点左侧其它入口继续使用；后端接口层已有最终拦截（403）。</div>
+  </main>`;
+}
+
 function render() {
   const hash = location.hash || "#/";
   const route = hash.startsWith("#/me") ? "me" : hash.startsWith("#/admin") ? "admin"
@@ -287,6 +305,14 @@ function render() {
   if (mountedView?.cleanup) mountedView.cleanup();
   mountedView = null;
   state.route = route;
+
+  // 批 3：直访 URL 也拦——路由所属应用不在授权列表 → 渲染无权限占位
+  const routeApp = ROUTE_APP[route];
+  if (routeApp && !state.apps.includes(routeApp)) {
+    $app.innerHTML = shell(deniedView(routeApp));
+    document.title = "流光咖啡馆 · 无权限";
+    return;
+  }
 
   if (sub) {
     $app.innerHTML = shell('<div id="view" class="view-host"></div>');
@@ -395,6 +421,7 @@ Object.assign(window.LC, { api, openModal, closeModal, esc, IC, getState: () => 
     const data = await api("/api/session");
     state.principal = data.principal;
     state.user = data.user ?? null;
+    state.apps = Array.isArray(data.apps) ? data.apps : [];
   } catch (err) {
     if (err.status === 401) {
       location.replace("/login"); // 批 1 自有登录页（取代 chord /_chord/owner 链接登录）
