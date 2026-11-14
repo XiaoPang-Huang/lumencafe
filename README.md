@@ -10,7 +10,7 @@
 
 - **旧栈代码已于 2026-11-11 删除**（备份在 `E:/backups/`，git 历史亦可恢复）。
 - 新栈的产品契约见 **[docs/白皮书-v3.md](docs/白皮书-v3.md)**；完整阅读版见 **[docs/白皮书-v3.html](docs/白皮书-v3.html)**（目录跳转、位置高亮、移动导航、内联架构图，可直接用浏览器打开）。架构推演过程见 [docs/pi-workbench-architecture.html](docs/pi-workbench-architecture.html)。
-- 新栈代码尚未落地，将按白皮书 §13 的打磨顺序逐步实现。
+- 新栈按 **[docs/开发步骤-v1.md](docs/开发步骤-v1.md)** 分批落地（第 0 批骨架已开工）；开发到部署的完整流程见 **[docs/开发部署流程-v1.md](docs/开发部署流程-v1.md)**。
 
 ## 新架构一句话
 
@@ -20,13 +20,16 @@
 
 ```
 AGENTS.md    设计强制规则 + 工程约定（最高优先级）
-docs/        白皮书 v3（Markdown 源文件 + HTML 阅读版）和架构讨论稿
+docs/        白皮书 v3（Markdown 源文件 + HTML 阅读版）、开发步骤、开发部署流程、架构讨论稿
 prototype/   前端交互原型（纯 HTML/CSS/JS，v2 见 prototype/v2/，本地起任意静态服务即可预览）
+src/         新栈服务端代码（Node + pi/chord 单主程序，入口 src/server.mjs）
+plugins/     主程序插件（chord 插件根，ping 为 0A 验收探针）
+migrations/  PG 建表脚本（启动时自动执行未跑的）
 skills/      Skill 文件夹库（运行期数据，Agent Skills 开放标准）
 tools/       白皮书 HTML 生成与验收工具（锁版 Node 依赖）
 ```
 
-> 新栈的服务端代码目录尚未创建，落地时以白皮书为准。
+本地开发：`docker start pg` 起数据库，然后 `npm run dev`（或 `node src/server.mjs`），控制台会打印主人登录链接。
 
 ## 阅读与同步白皮书
 
