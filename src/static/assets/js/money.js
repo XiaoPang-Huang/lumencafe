@@ -23,6 +23,22 @@
   const yuan = (fen) => (fen / 100).toFixed(2);
   const fmtDate = (s) => (s ?? "").slice(5, 10);
 
+  /* 汇总卡数字滚动：0 → 目标值 550ms 缓出；动效减弱偏好时直接落值 */
+  const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  function countUp(el, fen, prefix) {
+    const target = Number(fen) || 0;
+    if (reduceMotion()) { el.textContent = `${prefix}${yuan(target)}`; return; }
+    const dur = 550;
+    const t0 = performance.now();
+    const tick = (t) => {
+      const k = Math.min(1, (t - t0) / dur);
+      const eased = 1 - Math.pow(1 - k, 3);
+      el.textContent = `${prefix}${yuan(Math.round(target * eased))}`;
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   /* ---------- 数据 ---------- */
   async function loadAll() {
     const [entries, cats, conv] = await Promise.all([
@@ -65,9 +81,9 @@
       </div>
 
       <div class="money-cards">
-        <div class="mcard"><div class="mcard-k">收入</div><div class="mcard-v income">+¥${yuan(income)}</div></div>
-        <div class="mcard"><div class="mcard-k">支出</div><div class="mcard-v expense">-¥${yuan(expense)}</div></div>
-        <div class="mcard"><div class="mcard-k">结余</div><div class="mcard-v">${income - expense < 0 ? "-" : ""}¥${yuan(Math.abs(income - expense))}</div></div>
+        <div class="mcard"><div class="mcard-k">收入</div><div class="mcard-v income" data-fen="${income}" data-prefix="+¥">+¥0.00</div></div>
+        <div class="mcard"><div class="mcard-k">支出</div><div class="mcard-v expense" data-fen="${expense}" data-prefix="-¥">-¥0.00</div></div>
+        <div class="mcard"><div class="mcard-k">结余</div><div class="mcard-v" data-fen="${Math.abs(income - expense)}" data-prefix="${income - expense < 0 ? "-¥" : "¥"}">¥0.00</div></div>
       </div>
 
       <div class="money-charts">
@@ -127,6 +143,8 @@
     el.querySelectorAll("[data-w]").forEach((n) => (n.style.width = n.dataset.w + "%"));
     el.querySelectorAll("[data-hi]").forEach((n) => (n.style.height = n.dataset.hi + "%"));
     el.querySelectorAll("[data-he]").forEach((n) => (n.style.height = n.dataset.he + "%"));
+    // 汇总卡数字滚动（data-fen/data-prefix 驱动）
+    el.querySelectorAll(".mcard-v[data-fen]").forEach((n) => countUp(n, n.dataset.fen, n.dataset.prefix ?? ""));
     const box = el.querySelector(".money-chat-msgs");
     if (box) box.scrollTop = box.scrollHeight;
     if (keepInput != null) {

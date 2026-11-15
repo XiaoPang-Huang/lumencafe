@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="08dd1c2046a650a88185c5868d979a69896d966bc545cb79c1e2b4a42a9f8e67">
+  <meta name="source-sha256" content="b41f50bd7857ac7857b93f93e381400b3ad62d92500851aa9b873e9a5a665b78">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -1895,6 +1895,13 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 </tr>
 </tbody>
 </table></div><p><strong>验证：</strong> <code>tools/ui-shots.mjs</code>（playwright-core + 系统 Edge）双宽度复截 home/chat/money/papers/me/admin/login/reader/chat-open + 三弹窗（通用设置/添加用户/记一笔）；docW=winW 全绿、侧栏固定 ✅、弹窗均在视口内、无 JS 错误；<code>npm test</code> 53/53。静态资源版本 <code>?v=2b2</code>。</p>
+<p><strong>后续修正（同日，用户走查反馈）：</strong></p>
+<ul>
+<li>双端尺寸拆套（用户拍板「手机和 PC 两套，不同设备不同显示」）：<code>.vt-btn</code> 切换条 PC 40px / 移动 44px；「我的」三域选项条 <code>.domain-list</code> 680→1280 通栏（原限宽把三条选项挤在宽屏左侧窄列），移动端压紧凑 72px 高、描述单行省略；全站页面级容器逐项审计（stage 1480 / money 1280 / papers 1200 / 登录卡 400 行业标准，其余 max-width 为内容组件可读性限宽不动）。</li>
+<li><strong>顶栏用户菜单</strong>：点头像出下拉（学 Stripe/Vercel/Linear/Supabase 收敛模式）——头部放大头像+名字+身份 → 「我的 · 账号与设置」→ 红色「退出登录」；Esc/点外关闭、aria-expanded、探活重渲染原地重建；登出 = 前端弃会话 + <code>POST /api/auth/logout</code> 清 cookie → 跳 /login。</li>
+<li><strong>动效</strong>：路由切换 view-in 淡入上浮、工作台/三域卡片错峰入场、顶栏滚动加深阴影、用户菜单 menu-pop、记账汇总卡数字滚动（prefers-reduced-motion 全部降级为直接落值）。</li>
+<li>版本号 <code>?v=2b3</code>，npm test 53/53。</li>
+</ul>
 <hr>
 <p><em>文档结束。改动请先在 §16 未决问题清单里过一遍，拍板后再写进正文。</em></p>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#19-账号-角色-权限体系2026-11-14-拍板并实施"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">19 账号 · 角色 · 权限体系（2026-11-14 拍板并实施）</span></a><span class="chapter-nav-placeholder" aria-hidden="true"></span></nav></section></article>

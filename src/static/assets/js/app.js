@@ -37,6 +37,8 @@ const IC = {
   check: svg('<path d="m5 12 5 5L20 7"/>', 16),
   copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 14),
   refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 5v6h-6"/>', 14),
+  logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>', 16),
+  caret: svg('<path d="m6 9 6 6 6-6"/>', 14),
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -173,9 +175,46 @@ function topbar(routeName) {
     <span class="page-title">${routeName}</span>
     <div class="topbar-side">
       ${statusDot()}
-      <a class="user-chip" href="#/me" title="账号与设置"><span class="avatar">${avatarInner(IC.user)}</span><span>${esc(whoAmI())}</span></a>
+      <span class="user-chip-wrap">
+        <button class="user-chip" data-user-menu aria-haspopup="true" aria-expanded="false" title="账号菜单">
+          <span class="avatar">${avatarInner(IC.user)}</span><span>${esc(whoAmI())}</span><span class="caret">${IC.caret}</span>
+        </button>
+      </span>
     </div>
   </header>`;
+}
+
+/* ---------- 顶栏用户菜单（点击头像出下拉；学 Stripe/Vercel/Linear/Supabase 收敛模式：
+   头部放大头像+名字+身份 → 菜单项 → 红色退出登录；Esc/点外关闭，POST 登出后跳登录页） ---------- */
+let userMenuOpen = false;
+let userMenuEl = null;
+
+const userMenuHtml = () => `
+  <div class="user-menu-head">
+    <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
+    <span class="user-menu-id">
+      <span class="user-menu-name">${esc(whoAmI())}</span>
+      <span class="user-menu-role">${esc(roleLabel())} · ${esc(state.user?.username ?? state.principal?.name ?? "owner")}</span>
+    </span>
+  </div>
+  <button class="user-menu-item" data-user-menu-item="me">${IC.user} 我的 · 账号与设置</button>
+  <button class="user-menu-item danger" data-user-menu-item="logout">${IC.logout} 退出登录</button>`;
+
+/** 开关用户菜单；open=true 时在芯片下方面板渲染（挂在 wrap 里随顶栏定位） */
+function setUserMenu(open) {
+  userMenuOpen = open;
+  const chip = document.querySelector("[data-user-menu]");
+  if (chip) chip.setAttribute("aria-expanded", open ? "true" : "false");
+  userMenuEl?.remove();
+  userMenuEl = null;
+  if (open && chip) {
+    const wrap = chip.closest(".user-chip-wrap");
+    if (!wrap) return;
+    userMenuEl = document.createElement("div");
+    userMenuEl.className = "user-menu";
+    userMenuEl.innerHTML = userMenuHtml();
+    wrap.appendChild(userMenuEl);
+  }
 }
 
 /* 外壳 = 侧栏 + 主列（顶栏 + 内容） */
@@ -425,12 +464,31 @@ function render() {
   const view = state.route === "me" ? meView() : homeView();
   $app.innerHTML = shell(view);
   document.title = `流光咖啡馆 · ${state.route === "me" ? "我的" : state.route === "admin" ? "管理" : "工作台"}`;
+  // 探活触发的重渲染会抹掉菜单节点，若开着则原地重建
+  if (userMenuOpen) setUserMenu(true);
 }
 
 /* ---------- 事件委托 ---------- */
 document.addEventListener("click", (e) => {
   const closeBtn = e.target.closest("[data-close]");
   if (closeBtn) { closeModal(); return; }
+
+  // 顶栏用户菜单：芯片开关、菜单项动作、点外关闭
+  const menuItem = e.target.closest("[data-user-menu-item]");
+  if (menuItem) {
+    setUserMenu(false);
+    if (menuItem.dataset.userMenuItem === "logout") {
+      // 先本地清会话态再调登出：chord 会话记录是闲置过期，登出是「前端弃用 + 清 cookie」语义，
+      // 成功后跳登录页；即使请求失败也跳（服务端会话随闲置自然过期）
+      state.user = null;
+      api("/api/auth/logout", { method: "POST" }).finally(() => location.replace("/login"));
+    } else {
+      location.hash = "#/me";
+    }
+    return;
+  }
+  if (e.target.closest("[data-user-menu]")) { setUserMenu(!userMenuOpen); return; }
+  if (userMenuOpen && !e.target.closest(".user-chip-wrap")) setUserMenu(false);
 
   // 通用设置 · 修改密码（批 1）
   if (e.target.closest("[data-pass-submit]")) {
@@ -567,6 +625,18 @@ document.addEventListener("click", (e) => {
 });
 
 window.addEventListener("hashchange", render);
+
+// 用户菜单 Esc 关闭（焦点环/其余键盘可达性走 :focus-visible 与原生 dialog）
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && userMenuOpen) setUserMenu(false);
+});
+
+// 顶栏滚动阴影：内容区滚动过 4px 时给顶栏加阴影交代层次（scroll 不冒泡，用捕获）
+document.addEventListener("scroll", (e) => {
+  const col = e.target;
+  if (!(col instanceof Element) || !col.classList.contains("shell-col")) return;
+  col.querySelector(".topbar")?.classList.toggle("scrolled", col.scrollTop > 4);
+}, true);
 
 // 头像选图（change 事件不走 click 委托；弹窗重渲染后旧节点自动失效，无需解绑）
 document.addEventListener("change", (e) => {

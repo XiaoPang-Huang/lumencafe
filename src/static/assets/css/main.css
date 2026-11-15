@@ -228,7 +228,10 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
   -webkit-backdrop-filter: saturate(1.6) blur(14px);
   backdrop-filter: saturate(1.6) blur(14px);
   border-bottom: 1px solid var(--line);
+  transition: box-shadow .2s var(--ease);
 }
+/* 内容区滚动后顶栏加深阴影，交代层次（学 Apple/Vercel 文档站） */
+.topbar.scrolled { box-shadow: 0 6px 20px rgba(15, 20, 30, .08); }
 .page-title { font-size: 15.5px; font-weight: 600; }
 .topbar-side { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
@@ -259,9 +262,56 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
+.user-chip .caret { display: inline-flex; color: var(--ink-3); }
+.user-chip .caret svg { transition: transform .15s var(--ease); }
+.user-chip[aria-expanded="true"] .caret svg { transform: rotate(180deg); }
+/* 顶栏用户菜单（Stripe/Vercel/Linear/Supabase 收敛模式：头部身份 → 菜单项 → 红色退出） */
+.user-chip-wrap { position: relative; display: inline-flex; }
+.user-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  width: 272px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow-pop); padding: 6px;
+  transform-origin: top right;
+  animation: menu-pop .16s var(--ease);
+}
+@keyframes menu-pop { from { opacity: 0; transform: translateY(-6px) scale(.96); } }
+.user-menu-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px; border-bottom: 1px solid var(--line); margin-bottom: 6px;
+}
+.user-menu-head .avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, #e5484d, var(--brand-strong)); color: #fff; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+}
+.user-menu-head .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.user-menu-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.user-menu-name { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+.user-menu-role { font-size: 12px; color: var(--ink-3); }
+.user-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border-radius: 9px; font-size: 14px; color: var(--ink-2); text-align: left;
+  transition: background .14s var(--ease), color .14s var(--ease);
+}
+.user-menu-item:hover { background: var(--bg-soft); color: var(--ink); }
+.user-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.user-menu-item.danger { color: var(--danger); }
+.user-menu-item.danger:hover { background: var(--brand-soft); }
+.user-menu-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------- 舞台：吃满桌面宽度（width:100% 防 flex 列 shrink-to-fit 塌缩） ---------- */
-.stage { width: 100%; max-width: 1480px; margin: 0 auto; padding: 28px 32px 64px; }
+/* 路由切换淡入上浮（学 Vercel/Linear 页面过渡；节点重建时才重放，列表局部更新不受影响） */
+@keyframes view-in { from { opacity: 0; transform: translateY(10px); } }
+.stage { width: 100%; max-width: 1480px; margin: 0 auto; padding: 28px 32px 64px; animation: view-in .32s var(--ease); }
+@keyframes card-rise { from { opacity: 0; transform: translateY(14px); } }
+.card-grid .card { animation: card-rise .5s var(--ease) both; }
+.card-grid .card:nth-child(2) { animation-delay: .06s; }
+.card-grid .card:nth-child(3) { animation-delay: .12s; }
+.card-grid .card:nth-child(4) { animation-delay: .18s; }
+.domain-list .domain-item { animation: card-rise .4s var(--ease) both; }
+.domain-list .domain-item:nth-child(2) { animation-delay: .06s; }
+.domain-list .domain-item:nth-child(3) { animation-delay: .12s; }
 .stage-head { margin: 6px 2px 20px; }
 .stage-title { font-size: 26px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
 .stage-sub { font-size: 14px; color: var(--ink-3); margin: 5px 0 0; }
@@ -341,22 +391,25 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
 .kv-v { font-family: var(--mono); font-size: 12.5px; color: var(--ink); text-align: right; word-break: break-all; }
 
 /* ---------- 「我的」三域（macOS 设置骨架） ---------- */
-.domain-list { display: flex; flex-direction: column; gap: 14px; max-width: 680px; }
+/* PC 端放开到 1280px（对齐记账页）——原 680px 上限把三条选项挤在宽屏左侧窄列（用户两次反馈太短）；
+   移动端 ≤900px 另收 16px 边距一套 */
+.domain-list { display: flex; flex-direction: column; gap: 16px; max-width: 1280px; }
 .domain-item {
-  display: flex; align-items: center; gap: 16px;
+  display: flex; align-items: center; gap: 18px;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  padding: 18px 20px; width: 100%; text-align: left;
+  padding: 22px 26px; width: 100%; text-align: left; min-height: 84px;
   transition: transform .18s var(--ease), box-shadow .18s var(--ease), border-color .18s var(--ease);
 }
 .domain-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: var(--line-strong); }
 .domain-item:active { transform: translateY(0); }
-.domain-item .card-icon { width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0; }
+.domain-item .card-icon { width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0; }
 .domain-text { flex: 1; min-width: 0; }
-.domain-name { font-size: 15px; font-weight: 600; display: block; }
-.domain-desc { font-size: 13px; color: var(--ink-3); margin-top: 2px; display: block; }
+.domain-name { font-size: 16px; font-weight: 600; display: block; }
+.domain-desc { font-size: 13.5px; color: var(--ink-3); margin-top: 3px; display: block; }
 .domain-arrow { color: var(--ink-3); flex-shrink: 0; }
+.domain-arrow svg { width: 20px; height: 20px; }
 
 /* ---------- 按钮（§20 Q18：主按钮深炭底白字；红仅 accent。
    全状态：hover 变深 / active 按压下沉 / focus-visible 焦点环 / disabled 半透明） ---------- */
@@ -458,7 +511,7 @@ textarea.text-input { line-height: 1.6; }
 .lc-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* ---------- 对话页（参考 DeepSeek 网页版布局） ---------- */
-.view-host { height: calc(100vh - 56px); flex-shrink: 0; }
+.view-host { height: calc(100vh - 56px); flex-shrink: 0; animation: view-in .32s var(--ease); }
 .chat-wrap { display: flex; height: 100%; }
 
 .chat-sidebar {
@@ -659,10 +712,12 @@ textarea.text-input { line-height: 1.6; }
 .money-head-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
 .month-nav { display: flex; align-items: center; gap: 6px; }
 .month-label { font-size: 17px; font-weight: 650; min-width: 130px; text-align: center; }
-.view-toggle, .type-toggle { display: inline-flex; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 2px; }
+.view-toggle, .type-toggle { display: inline-flex; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 3px; }
+/* 桌面端分段切换器：40px 高、24px 侧距——PC 一套（比按钮 38px 更有「条」的分量），
+   移动端在 ≤900px 另给 44px 触控一套（用户拍板：双端各自独立尺寸，不共用） */
 .vt-btn {
-  font-size: 13.5px; padding: 7px 15px; border-radius: 8px; color: var(--ink-2);
-  min-height: 32px; white-space: nowrap;
+  font-size: 14px; padding: 10px 24px; border-radius: 9px; color: var(--ink-2);
+  min-height: 40px; white-space: nowrap;
   transition: background .15s var(--ease), color .15s var(--ease), box-shadow .15s var(--ease);
 }
 .vt-btn:hover { color: var(--ink); }
@@ -739,7 +794,8 @@ textarea.text-input { line-height: 1.6; }
   .money-page { padding: 16px 14px 44px; }
   .money-charts { grid-template-columns: 1fr; }
   .money-actions { margin-left: auto; }
-  .vt-btn { min-height: 38px; padding: 8px 16px; }
+  /* 移动端切换条：44px 触控一套（与桌面 40px 分开） */
+  .vt-btn { min-height: 44px; padding: 10px 18px; }
 }
 
 /* 手机：汇总三卡合并为一条带分隔线的整卡（独立布局，不是桌面缩放），
@@ -1047,7 +1103,10 @@ textarea.text-input { line-height: 1.6; }
   .modal-head { padding: 18px 18px 0; }
   .modal-body { padding: 14px 18px 20px; }
   .modal-foot { padding: 0 18px 18px; }
-  .domain-item { padding: 16px; min-height: 64px; }
+  /* 移动端三域选项：独立紧凑一套（用户拍板：不能和 PC 一样又长又高） */
+  .domain-item { padding: 14px 16px; min-height: 60px; gap: 14px; }
+  .domain-item .card-icon { width: 38px; height: 38px; border-radius: 10px; }
+  .domain-name { font-size: 15px; }
   .prof-edit { min-height: 40px; }
   .row-act { min-height: 38px; padding: 8px 10px; }
   .mini-act { min-height: 36px; padding: 7px 12px; }
@@ -1058,6 +1117,8 @@ textarea.text-input { line-height: 1.6; }
 }
 
 @media (max-width: 640px) {
+  /* 窄屏三域描述单行省略，防折行把选项条撑高 */
+  .domain-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stage { padding: 16px 12px 40px; }
   .card-grid { grid-template-columns: 1fr; gap: 12px; }
   .stage-title { font-size: 20px; }
