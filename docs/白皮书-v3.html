@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="b41f50bd7857ac7857b93f93e381400b3ad62d92500851aa9b873e9a5a665b78">
+  <meta name="source-sha256" content="45f08544e9ae23f105e0413c123c7b97a1098a3f170cba023f685f48f7bac6f9">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -1900,6 +1900,7 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 <li>双端尺寸拆套（用户拍板「手机和 PC 两套，不同设备不同显示」）：<code>.vt-btn</code> 切换条 PC 40px / 移动 44px；「我的」三域选项条 <code>.domain-list</code> 680→1280 通栏（原限宽把三条选项挤在宽屏左侧窄列），移动端压紧凑 72px 高、描述单行省略；全站页面级容器逐项审计（stage 1480 / money 1280 / papers 1200 / 登录卡 400 行业标准，其余 max-width 为内容组件可读性限宽不动）。</li>
 <li><strong>顶栏用户菜单</strong>：点头像出下拉（学 Stripe/Vercel/Linear/Supabase 收敛模式）——头部放大头像+名字+身份 → 「我的 · 账号与设置」→ 红色「退出登录」；Esc/点外关闭、aria-expanded、探活重渲染原地重建；登出 = 前端弃会话 + <code>POST /api/auth/logout</code> 清 cookie → 跳 /login。</li>
 <li><strong>动效</strong>：路由切换 view-in 淡入上浮、工作台/三域卡片错峰入场、顶栏滚动加深阴影、用户菜单 menu-pop、记账汇总卡数字滚动（prefers-reduced-motion 全部降级为直接落值）。</li>
+<li><strong>五件功能（同日第二批，用户勾选全做）</strong>：暗色模式（theme.js 防闪白 + 菜单开关 + token 全反转，16 处洗白/17 处品牌文字 token 化）；骨架屏（money/papers/chat，占位禁内联 style）；流式回答光标；代码块一键复制；图表 hover 提示（CSS-only tooltip）；用户菜单分隔线整幅通栏对齐。版本号 <code>?v=2b4</code>，npm test 53/53。</li>
 <li>版本号 <code>?v=2b3</code>，npm test 53/53。</li>
 </ul>
 <hr>
