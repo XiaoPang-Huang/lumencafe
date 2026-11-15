@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>流光咖啡馆 · 对话界面改造（学 WorkBuddy 任务对话）</title>
+<style>
+/* =========================================================
+   对话界面改造原型（2026-11-15 用户拍板方向：学 WorkBuddy 对话界面）
+   参考：WorkBuddy 任务对话（codebuddy.cn/docs/workbuddy/Conversation）
+        —— ① AI 消息「已完成 Xs」耗时标注 ② 右侧提问导航刻度条
+           ③ 对话内搜索 ④ 输入区上方常驻控件行（模型/模式）
+           ⑤ 用户消息 hover 编辑重发 ⑥ AI 消息 hover 复制/重新生成
+   配色：沿用流光红白灰体系（品牌红仅气泡/选中/accent；主按钮深炭）
+   ========================================================= */
+:root{
+  --red:#D92D20; --red-hover:#E5484D; --red-deep:#A61B10; --red-soft:#FDECEA;
+  --dark:#17171A; --dark-3:#2E2E33;
+  --ink:#1F2329; --ink-2:#4E5969; --ink-3:#86909C;
+  --page:#F4F4F5; --card:#FFFFFF; --sub:#F7F7F8; --line:#E5E6EB; --line-2:#EFF0F1;
+  --sb-bg:#2E2E33; --sb-text:#C4C7CE; --sb-hi:#FFF; --sb-dim:#8A8F99;
+  --sb-hover:rgba(255,255,255,.07); --sb-line:rgba(255,255,255,.09);
+  --sb-active:linear-gradient(90deg,rgba(217,45,32,.20),rgba(217,45,32,.04));
+  --green:#00A854;
+  --r-sm:8px; --r-md:10px; --r-lg:14px;
+  --sh-sm:0 1px 2px rgba(31,35,41,.05),0 8px 24px rgba(31,35,41,.05);
+  --sh-pop:0 12px 40px rgba(31,35,41,.16);
+  --font:-apple-system,BlinkMacSystemFont,"Manrope","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:"JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);background:#E9E9EB;color:var(--ink);-webkit-font-smoothing:antialiased;padding:32px;}
+.demo-title{max-width:1440px;margin:0 auto 20px;font-size:18px;font-weight:700;}
+.demo-title small{display:block;font-weight:400;font-size:13px;color:var(--ink-3);margin-top:4px;}
+.screen-label{max-width:1440px;margin:0 auto 10px;font-size:13px;font-weight:600;color:var(--ink-2);}
+.frame{max-width:1440px;margin:0 auto 40px;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(31,35,41,.18);}
+
+/* ---------- 外壳 ---------- */
+.shell{display:grid;grid-template-columns:224px 1fr;height:820px;background:var(--page);}
+.sb{background:var(--sb-bg);color:var(--sb-text);display:flex;flex-direction:column;padding-top:0;}
+.sb-brand{display:flex;align-items:center;gap:10px;padding:10px 18px 11px;border-bottom:1px solid var(--sb-line);margin-bottom:10px;}
+.sb-brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--red),var(--red-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;box-shadow:0 4px 10px rgba(217,45,32,.35);}
+.sb-brand .t{color:#fff;font-size:15px;font-weight:700;line-height:1.2;}
+.sb-brand .s{font-size:10.5px;color:var(--sb-dim);margin-top:2px;line-height:1.2;}
+.sb-gt{font-size:11px;color:var(--sb-dim);letter-spacing:1.5px;padding:6px 22px 4px;}
+.sb-item{display:flex;align-items:center;gap:10px;padding:10px 12px;margin:1px 10px;border-radius:9px;font-size:13.5px;color:var(--sb-text);}
+.sb-item:hover{background:var(--sb-hover);color:#fff;}
+.sb-item.on{background:var(--sb-active);color:#fff;font-weight:600;position:relative;}
+.sb-item.on::before{content:"";position:absolute;left:-10px;top:8px;bottom:8px;width:3px;background:var(--red);border-radius:0 2px 2px 0;}
+.sb-foot{margin-top:auto;padding:12px 16px;border-top:1px solid var(--sb-line);display:flex;align-items:center;gap:10px;}
+.sb-foot .ava{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#E5484D,#A61B10);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+.sb-foot .who b{color:#fff;font-size:13px;display:block;}
+.sb-foot .who span{font-size:11px;color:var(--sb-dim);}
+
+/* ---------- 对话主区 ---------- */
+.chat{display:flex;flex-direction:column;min-width:0;background:var(--page);}
+.chat-head{height:56px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 18px;background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);}
+.chat-head .menu-btn{display:none;width:38px;height:38px;border-radius:9px;align-items:center;justify-content:center;color:var(--ink-2);}
+.chat-title{flex:1;min-width:0;font-size:14.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.head-ic{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--ink-2);position:relative;}
+.head-ic:hover{background:rgba(29,33,41,.06);color:var(--ink);}
+.head-ic svg{width:17px;height:17px;}
+
+/* 消息流：左侧留白给提问导航刻度条 */
+.flow-wrap{flex:1;display:flex;min-height:0;}
+.flow{flex:1;overflow-y:auto;padding:22px 24px 12px;scroll-behavior:smooth;}
+.msg{max-width:860px;margin:0 auto 22px;position:relative;}
+
+/* 用户气泡 */
+.m-user{display:flex;justify-content:flex-end;position:relative;}
+.m-user .b{
+  background:linear-gradient(135deg,var(--red-hover),var(--red));color:#fff;
+  border-radius:16px 16px 4px 16px;padding:11px 16px;font-size:14.5px;line-height:1.65;
+  max-width:78%;white-space:pre-wrap;word-break:break-word;box-shadow:0 2px 8px rgba(217,45,32,.18);
+}
+.m-user .edit{
+  position:absolute;right:calc(22% + 6px);top:50%;transform:translateY(-50%);
+  font-size:12px;color:var(--ink-3);background:var(--card);border:1px solid var(--line);
+  border-radius:7px;padding:4px 9px;opacity:0;transition:opacity .14s;cursor:pointer;white-space:nowrap;
+}
+.m-user:hover .edit{opacity:.9;}
+.m-user .edit:hover{color:var(--ink);border-color:#C9CDD4;}
+
+/* AI 消息：文档式 + 耗时标注 */
+.m-ai .meta{
+  display:flex;align-items:center;gap:8px;margin-bottom:6px;
+  font-size:12px;color:var(--ink-3);
+}
+.m-ai .meta .model{font-weight:600;color:var(--ink-2);}
+.m-ai .meta .done{display:inline-flex;align-items:center;gap:4px;}
+.m-ai .meta .done::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);}
+.m-ai .body{font-size:15px;line-height:1.8;word-break:break-word;}
+.m-ai .body p{margin:0 0 10px;}
+.m-ai .body pre{position:relative;background:#15171B;color:#D6DAE2;border-radius:10px;padding:14px 16px;margin:10px 0;font-family:var(--mono);font-size:12.5px;line-height:1.7;overflow-x:auto;}
+.m-ai .body pre .cp{
+  position:absolute;top:8px;right:8px;font-size:12px;color:#B8BEC8;font-family:var(--font);
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:4px 9px;cursor:pointer;
+}
+/* 表格样式（第一批拍板：补全 Markdown 表格） */
+.m-ai .body table{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+.m-ai .body th{background:var(--sub);text-align:left;padding:9px 12px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--line);}
+.m-ai .body td{padding:9px 12px;border-bottom:1px solid var(--line-2);}
+.m-ai .body tr:last-child td{border-bottom:none;}
+.m-ai .body blockquote{border-left:3px solid var(--red);padding:2px 0 2px 12px;margin:10px 0;color:var(--ink-2);background:var(--sub);border-radius:0 8px 8px 0;padding-top:8px;padding-bottom:8px;}
+.m-ai .body code.inl{font-family:var(--mono);font-size:12.5px;background:var(--sub);border:1px solid var(--line-2);border-radius:5px;padding:1px 5px;}
+/* 消息操作条 */
+.m-ai .acts{display:flex;gap:6px;margin-top:8px;opacity:0;transition:opacity .15s;}
+.m-ai:hover .acts{opacity:1;}
+.m-ai .acts button{
+  width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink-3);display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.m-ai .acts button:hover{color:var(--red);border-color:var(--red);background:var(--red-soft);}
+.m-ai .acts button svg{width:14px;height:14px;}
+/* 工具卡片 */
+.tool{border:1px solid var(--line);background:var(--sub);border-radius:9px;padding:8px 12px;font-size:12.5px;display:flex;align-items:center;gap:8px;max-width:560px;margin:8px 0;}
+.tool b{font-family:var(--mono);color:var(--red);font-weight:500;flex-shrink:0;}
+.tool span{color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.tool i{color:var(--green);font-style:normal;flex-shrink:0;}
+
+/* 提问导航刻度条（学 WorkBuddy：每条刻度=一次用户提问） */
+.ticknav{
+  width:56px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;
+  padding:24px 0;gap:10px;border-left:1px solid var(--line-2);
+}
+.ticknav .tk{
+  width:18px;height:3px;border-radius:2px;background:#D8DAE0;cursor:pointer;transition:all .15s;position:relative;
+}
+.ticknav .tk.cur{width:26px;height:4px;background:var(--red);}
+.ticknav .tk:hover{background:var(--ink-3);}
+.ticknav .tk.cur:hover{background:var(--red);}
+.ticknav .tk .tip{
+  position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  background:var(--ink);color:#fff;font-size:12px;padding:6px 10px;border-radius:8px;
+  white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;
+  opacity:0;pointer-events:none;transition:opacity .14s;box-shadow:var(--sh-pop);
+}
+.ticknav .tk:hover .tip{opacity:1;}
+
+/* 输入区：常驻控件行（学 WorkBuddy：模型/模式收进输入区上方） */
+.composer-zone{flex-shrink:0;padding:0 24px 16px;}
+.composer{max-width:860px;margin:0 auto;background:var(--card);border:1px solid #D5D8DE;border-radius:18px;box-shadow:var(--sh-sm);padding:10px 14px 10px;transition:box-shadow .16s,border-color .16s;}
+.composer:focus-within{border-color:#C9CDD4;box-shadow:var(--sh-sm),0 0 0 3px rgba(31,35,41,.16);}
+.ctl-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.ctl-row .seg{display:inline-flex;background:var(--sub);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px;}
+.ctl-row .seg button{font-size:13px;padding:5px 13px;border-radius:7px;color:var(--ink-2);border:none;background:none;cursor:pointer;font-family:inherit;}
+.ctl-row .seg button.on{background:var(--card);color:var(--red);font-weight:600;box-shadow:0 1px 3px rgba(31,35,41,.12);}
+.ctl-row select{
+  font-family:inherit;font-size:13px;color:var(--ink-2);border:1px solid var(--line);border-radius:8px;
+  padding:5px 10px;background:var(--card);cursor:pointer;max-width:200px;
+}
+.ctl-row .spacer{flex:1;}
+.ctl-row .kbd-hint{font-size:11.5px;color:var(--ink-3);}
+.c-input{width:100%;border:none;outline:none;resize:none;font-family:inherit;font-size:15px;line-height:1.6;max-height:180px;background:transparent;color:var(--ink);}
+.c-input::placeholder{color:var(--ink-3);}
+.c-bar{display:flex;align-items:center;justify-content:space-between;margin-top:6px;}
+.c-hint{font-size:12px;color:var(--ink-3);}
+.send{width:40px;height:40px;border-radius:50%;background:var(--red);border:none;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(217,45,32,.3);}
+.send:hover{background:var(--red-deep);}
+
+/* 空态 */
+.empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;}
+.empty .logo-t{font-size:24px;font-weight:700;color:var(--ink-2);}
+.empty .sub{font-size:13.5px;color:var(--ink-3);}
+.empty .chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:16px;max-width:560px;padding:0 16px;}
+.empty .chips button{
+  font-size:13.5px;color:var(--ink-2);background:var(--card);border:1px solid #C9CDD4;border-radius:999px;
+  padding:9px 16px;cursor:pointer;font-family:inherit;transition:all .14s;
+}
+.empty .chips button:hover{border-color:var(--ink);color:var(--ink);background:var(--sub);}
+
+/* 对话内搜索浮层 */
+.search-pop{
+  position:absolute;top:60px;right:18px;width:320px;background:var(--card);border:1px solid var(--line);
+  border-radius:14px;box-shadow:var(--sh-pop);padding:10px;z-index:30;
+}
+.search-pop input{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13.5px;font-family:inherit;outline:none;}
+.search-pop input:focus{border-color:var(--ink);}
+.search-pop .res{margin-top:8px;max-height:220px;overflow-y:auto;}
+.search-pop .ri{font-size:13px;padding:7px 9px;border-radius:7px;cursor:pointer;color:var(--ink-2);}
+.search-pop .ri:hover{background:var(--sub);color:var(--ink);}
+.search-pop .ri mark{background:var(--red-soft);color:var(--red);border-radius:3px;padding:0 2px;}
+.search-pop .none{font-size:12.5px;color:var(--ink-3);padding:8px;text-align:center;}
+
+/* 标注气泡（设计说明） */
+.note{position:absolute;background:var(--red);color:#fff;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:999px;box-shadow:0 4px 12px rgba(217,45,32,.35);white-space:nowrap;z-index:40;}
+.note.dark{background:var(--dark);}
+.stage{position:relative;}
+
+/* ---------- 手机版：无侧栏，左上角功能键开应用抽屉（2026-11-15 用户拍板，推翻 Q19 窄栏） ---------- */
+.m-shell{width:390px;margin:0 auto 40px;border-radius:36px;overflow:hidden;box-shadow:0 24px 64px rgba(31,35,41,.22);border:8px solid #17171A;}
+.m-body{height:760px;display:flex;flex-direction:column;background:var(--page);position:relative;}
+.m-topbar{height:56px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 14px;background:rgba(255,255,255,.78);backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);position:relative;z-index:20;}
+.m-burger{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--ink-2);border:none;background:none;font-size:19px;cursor:pointer;}
+.m-burger:hover{background:rgba(29,33,41,.06);color:var(--ink);}
+.m-chat{display:flex;flex-direction:column;flex:1;min-height:0;}
+/* 应用切换抽屉 */
+.m-drawer-mask{position:absolute;inset:0;background:rgba(15,20,30,.38);opacity:0;pointer-events:none;transition:opacity .22s;z-index:28;}
+.m-drawer{
+  position:absolute;top:0;left:0;bottom:0;width:280px;background:var(--sb-bg);color:var(--sb-text);
+  transform:translateX(-100%);transition:transform .24s cubic-bezier(.25,.1,.25,1);z-index:29;
+  display:flex;flex-direction:column;padding-top:14px;
+}
+.m-drawer.open{transform:translateX(0);}
+.m-drawer-mask.open{opacity:1;pointer-events:auto;}
+.m-drawer .d-brand{display:flex;align-items:center;gap:10px;padding:2px 20px 16px;border-bottom:1px solid var(--sb-line);margin-bottom:10px;}
+.m-drawer .d-brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--red),var(--red-deep));display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;}
+.m-drawer .d-brand .t{color:#fff;font-size:15px;font-weight:700;}
+.m-drawer .d-brand .s{font-size:10.5px;color:var(--sb-dim);margin-top:2px;}
+.m-drawer .d-gt{font-size:11px;color:var(--sb-dim);letter-spacing:1.5px;padding:8px 24px 4px;}
+.m-drawer .d-item{display:flex;align-items:center;gap:12px;padding:12px 14px;margin:1px 10px;border-radius:10px;font-size:14.5px;color:var(--sb-text);}
+.m-drawer .d-item:hover{background:var(--sb-hover);color:#fff;}
+.m-drawer .d-item.on{background:var(--sb-active);color:#fff;font-weight:600;}
+.m-drawer .d-item .ic{width:20px;text-align:center;font-size:16px;}
+.m-drawer .d-foot{margin-top:auto;padding:14px 18px;border-top:1px solid var(--sb-line);display:flex;align-items:center;gap:10px;}
+.m-drawer .d-foot .ava{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#E5484D,#A61B10);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+.m-chat .chat-head{padding:0 12px;}
+.m-chat .chat-head .menu-btn{display:flex;}
+.m-chat .flow{padding:16px 12px 8px;}
+.m-chat .msg{margin-bottom:16px;}
+.m-chat .composer-zone{padding:0 12px 12px;}
+.m-chat .composer{border-radius:16px;}
+.m-chat .ctl-row select{max-width:130px;}
+@media (max-width:720px){ body{padding:12px;} .shell{grid-template-columns:56px 1fr;} }
+</style>
+</head>
+<body>
+
+<div class="demo-title">
+  对话界面改造原型 · 学 WorkBuddy 任务对话
+  <small>① AI 消息耗时标注 ② 右侧提问导航刻度条 ③ 对话内搜索 ④ 模型/模式收进输入区控件行 ⑤ 用户消息可编辑重发 ⑥ 表格/引用块样式 —— 配色沿用红白灰（WorkBuddy 的蓝气泡换品牌红）</small>
+</div>
+
+<div class="screen-label">A · 桌面端 1440 —— 长对话（刻度导航 ≥7 轮出现）</div>
+<div class="frame stage">
+  <span class="note" style="right:18px;top:64px;">③ 对话内搜索</span>
+  <span class="note dark" style="right:2px;top:300px;">② 提问导航刻度条：hover 看问题，点击定位</span>
+  <span class="note" style="right:260px;bottom:190px;">④ 模型/模式常驻控件行（从头部收下来）</span>
+  <div class="shell">
+    <aside class="sb">
+      <div class="sb-brand">
+        <span class="logo">☕</span>
+        <span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span>
+      </div>
+      <div class="sb-gt">首页</div><div class="sb-item">⌂ 工作台</div>
+      <div class="sb-gt">应用</div>
+      <div class="sb-item on">💬 对话</div><div class="sb-item">▤ 记账</div><div class="sb-item">📖 论文</div>
+      <div class="sb-gt">管理</div><div class="sb-item">☺ 我的</div><div class="sb-item">⚙ 管理设置</div>
+      <div class="sb-foot"><span class="ava">主</span><span class="who"><b>主人</b><span>管理员</span></span></div>
+    </aside>
+
+    <section class="chat">
+      <header class="chat-head">
+        <button class="menu-btn">☰</button>
+        <span class="chat-title">11 月家庭账本复盘</span>
+        <span class="head-ic" title="对话内搜索" onclick="document.getElementById('sp').style.display=document.getElementById('sp').style.display==='none'?'block':'none'">⌕</span>
+        <span class="head-ic" title="更多">⋯</span>
+      </header>
+      <div class="search-pop" id="sp" style="display:none">
+        <input placeholder="搜索本对话消息…" value="向量" oninput="spRender(this.value)">
+        <div class="res" id="spRes"></div>
+      </div>
+
+      <div class="flow-wrap">
+        <div class="flow" id="flow">
+          <div class="msg m-user"><div class="b">帮我总结今天的待办</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 4.2s</span></div>
+            <div class="body"><p>你今天有 3 件事：上午把论文订阅关键词调成「向量检索」，中午记了午餐 32 元，晚上有一篇 arXiv 新论文待读。</p></div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+
+          <div class="msg m-user"><div class="b">解释一下什么是向量数据库</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 12.8s</span></div>
+            <div class="body">
+              <p>向量数据库是把文本、图片等转成<strong>向量</strong>（一串数字）后按相似度检索的数据库。和传统数据库按「精确匹配」查不同，它按「意思接近」查。</p>
+              <table>
+                <tr><th>对比项</th><th>传统数据库</th><th>向量数据库</th></tr>
+                <tr><td>查询方式</td><td>精确匹配（WHERE）</td><td>相似度匹配（KNN）</td></tr>
+                <tr><td>典型用途</td><td>订单、账号</td><td>语义搜索、RAG</td></tr>
+                <tr><td>代表</td><td>PostgreSQL</td><td>pgvector / Milvus</td></tr>
+              </table>
+              <p>我们的论文库就是「PG + pgvector」方案，用 <code class="inl">embedding</code> 把段落向量化后存同一张库。</p>
+              <pre>CREATE INDEX ON papers USING hnsw (embedding vector_cosine_ops);<button class="cp">复制</button></pre>
+              <blockquote>一句话：传统数据库找「等于」，向量数据库找「像」。</blockquote>
+            </div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+
+          <div class="msg m-user"><div class="b">把这个月的账汇总一下，按分类</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 8.1s</span></div>
+            <div class="tool"><b>money_stats</b><span>{"from":"2026-11-01","to":"2026-11-15","type":"expense"}</span><i>✓ 完成</i></div>
+            <div class="body"><p>11 月上半月共支出 1,847.50 元，餐饮占 42% 最多；收入 3 笔共 8,600 元。</p></div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+
+          <div class="msg m-user"><div class="b">餐饮怎么这么高？</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 6.5s</span></div>
+            <div class="body"><p>主要是 11-03 和朋友聚餐 286 元、11-08 外卖 96.5 元。要细看可以回记账页点开餐饮分类。</p></div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+
+          <div class="msg m-user"><div class="b">写一封简短的会议邀请邮件</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 3.9s</span></div>
+            <div class="body"><p>（草稿）各位好：定于 11-18（周二）15:00 在三楼会议室同步论文库进度，预计 30 分钟，请准时参加。——主人</p></div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+
+          <div class="msg m-user"><div class="b">好，顺便把 18 号下午提醒我这件事</div><button class="edit">✎ 编辑重发</button></div>
+          <div class="msg m-ai">
+            <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 2.1s</span></div>
+            <div class="body"><p>记账应用里还没有提醒功能——这个需求我先记下来，提醒类能力排在记账模块第二批讨论。</p></div>
+            <div class="acts"><button title="复制">⧉</button><button title="重新生成">↻</button></div>
+          </div>
+        </div>
+
+        <nav class="ticknav">
+          <span class="tk" onclick="tick(this)"><span class="tip">帮我总结今天的待办</span></span>
+          <span class="tk" onclick="tick(this)"><span class="tip">解释一下什么是向量数据库</span></span>
+          <span class="tk" onclick="tick(this)"><span class="tip">把这个月的账汇总一下，按分类</span></span>
+          <span class="tk cur" onclick="tick(this)"><span class="tip">餐饮怎么这么高？</span></span>
+          <span class="tk" onclick="tick(this)"><span class="tip">写一封简短的会议邀请邮件</span></span>
+          <span class="tk" onclick="tick(this)"><span class="tip">顺便把 18 号下午提醒我这件事</span></span>
+        </nav>
+      </div>
+
+      <div class="composer-zone">
+        <div class="composer">
+          <div class="ctl-row">
+            <span class="seg"><button class="on">单次</button><button>Agent</button></span>
+            <select><option>DeepSeek V4.1 Flash</option><option>DeepSeek V4 Pro</option></select>
+            <span class="spacer"></span>
+            <span class="kbd-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
+          <textarea class="c-input" rows="1" placeholder="输入消息…">那这个提醒功能和微信推送打通怎么样？</textarea>
+          <div class="c-bar">
+            <span class="c-hint">草稿已自动保存</span>
+            <button class="send">➤</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="screen-label">B · 桌面端 —— 空态（新会话）</div>
+<div class="frame">
+  <div class="shell" style="height:560px;">
+    <aside class="sb">
+      <div class="sb-brand"><span class="logo">☕</span><span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span></div>
+      <div class="sb-gt">首页</div><div class="sb-item">⌂ 工作台</div>
+      <div class="sb-gt">应用</div>
+      <div class="sb-item on">💬 对话</div><div class="sb-item">▤ 记账</div><div class="sb-item">📖 论文</div>
+      <div class="sb-gt">管理</div><div class="sb-item">☺ 我的</div><div class="sb-item">⚙ 管理设置</div>
+      <div class="sb-foot"><span class="ava">主</span><span class="who"><b>主人</b><span>管理员</span></span></div>
+    </aside>
+    <section class="chat">
+      <header class="chat-head"><button class="menu-btn">☰</button><span class="chat-title">新会话</span></header>
+      <div class="empty">
+        <div class="logo-t">开始一段新对话</div>
+        <div class="sub">输入框在下方，Enter 发送，Shift+Enter 换行</div>
+        <div class="chips">
+          <button>帮我总结今天的待办</button>
+          <button>解释一下什么是向量数据库</button>
+          <button>写一封简短的会议邀请邮件</button>
+          <button>这个月记账有什么趋势？</button>
+        </div>
+      </div>
+      <div class="composer-zone">
+        <div class="composer">
+          <div class="ctl-row">
+            <span class="seg"><button class="on">单次</button><button>Agent</button></span>
+            <select><option>DeepSeek V4.1 Flash</option></select>
+            <span class="spacer"></span>
+            <span class="kbd-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
+          <textarea class="c-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <div class="c-bar"><span class="c-hint"></span><button class="send">➤</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="screen-label">C · 手机端 390 —— 窄栏 + 两行头部 + 同一套卡片</div>
+<div class="m-shell stage">
+  <span class="note dark" style="right:14px;top:300px;z-index:50;">② 刻度条 ≥7 轮出现，窄区自动隐藏</span>
+  <div class="m-body">
+    <header class="m-topbar">
+      <button class="m-burger" onclick="document.getElementById('md').classList.add('open');document.getElementById('mm').classList.add('open')">☰</button>
+      <span class="chat-title" style="font-size:15px;font-weight:600;">11 月家庭账本复盘</span>
+      <span style="margin-left:auto" class="head-ic">⌕</span>
+    </header>
+
+    <div class="m-drawer-mask" id="mm" onclick="document.getElementById('md').classList.remove('open');this.classList.remove('open')"></div>
+    <aside class="m-drawer" id="md">
+      <div class="d-brand"><span class="logo">☕</span><span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span></div>
+      <div class="d-gt">首页</div><div class="d-item"><span class="ic">⌂</span>工作台</div>
+      <div class="d-gt">应用</div>
+      <div class="d-item on"><span class="ic">💬</span>对话</div>
+      <div class="d-item"><span class="ic">▤</span>记账</div>
+      <div class="d-item"><span class="ic">📖</span>论文</div>
+      <div class="d-gt">管理</div>
+      <div class="d-item"><span class="ic">☺</span>我的</div>
+      <div class="d-item"><span class="ic">⚙</span>管理设置</div>
+      <div class="d-foot"><span class="ava">主</span><span><b style="color:#fff;font-size:13px;display:block">主人</b><span style="font-size:11px;color:var(--sb-dim)">管理员</span></span></div>
+    </aside>
+
+    <section class="m-chat">
+      <div class="flow-wrap"><div class="flow">
+        <div class="msg m-user"><div class="b">解释一下什么是向量数据库</div></div>
+        <div class="msg m-ai">
+          <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 12.8s</span></div>
+          <div class="body"><p>向量数据库按「意思接近」检索，不按「精确匹配」。论文库就是 PG + pgvector 方案。</p></div>
+          <div class="acts" style="opacity:1"><button>⧉</button><button>↻</button></div>
+        </div>
+        <div class="msg m-user"><div class="b">把这个月的账汇总一下</div></div>
+        <div class="msg m-ai">
+          <div class="meta"><span class="model">DeepSeek V4.1 Flash</span><span class="done">已完成 · 8.1s</span></div>
+          <div class="body"><p>11 月上半月共支出 1,847.50 元，餐饮占 42% 最多。</p></div>
+          <div class="acts" style="opacity:1"><button>⧉</button><button>↻</button></div>
+        </div>
+      </div></div>
+      <div class="composer-zone">
+        <div class="composer">
+          <div class="ctl-row">
+            <span class="seg"><button class="on">单次</button><button>Agent</button></span>
+            <select><option>DeepSeek V4.1 Flash</option></select>
+          </div>
+          <textarea class="c-input" rows="1" placeholder="输入消息…"></textarea>
+          <div class="c-bar"><span class="c-hint"></span><button class="send">➤</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+function tick(el){
+  document.querySelectorAll('.ticknav .tk').forEach(t=>t.classList.remove('cur'));
+  el.classList.add('cur');
+}
+function spRender(q){
+  const box=document.getElementById('spRes');
+  const all=['帮我总结今天的待办','解释一下什么是向量数据库','把这个月的账汇总一下，按分类','餐饮怎么这么高？','写一封简短的会议邀请邮件','顺便把 18 号下午提醒我'];
+  const hits=all.filter(t=>!q||t.includes(q));
+  box.innerHTML=hits.length?hits.map(t=>`<div class="ri">${q?t.replace(q,'<mark>'+q+'</mark>'):t}</div>`).join(''):'<div class="none">没有匹配的消息</div>';
+}
+spRender('向量');
+</script>
+</body>
+</html>

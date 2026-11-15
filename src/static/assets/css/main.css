@@ -214,25 +214,60 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
 .side-foot .who b { color: #fff; font-size: 13px; font-weight: 600; display: block; }
 .side-foot .who span { font-size: 11px; color: var(--ink-on-dark-dim); }
 
-/* 窄屏：icon-only 常驻窄栏（§20 Q19，学 RAGFlow app-sidebar/nav-item.tsx；
-   取代原抽屉拍板，无汉堡菜单、无遮罩）。触控目标 44px。 */
+/* 窄屏（2026-11-15 二次拍板）：无侧栏——顶栏左上角汉堡键开应用抽屉（学 WorkBuddy 左侧竖栏），
+   Q19「icon-only 常驻窄栏」作废。这是导航抽屉，与「功能面板不做抽屉」不冲突。 */
+.nav-burger { display: none; }
+.nav-mask {
+  position: fixed; inset: 0; z-index: 45; background: var(--mask);
+  opacity: 0; pointer-events: none; transition: opacity .22s var(--ease);
+}
+.nav-mask.open { opacity: 1; pointer-events: auto; }
+.nav-drawer {
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 46;
+  width: 280px; background: var(--graphite); color: var(--ink-on-dark);
+  display: flex; flex-direction: column; padding-top: 0;
+  transform: translateX(-100%); transition: transform .24s var(--ease);
+  overflow-y: auto;
+}
+.nav-drawer.open { transform: translateX(0); }
+.nav-drawer-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 18px 11px; border-bottom: 1px solid var(--graphite-line); margin-bottom: 10px;
+}
+.nav-drawer-brand .t { color: #fff; font-size: 15px; font-weight: 700; line-height: 1.2; }
+.nav-drawer-brand .s { font-size: 10.5px; color: var(--ink-on-dark-dim); margin-top: 2px; }
+.nav-drawer .d-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 14px; margin: 1px 10px; border-radius: 10px; font-size: 14.5px;
+  color: var(--ink-on-dark); transition: background .16s var(--ease), color .16s var(--ease);
+}
+.nav-drawer .d-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-drawer .d-item:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+.nav-drawer .d-item.on {
+  background: linear-gradient(90deg, rgba(217, 45, 32, .20), rgba(217, 45, 32, .04));
+  color: #fff; font-weight: 600;
+}
+.nav-drawer-foot {
+  margin-top: auto; padding: 14px 16px;
+  border-top: 1px solid var(--graphite-line);
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-drawer-foot .avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  background: linear-gradient(135deg, #e5484d, var(--brand-strong)); color: #fff; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-drawer-foot .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.nav-drawer-foot .who { flex: 1; min-width: 0; }
+.nav-drawer-foot .who b { color: #fff; font-size: 13px; font-weight: 600; display: block; }
+.nav-drawer-foot .who span { font-size: 11px; color: var(--ink-on-dark-dim); }
+
 @media (max-width: 900px) {
-  .app-shell { grid-template-columns: 56px minmax(0, 1fr); }
-  .side-nav { padding: 0; }
-  /* 移动端同样对齐 56px：10+34(logo点)+11+1 = 56 */
-  .side-brand { justify-content: center; padding: 10px 0 11px; }
-  .side-brand > span:last-child { display: none; } /* 只留 logo 点 */
-  .side-gt { display: none; }                      /* 分组标题收起 */
-  .side-group { padding: 4px 6px; }
-  .side-item {
-    width: 44px; height: 44px; margin: 2px auto; padding: 0;
-    justify-content: center; border-radius: 11px;
-  }
-  .side-item span { display: none; }               /* 只留图标 */
-  .side-item svg { width: 19px; height: 19px; }
-  .side-item.active::before { left: -6px; top: 10px; bottom: 10px; }
-  .side-foot { justify-content: center; padding: 10px 0; }
-  .side-foot .who { display: none; }               /* 只留头像 */
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .side-nav { display: none; }                 /* 窄栏整体作废 */
+  .nav-burger { display: flex; }               /* 顶栏左上角功能键 */
+  .chat-sidebar { left: 0; width: min(300px, 92vw); }  /* 会话抽屉不再让位窄栏 */
+  .chat-backdrop { inset: 56px 0 0 0; }
 }
 
 /* ---------- 顶栏（白底毛玻璃，滚动时固定在内容区顶部） ---------- */
@@ -719,6 +754,96 @@ textarea.text-input { line-height: 1.6; }
 .composer-send.stop { background: var(--ink); box-shadow: var(--shadow-btn); }
 .stop-square { width: 12px; height: 12px; background: #fff; border-radius: 2px; }
 
+/* ---------- 对话界面改版（2026-11-15 拍板：学 WorkBuddy 任务对话，红白灰落地） ---------- */
+/* 消息流 + 提问导航刻度条 横向布局 */
+.chat-flow-wrap { flex: 1; display: flex; min-height: 0; }
+.chat-flow-wrap .chat-msgs { flex: 1; min-width: 0; }
+/* AI 消息头部：模型名 + 「已完成 · Xs」耗时标注 */
+.msg-ai-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--ink-3); }
+.msg-ai-meta .m-model { font-weight: 600; color: var(--ink-2); }
+.msg-ai-meta .m-done { display: inline-flex; align-items: center; gap: 5px; }
+.msg-ai-meta .m-done::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+/* 提问导航刻度条：每条=一次用户提问；≥7 条才显示；hover 看问题，点击定位 */
+.chat-ticks {
+  width: 46px; flex-shrink: 0; display: none; flex-direction: column; align-items: center;
+  padding: 24px 0; gap: 11px;
+}
+.chat-ticks.show { display: flex; }
+.chat-ticks .tk {
+  width: 16px; height: 3px; border-radius: 2px; background: #D8DAE0; cursor: pointer;
+  position: relative; transition: background .14s var(--ease), width .14s var(--ease), height .14s var(--ease);
+}
+[data-theme="dark"] .chat-ticks .tk { background: #3A3D44; }
+.chat-ticks .tk.cur { width: 24px; height: 4px; background: var(--brand); }
+.chat-ticks .tk:hover { background: var(--ink-3); }
+.chat-ticks .tk.cur:hover { background: var(--brand); }
+.chat-ticks .tk .tk-tip {
+  position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  background: var(--toast-bg); color: #fff; font-size: 12px; padding: 6px 10px; border-radius: 8px;
+  white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; pointer-events: none; transition: opacity .14s var(--ease); box-shadow: var(--shadow-pop); z-index: 5;
+}
+.chat-ticks .tk:hover .tk-tip { opacity: 1; }
+/* 对话内搜索浮层（头部 ⌕ 弹出） */
+.chat-search-pop {
+  position: absolute; top: 60px; right: 14px; width: min(330px, calc(100vw - 28px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow-pop); padding: 10px; z-index: 35;
+  animation: menu-pop .16s var(--ease);
+}
+.chat-search-pop input {
+  width: 100%; border: 1px solid var(--line-input); border-radius: 9px;
+  padding: 8px 12px; font-size: 13.5px; font-family: inherit; outline: none; background: var(--surface); color: var(--ink);
+}
+.chat-search-pop input:focus { border-color: var(--ink); box-shadow: var(--focus-ring); }
+.chat-search-pop .csr { margin-top: 8px; max-height: 240px; overflow-y: auto; }
+.chat-search-pop .csr .ri {
+  font-size: 13px; padding: 7px 9px; border-radius: 7px; cursor: pointer; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-search-pop .csr .ri:hover { background: var(--bg-soft); color: var(--ink); }
+.chat-search-pop .csr .ri mark { background: var(--brand-soft); color: var(--brand-ink); border-radius: 3px; padding: 0 2px; }
+.chat-search-pop .csr .none { font-size: 12.5px; color: var(--ink-3); padding: 10px; text-align: center; }
+/* 输入区常驻控件行（模型选择从头部收进来；单档后只剩模型+快捷键提示） */
+.composer-ctl { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.composer-ctl .model-select { max-width: 240px; min-height: 32px; font-size: 13px; padding: 5px 10px; }
+.composer-ctl .spacer { flex: 1; }
+.composer-ctl .kbd-hint { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+/* 用户消息 hover「编辑重发」（学 WorkBuddy 消息可编辑） */
+.msg-user { position: relative; }
+.msg-user-edit {
+  position: absolute; right: calc(22% + 8px); top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--ink-3); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 7px; padding: 4px 9px; opacity: 0; transition: opacity .14s var(--ease), color .14s var(--ease), border-color .14s var(--ease);
+  white-space: nowrap;
+}
+@media (max-width: 900px) { .msg-user-edit { right: calc(8% + 8px); } }
+.msg-user:hover .msg-user-edit, .msg-user:focus-within .msg-user-edit { opacity: .9; }
+.msg-user-edit:hover { color: var(--ink); border-color: var(--line-strong); }
+@media (hover: none) { .msg-user-edit { display: none; } } /* 触屏：气泡长按编辑先不做，避免误触 */
+/* 长对话窗口化（第一批性能项：全量重建→视窗渲染，顶部「加载更早」） */
+.msg-more {
+  display: flex; justify-content: center; margin: 0 auto 14px; max-width: 880px;
+}
+.msg-more button {
+  font-size: 12.5px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 6px 14px;
+}
+.msg-more button:hover { color: var(--ink); border-color: var(--line-strong); background: var(--bg-soft); }
+/* Markdown 表格/引用块/分割线样式（第一批：补全块级元素） */
+.msg-ai-body table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 10px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.msg-ai-body th { background: var(--bg-soft); text-align: left; padding: 9px 12px; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.msg-ai-body td { padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.msg-ai-body tbody tr:last-child td { border-bottom: none; }
+.msg-ai-body blockquote { border-left: 3px solid var(--brand); margin: 10px 0; padding: 8px 0 8px 12px; color: var(--ink-2); background: var(--bg-soft); border-radius: 0 8px 8px 0; }
+.msg-ai-body blockquote p { margin: 0; }
+.msg-ai-body hr { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
+.msg-ai-body h1, .msg-ai-body h2, .msg-ai-body h3, .msg-ai-body h4 { margin: 14px 0 8px; line-height: 1.4; }
+.msg-ai-body h1 { font-size: 19px; } .msg-ai-body h2 { font-size: 17px; } .msg-ai-body h3 { font-size: 15.5px; }
+.msg-ai-body ul, .msg-ai-body ol { margin: 0 0 10px; padding-left: 22px; }
+.msg-ai-body li { margin: 3px 0; }
+.msg-ai-body img { max-width: 100%; border-radius: 10px; }
+
 .chat-toast {
   position: absolute; left: 50%; bottom: 110px; transform: translateX(-50%) translateY(8px);
   background: var(--toast-bg); color: #fff; font-size: 13px;
@@ -728,19 +853,18 @@ textarea.text-input { line-height: 1.6; }
 }
 .chat-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-/* 移动端：会话栏保留抽屉，入口收顶栏 chat-menu（§20 C8 拍板；
-   会话栏是内容级导航，豁免 Q19 主导航 icon-only 规则）。
-   断点与 Q19 主导航一致取 900px，left/inset 让出 56px 窄栏 */
+/* 移动端：会话栏保留抽屉，入口收对话头部 chat-menu（§20 C8 拍板；会话栏是内容级导航）。
+   2026-11-15 二次拍板：主导航窄栏作废，会话抽屉不再让位 56px——left/inset 归零、宽度 92vw */
 @media (max-width: 900px) {
   .chat-menu { display: flex; }
   .chat-sidebar {
-    position: fixed; top: 56px; left: 56px; bottom: 0; z-index: 30;
-    transform: translateX(calc(-100% - 56px)); transition: transform .24s var(--ease);
-    box-shadow: var(--shadow-pop); width: min(300px, calc(100vw - 56px));
+    position: fixed; top: 56px; left: 0; bottom: 0; z-index: 30;
+    transform: translateX(-100%); transition: transform .24s var(--ease);
+    box-shadow: var(--shadow-pop); width: min(300px, 92vw);
   }
   .chat-sidebar.open { transform: translateX(0); }
   .chat-backdrop {
-    position: fixed; inset: 56px 0 0 56px; z-index: 29;
+    position: fixed; inset: 56px 0 0 0; z-index: 29;
     background: var(--mask); opacity: 0; pointer-events: none; transition: opacity .24s var(--ease);
   }
   .chat-backdrop.show { opacity: 1; pointer-events: auto; }
@@ -752,21 +876,21 @@ textarea.text-input { line-height: 1.6; }
   .conv-item { min-height: 44px; }
   .conv-op { width: 32px; height: 32px; }
   .msg-act { width: 36px; height: 36px; }
+  /* 窄区隐藏提问导航刻度条（学 WorkBuddy：对话区太窄自动隐藏） */
+  .chat-ticks { display: none; }
 }
 .chat-backdrop { display: none; }
 @media (max-width: 900px) { .chat-backdrop { display: block; } }
 
-/* 手机：对话头部两行（标题一行，模式+模型一行），输入区贴边 */
+/* 手机：对话头部一行（菜单+标题+搜索）；模型选择在输入区控件行 */
 @media (max-width: 640px) {
-  .chat-head { flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
-  .chat-menu { order: -1; }
-  .chat-title { flex: 1 1 calc(100% - 56px); }
-  .agent-toggle { order: 1; margin-left: 0; }
-  /* min-width:0 让 select 收缩到剩余宽度，与切换钮同处第二行（否则固有宽度把它挤到第三行） */
-  .model-select { order: 2; flex: 1; min-width: 0; max-width: none; min-height: 40px; }
+  .chat-head { padding: 10px 12px; }
+  .chat-title { font-size: 14px; }
+  .chat-search-pop { top: 56px; right: 10px; }
   .chat-msgs { padding: 16px 12px; }
   .chat-composer { width: calc(100% - 24px); margin-bottom: 12px; padding: 12px 14px 8px; }
   .msg { margin-bottom: 16px; }
+  .composer-ctl .kbd-hint { display: none; }
   .suggest-chip { padding: 10px 16px; }
 }
 

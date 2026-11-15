@@ -57,6 +57,7 @@ async function runAgent({ ctx, conversation, userText, body }) {
   const trace = []; // 工具轨迹（渲染工具卡片用）
   let steps = 0;
   let finalText = "";
+  const t0 = Date.now(); // 耗时标注（对话界面改版：AI 消息「已完成 Xs」）
 
   const agent = new Agent({
     initialState: {
@@ -113,7 +114,7 @@ async function runAgent({ ctx, conversation, userText, body }) {
   });
 
   await agent.prompt(userText);
-  return { finalText, trace };
+  return { finalText, trace, latencyMs: Date.now() - t0 };
 }
 
 export function agentRoutes() {
@@ -153,15 +154,18 @@ export function agentRoutes() {
       chatConv.touch(userId, c.id);
 
       const body = sseBody();
+      const t0 = Date.now();
       (async () => {
         try {
           const { finalText, trace } = await runAgent({ ctx, conversation: c, userText: content, body });
-          // 结构化保存：前端渲染回答 + 持久工具卡片（kind=agent）
+          // 结构化保存：前端渲染回答 + 持久工具卡片（kind=agent）；latency_ms 供「已完成 Xs」标注
           chatMsg.saveAssistant(c.id, {
             reqId: `agent-${reqId}`,
             content: JSON.stringify({ answer: finalText || "（没有输出）", trace }),
             kind: "agent",
           });
+          const saved = chatMsg.history(c.id).find((m) => m.req_id === `agent-${reqId}`);
+          if (saved) chatMsg.markPartial(saved.id, saved.content, "ok", Date.now() - t0);
           body.push(`data: ${JSON.stringify({ done: true })}\n\n`);
         } catch (error) {
           console.error("[agent] 运行失败:", error.message);

@@ -43,6 +43,7 @@ for (const ddl of [
   "ALTER TABLE conversations ADD COLUMN app TEXT NOT NULL DEFAULT 'chat'",
   "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
   "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'", // chat=单次调用 agent=pi 接管（第 5 批）
+  "ALTER TABLE messages ADD COLUMN latency_ms INTEGER", // 对话界面改版：AI 消息「已完成 Xs」耗时标注（2026-11-15）
 ]) {
   try { chatDb.exec(ddl); } catch { /* 列已存在 */ }
 }
@@ -57,6 +58,7 @@ const rowToConv = (r) => ({
 const rowToMsg = (r) => ({
   id: r.id, conversation_id: r.conversation_id, req_id: r.req_id,
   role: r.role, content: r.content, kind: r.kind, status: r.status, created_at: r.created_at,
+  latency_ms: r.latency_ms ?? null,
 });
 
 export const conv = {
@@ -140,8 +142,9 @@ export const msg = {
     return rowToMsg(chatDb.prepare("SELECT * FROM messages WHERE id = ?").get(id));
   },
   /** 失败半成品/停止的内容落库并标记 */
-  markPartial(messageId, content, status) {
-    chatDb.prepare("UPDATE messages SET content = ?, status = ? WHERE id = ?").run(content, status, messageId);
+  markPartial(messageId, content, status, latencyMs = null) {
+    chatDb.prepare("UPDATE messages SET content = ?, status = ?, latency_ms = ? WHERE id = ?")
+      .run(content, status, latencyMs, messageId);
   },
   /** 重新生成/重试：用新回答替换旧的失败半成品（白皮书：不做版本，直接替换） */
   replaceAssistant(oldMessageId, { reqId, content, status = "ok" }) {

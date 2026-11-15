@@ -1,7 +1,12 @@
-// 流光咖啡馆 · 对话页（第 1 批）
-// 参考 DeepSeek 网页版：左侧会话栏（搜索/新建/重命名/删除）+ 顶部模型选择 +
-// 中央消息流（Markdown + 代码高亮）+ 底部两段式输入框（Enter 发送 / Shift+Enter 换行）
-// 白皮书 §08：保存确认后再生成；请求标识幂等；三态失败全手动重试；草稿按账号+会话存本机
+// 流光咖啡馆 · 对话页（2026-11-15 改版：学 WorkBuddy 任务对话，红白灰落地）
+// ① AI 消息「模型 · 已完成 Xs」耗时标注（latency_ms 来自后端调用计时）
+// ② 右侧提问导航刻度条：每条=一次用户提问，hover 看问题/点击定位，≥7 条显示、窄区隐藏
+// ③ 对话内搜索：头部 ⌕ 弹出，命中高亮点击跳转
+// ④ 模型选择收进输入区常驻控件行（单档拍板：单次/Agent 合并——全部走 pi 只读工具循环，
+//    简单问题模型不调工具≈单次成本；界面不再有模式开关）
+// ⑤ 用户消息 hover「编辑重发」；⑥ Markdown 表格/引用块样式（main.css）
+// ⑦ 长对话视窗渲染（默认最近 80 条，顶部「加载更早」）
+// 保留：懒创建(A1)/搜索统一(A2)/B3 操作条/B4 失败回填/草稿/B7 空态 chips/C8 会话抽屉
 "use strict";
 
 (() => {
@@ -30,12 +35,13 @@
     realLlm: true,
     hubId: null,       // 总对话 id（恒 agent）
     currentId: null,   // 当前会话 id；null = 未选中
-    current: null,     // 当前会话对象（含 mode/app；hub 为合成对象）
+    current: null,     // 当前会话对象（含 model/app；hub 为合成对象）
     messages: [],
     generating: false,
     abort: null,
-    sidebarOpen: false,  // 移动端抽屉（入口在顶栏 chat-menu，白皮书 §20 C8 拍板保留）
+    sidebarOpen: false,  // 移动端抽屉（入口在对话头部 chat-menu，白皮书 §20 C8 拍板保留）
     query: "",           // 会话搜索词（过滤与主列表共用同一渲染函数）
+    winSize: 80,         // 长对话视窗：默认渲染最近 80 条（性能项）
   };
 
   /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
@@ -54,6 +60,26 @@
   let el = null; // 视图容器
 
   /* ---------- 渲染 ---------- */
+  function modelNameOf(ref) {
+    const m = S.models.find((x) => x.id === (ref || currentModel()));
+    return m ? m.name : (ref || "默认模型");
+  }
+
+  /* 「已完成 · Xs」耗时标注（latency_ms 后端计时入库；无值/未成功则不显示） */
+  function metaDone(m) {
+    if (m.latency_ms == null || m.status !== "ok") return "";
+    return `<span class="m-done">已完成 · ${(m.latency_ms / 1000).toFixed(1)}s</span>`;
+  }
+
+  /* B3：操作条 hover 显形图标（学 RAGFlow）；失败重试是恢复动作，常显不藏 */
+  function msgActions(m, isLastAssistant) {
+    return `<div class="msg-actions">
+      <button class="msg-act" data-copy="${m.id}" title="复制" aria-label="复制">${LC.IC.copy}</button>
+      ${m.status === "failed" ? `<button class="msg-act msg-act-keep" data-retry="${m.id}" title="重试" aria-label="重试">${LC.IC.refresh}</button>` : ""}
+      ${isLastAssistant && m.status === "ok" && !S.generating ? `<button class="msg-act" data-regen="${m.id}" title="重新生成" aria-label="重新生成">${LC.IC.refresh}</button>` : ""}
+    </div>`;
+  }
+
   function renderMessages() {
     const box = el.querySelector(".chat-msgs");
     if (!box) return;
@@ -66,13 +92,24 @@
           ${SUGGESTIONS.map((s) => `<button class="suggest-chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}
         </div>
       </div>`;
+      renderTicks();
       return;
     }
-    const rows = S.messages.map((m, i) => {
+    const total = S.messages.length;
+    const start = Math.max(0, total - S.winSize); // 视窗：只渲染最近 winSize 条
+    const rows = [];
+    if (start > 0) {
+      rows.push(`<div class="msg-more"><button data-more-msgs>加载更早的 ${start} 条消息</button></div>`);
+    }
+    S.messages.slice(start).forEach((m, i) => {
+      const idx = start + i;
       if (m.role === "user") {
-        return `<div class="msg msg-user"><div class="msg-user-bubble">${esc(m.content)}</div></div>`;
+        rows.push(`<div class="msg msg-user" data-idx="${idx}"><div class="msg-user-bubble">${esc(m.content)}</div>
+          <button class="msg-user-edit" data-edit-user="${idx}" title="编辑重发">✎ 编辑</button></div>`);
+        return;
       }
-      const isLastAssistant = m.role === "assistant" && i === S.messages.map((x) => x.role).lastIndexOf("assistant");
+      const slice = S.messages.slice(start);
+      const isLastAssistant = m.role === "assistant" && i === slice.map((x) => x.role).lastIndexOf("assistant");
       // agent 消息：结构化内容（回答 + 工具轨迹）渲染为持久工具卡片
       if (m.kind === "agent" && m.id !== "pending") {
         let parsed = null;
@@ -84,32 +121,94 @@
               <span class="tool-args">${esc(JSON.stringify(x.args ?? {})).slice(0, 140)}</span>
               <span class="tool-status">${x.result === undefined ? "执行中…" : x.result.startsWith("失败") ? "失败" : "完成"}</span>
             </div>`).join("");
-          return `<div class="msg msg-ai" data-msg="${m.id}">
+          rows.push(`<div class="msg msg-ai" data-msg="${m.id}" data-idx="${idx}">
+            <div class="msg-ai-meta"><span class="m-model">${esc(modelNameOf())}</span>${metaDone(m)}</div>
             <div class="tool-trace">${traceHtml}</div>
             <div class="msg-ai-body" data-render="${m.id}">${renderMd(parsed.answer ?? "")}</div>
-          </div>`;
+            ${msgActions(m, isLastAssistant)}
+          </div>`);
+          return;
         }
       }
       const statusTag = m.status === "stopped" ? `<span class="msg-status">已停止</span>`
         : m.status === "failed" ? `<span class="msg-status msg-status-fail">生成失败</span>` : "";
-      // B3：操作条 hover 显形图标（学 RAGFlow）；失败重试是恢复动作，常显不藏
-      const actions = `<div class="msg-actions">
-        <button class="msg-act" data-copy="${m.id}" title="复制" aria-label="复制">${LC.IC.copy}</button>
-        ${m.status === "failed" ? `<button class="msg-act msg-act-keep" data-retry="${m.id}" title="重试" aria-label="重试">${LC.IC.refresh}</button>` : ""}
-        ${isLastAssistant && m.status === "ok" && !S.generating ? `<button class="msg-act" data-regen="${m.id}" title="重新生成" aria-label="重新生成">${LC.IC.refresh}</button>` : ""}
-      </div>`;
-      return `<div class="msg msg-ai" data-msg="${m.id}">
+      rows.push(`<div class="msg msg-ai" data-msg="${m.id}" data-idx="${idx}">
+        <div class="msg-ai-meta"><span class="m-model">${esc(modelNameOf())}</span>${metaDone(m)}</div>
         <div class="msg-ai-body" data-render="${m.id}">${renderMd(m.content)}</div>
-        ${statusTag}${actions}
-      </div>`;
-    }).join("");
-    box.innerHTML = rows || `<div class="chat-empty">
+        ${statusTag}${msgActions(m, isLastAssistant)}
+      </div>`);
+    });
+    box.innerHTML = rows.join("") || `<div class="chat-empty">
       <div class="chat-empty-sub">这个会话还没有消息，试试：</div>
       <div class="chat-suggest">
         ${SUGGESTIONS.map((s) => `<button class="suggest-chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join("")}
       </div>
     </div>`;
     box.scrollTop = box.scrollHeight;
+    renderTicks();
+  }
+
+  /* ② 提问导航刻度条：每条=一次用户提问；≥7 条显示，窄区由 CSS 隐藏 */
+  function renderTicks() {
+    const nav = el.querySelector(".chat-ticks");
+    if (!nav) return;
+    const box = el.querySelector(".chat-msgs");
+    const users = [...box.querySelectorAll(".msg-user")];
+    if (users.length < 7) { nav.classList.remove("show"); nav.innerHTML = ""; return; }
+    nav.classList.add("show");
+    nav.innerHTML = users.map((u) => {
+      const idx = u.dataset.idx;
+      const text = u.querySelector(".msg-user-bubble")?.textContent ?? "";
+      return `<span class="tk" data-tick="${idx}"><span class="tk-tip">${esc(text.slice(0, 40))}</span></span>`;
+    }).join("");
+    syncCurTick();
+  }
+
+  function syncCurTick() {
+    const nav = el.querySelector(".chat-ticks");
+    const box = el.querySelector(".chat-msgs");
+    if (!nav || !nav.classList.contains("show") || !box) return;
+    const boxTop = box.getBoundingClientRect().top;
+    let cur = null;
+    for (const u of box.querySelectorAll(".msg-user")) {
+      if (u.getBoundingClientRect().top <= boxTop + 90) cur = u.dataset.idx;
+      else break;
+    }
+    nav.querySelectorAll(".tk").forEach((t) => t.classList.toggle("cur", t.dataset.tick === cur));
+  }
+
+  function scrollToMsgIdx(idx) {
+    // 命中消息在视窗外时先扩窗再滚动
+    if (idx < S.messages.length - S.winSize) {
+      S.winSize = S.messages.length - idx + 10;
+      renderMessages();
+      highlightAll();
+    }
+    requestAnimationFrame(() => {
+      el.querySelector(`.msg[data-idx="${idx}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  /* ③ 对话内搜索 */
+  function renderSearchResults(q) {
+    const res = el.querySelector(".csr");
+    if (!res) return;
+    const query = q.trim();
+    if (!query) { res.innerHTML = `<div class="none">输入关键词搜索本对话</div>`; return; }
+    const eQuery = esc(query);
+    const hits = [];
+    S.messages.forEach((m, idx) => {
+      const pos = m.content.indexOf(query);
+      if (pos >= 0 && hits.length < 20) {
+        const from = Math.max(0, pos - 14);
+        const to = pos + query.length + 20;
+        const snippet = (from > 0 ? "…" : "") + m.content.slice(from, to) + (to < m.content.length ? "…" : "");
+        hits.push({ idx, html: esc(snippet).replace(eQuery, `<mark>${eQuery}</mark>`) });
+      }
+    });
+    res.innerHTML = hits.length
+      ? hits.map((h) => `<div class="ri" data-goto-msg="${h.idx}">${h.html}</div>`).join("")
+      : `<div class="none">没有匹配的消息</div>`;
   }
 
   function renderMd(text) {
@@ -133,7 +232,7 @@
     });
   }
 
-  /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复：不再两处重复、过滤不丢 agent 标签） */
+  /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复） */
   function convItemHtml(c, hubActive) {
     return `
       <div class="conv-item ${c.id === S.currentId && !hubActive ? "active" : ""}" data-conv="${c.id}">
@@ -171,17 +270,10 @@
     }
     const conv = S.current;
     const titleEl = el.querySelector(".chat-title");
-    if (titleEl) titleEl.textContent = conv?.app === "hub" ? "总对话（只读工具，跨应用查询）" : (conv?.title ?? "");
+    // 空标题占位（第一批拍板）：新会话/未选中时头部显示「新会话」
+    if (titleEl) titleEl.textContent = conv?.app === "hub" ? "总对话（只读工具，跨应用查询）" : (conv?.title || "新会话");
     const banner = el.querySelector(".chat-banner");
     if (banner) banner.hidden = S.realLlm;
-    // agent 开关（总对话恒 agent，不显示开关）
-    const toggle = el.querySelector(".agent-toggle");
-    if (toggle) {
-      const isHub = conv?.app === "hub";
-      toggle.style.display = isHub ? "none" : "";
-      toggle.querySelectorAll(".vt-btn").forEach((b) =>
-        b.classList.toggle("on", (conv?.mode ?? "chat") === b.dataset.mode));
-    }
   }
 
   const currentModel = () =>
@@ -237,13 +329,14 @@
     S.sidebarOpen = false;
     location.hash = "#/chat";
     api(`/api/chat/conversations/${S.hubId}/messages`)
-      .then((d) => { S.messages = d.messages; renderAll(); })
+      .then((d) => { S.messages = d.messages; S.winSize = 80; renderAll(); })
       .catch(() => { S.messages = []; renderAll(); });
   }
 
   async function loadMessages(convId) {
     const data = await api(`/api/chat/conversations/${convId}/messages`);
     S.messages = data.messages;
+    S.winSize = 80; // 换会话重置视窗
     S.current = S.conversations.find((c) => c.id === convId) ?? S.current;
     renderMessages();
     highlightAll();
@@ -257,17 +350,15 @@
     S.realLlm = data.real;
   }
 
-  /* ---------- 发送与生成（白皮书时序图） ---------- */
+  /* ---------- 发送（单档拍板：全部走 pi 只读工具循环；简单问题模型不调工具≈单次成本） ---------- */
   async function send() {
     const ta = el.querySelector(".composer-input");
     const text = ta.value.trim();
     if (!text || S.generating) return;
     const wasNew = S.current?.id === NEW_ID; // 占位草稿键迁移用（A1 配套）
     if (!S.current || S.current.id === NEW_ID) {
-      // 懒创建：占位阶段选的模型/模式随创建落库（A1 配套）
-      const payload = S.current?.id === NEW_ID
-        ? { model: S.current.model ?? null, mode: S.current.mode ?? "chat" }
-        : {};
+      // 懒创建：占位阶段选的模型随创建落库（A1 配套）
+      const payload = S.current?.id === NEW_ID ? { model: S.current.model ?? null } : {};
       const { conversation } = await api("/api/chat/conversations", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
@@ -287,9 +378,8 @@
     if (draft.text !== text || !draft.reqId) draft = { text, reqId: crypto.randomUUID() };
     writeDraft(convId, draft);
 
-    let saved;
     try {
-      saved = await api("/api/chat/messages", {
+      await api("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversation_id: convId, content: text, req_id: draft.reqId }),
@@ -305,13 +395,10 @@
     ta.value = "";
     draft = null;
     await loadConversations(); // 标题可能自动生成
-    S.messages.push(saved.message);
-    renderMessages();
-    if (S.current?.mode === "agent" || S.current?.app === "hub") await agentSend(text);
-    else await generate();
+    await agentSend(text);
   }
 
-  /* ---------- agent 模式（pi 接管：文本增量 + 工具卡片，SSE） ---------- */
+  /* ---------- agent 流程（pi 接管：文本增量 + 工具卡片，SSE）——单档后唯一发送路径 ---------- */
   async function agentSend(userText) {
     if (!S.current?.id || S.generating) return;
     S.generating = true;
@@ -327,7 +414,7 @@
     const answerEl = msgEl?.querySelector('[data-render="pending"]');
     let answerText = "";
     const flush = throttle(() => {
-      // 流式光标：回答末尾追加闪烁 caret，finishGen 后由 loadMessages 重渲染自然消失
+      // 流式光标：回答末尾追加闪烁 caret，结束后由 loadMessages 重渲染自然消失
       if (answerEl) answerEl.innerHTML = (renderMd(answerText) || '<span class="msg-thinking">正在输入…</span>') + '<span class="stream-caret" aria-hidden="true"></span>';
       const box = el.querySelector(".chat-msgs");
       if (box) box.scrollTop = box.scrollHeight;
@@ -385,6 +472,8 @@
     await loadConversations();
   }
 
+  /* 重新生成 / 重试：走单次调用路径（/generate，带 regenerate/retry_message_id）——
+     回答类消息的快速再来一次；失败 agent 消息的重试也走这里 */
   async function generate(opts = {}) {
     if (!S.currentId || S.generating) return;
     S.generating = true;
@@ -490,27 +579,6 @@
   /* ---------- 事件 ---------- */
   function bind() {
     el.addEventListener("click", async (e) => {
-      const modeBtn = e.target.closest(".agent-toggle [data-mode]");
-      if (modeBtn && S.current && S.current.app !== "hub") {
-        const mode = modeBtn.dataset.mode;
-        // 新会话占位未落库：模式只记本地，创建时随首条消息带上
-        if (S.current.id !== NEW_ID) {
-          await api(`/api/chat/conversations/${S.current.id}/mode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) });
-        }
-        S.current.mode = mode;
-        renderHeader();
-        toast(mode === "agent" ? "已切 agent 模式：pi 接管，可调用只读工具" : "已切普通模式：单次调用");
-        return;
-      }
-      const convEl = e.target.closest("[data-conv]");
-      const newBtn = e.target.closest("[data-new]");
-      const sendBtn = e.target.closest(".composer-send");
-      const stopGen = S.generating && sendBtn;
-      const menuBtn = e.target.closest("[data-menu]");
-      const backdrop = e.target.classList.contains("chat-backdrop");
-
-      if (stopGen) { S.abort?.abort(); return; }
-      if (sendBtn) { await send(); return; }
       // 代码块复制（按钮在 pre 里，随消息重渲染重新注入，无需解绑）
       const copyCode = e.target.closest(".copy-code");
       if (copyCode) {
@@ -525,6 +593,44 @@
         }
         return;
       }
+
+      // ⑤ 用户消息「编辑重发」：填入输入框并聚焦（学 WorkBuddy 消息可编辑）
+      const editUser = e.target.closest("[data-edit-user]");
+      if (editUser) {
+        const m = S.messages[Number(editUser.dataset.editUser)];
+        const ta = el.querySelector(".composer-input");
+        if (m && ta) { ta.value = m.content; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+        return;
+      }
+
+      // ② 刻度条定位
+      const tickEl = e.target.closest("[data-tick]");
+      if (tickEl) { scrollToMsgIdx(Number(tickEl.dataset.tick)); return; }
+
+      // 「加载更早」扩窗
+      if (e.target.closest("[data-more-msgs]")) {
+        const firstIdx = el.querySelector(".chat-msgs .msg")?.dataset.idx;
+        S.winSize += 80;
+        renderMessages();
+        highlightAll();
+        if (firstIdx != null) {
+          requestAnimationFrame(() => {
+            el.querySelector(`.msg[data-idx="${firstIdx}"]`)?.scrollIntoView({ block: "start" });
+          });
+        }
+        return;
+      }
+
+      const convEl = e.target.closest("[data-conv]");
+      const newBtn = e.target.closest("[data-new]");
+      const sendBtn = e.target.closest(".composer-send");
+      const stopGen = S.generating && sendBtn;
+      const menuBtn = e.target.closest("[data-menu]");
+      const searchBtn = e.target.closest("[data-chat-search]");
+      const backdrop = e.target.classList.contains("chat-backdrop");
+
+      if (stopGen) { S.abort?.abort(); return; }
+      if (sendBtn) { await send(); return; }
       // B7：建议问题 chip → 填入输入框并聚焦（不直接发送，给用户改的机会）
       const suggest = e.target.closest("[data-suggest]");
       if (suggest) {
@@ -547,6 +653,20 @@
       if (menuBtn || backdrop) {
         S.sidebarOpen = backdrop ? false : !S.sidebarOpen;
         renderAll();
+        return;
+      }
+      // ③ 对话内搜索开关与跳转
+      if (searchBtn) {
+        const pop = el.querySelector(".chat-search-pop");
+        const willOpen = pop.hidden;
+        pop.hidden = !willOpen;
+        if (willOpen) { renderSearchResults(""); pop.querySelector("input")?.focus(); }
+        return;
+      }
+      const gotoMsg = e.target.closest("[data-goto-msg]");
+      if (gotoMsg) {
+        el.querySelector(".chat-search-pop").hidden = true;
+        scrollToMsgIdx(Number(gotoMsg.dataset.gotoMsg));
         return;
       }
       if (!convEl) {
@@ -606,12 +726,19 @@
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
         return;
       }
-      const search = e.target.closest(".conv-search");
-      if (search) {
-        S.query = search.value;
+      const search = e.target.closest(".chat-search-input");
+      if (search) renderSearchResults(search.value);
+      const q = e.target.closest(".conv-search");
+      if (q) {
+        S.query = q.value;
         renderSidebar(); // 与主列表同一渲染函数，agent 标签不丢
       }
     });
+
+    // ② 滚动同步刻度条当前位置（捕获阶段：chat-msgs 滚动不冒泡）
+    el.addEventListener("scroll", (e) => {
+      if (e.target.classList?.contains("chat-msgs")) syncCurTick();
+    }, true);
 
     el.addEventListener("keydown", (e) => {
       const ta = e.target.closest(".composer-input");
@@ -682,16 +809,26 @@
         <section class="chat-main">
           <div class="chat-head">
             <button class="icon-btn chat-menu" data-menu title="会话列表">${LC.IC.grid}</button>
-            <span class="chat-title"></span>
-            <div class="agent-toggle view-toggle" title="普通 = 单次调用；agent = pi 接管、自主多步、只读工具">
-              <button class="vt-btn on" data-mode="chat">单次</button>
-              <button class="vt-btn" data-mode="agent">Agent</button>
-            </div>
-            <select class="model-select" title="模型选择（按会话生效）"></select>
+            <span class="chat-title">新会话</span>
+            <button class="icon-btn" data-chat-search title="对话内搜索" aria-label="对话内搜索">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            </button>
           </div>
-          <div class="chat-banner" hidden>未配置 DEEPSEEK_API_KEY，当前为本地假模型——全链路可跑，回答不真实。</div>
-          <div class="chat-msgs"></div>
+          <div class="chat-search-pop" hidden>
+            <input class="chat-search-input" placeholder="搜索本对话消息…">
+            <div class="csr"><div class="none">输入关键词搜索本对话</div></div>
+          </div>
+          <div class="chat-banner" hidden>未配置模型渠道，当前为本地假模型——全链路可跑，回答不真实。到「模型 & API 管理」接入。</div>
+          <div class="chat-flow-wrap">
+            <div class="chat-msgs"></div>
+            <nav class="chat-ticks" aria-label="提问导航"></nav>
+          </div>
           <div class="chat-composer">
+            <div class="composer-ctl">
+              <select class="model-select" title="模型选择（按会话生效）"></select>
+              <span class="spacer"></span>
+              <span class="kbd-hint">Enter 发送 · Shift+Enter 换行</span>
+            </div>
             <textarea class="composer-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
             <div class="composer-bar">
               <span class="composer-hint"></span>
@@ -710,7 +847,6 @@
         // 占位会话未落库，不请求消息列表（A1 配套，防 404）
         if (S.currentId && S.currentId !== NEW_ID) await loadMessages(S.currentId);
         renderAll();
-        // 草稿恢复（含无会话时的新建会话草稿不需要）
         renderComposer();
       } catch (err) {
         el.innerHTML = `<div class="empty-hint">对话加载失败：${esc(err.message)}</div>`;

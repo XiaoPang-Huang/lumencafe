@@ -139,16 +139,13 @@ function avatarInner(fallback) {
 /* 批 3：当前角色是否可用某应用（/api/session 下发的授权列表） */
 const hasApp = (app) => state.apps.includes(app);
 
-/* 石墨灰侧栏（桌面常驻；窄屏 icon-only 常驻窄栏，§20 Q19） */
-function sideNav() {
+/* 石墨灰侧栏（仅桌面常驻；移动端 2026-11-15 二次拍板：无侧栏，左上角功能键开应用抽屉，Q19 窄栏作废） */
+let navDrawerOpen = false;
+
+function navItems(cls, activeCls) {
   const item = (r, name, href, icon) =>
-    `<a class="side-item ${state.route === r ? "active" : ""}" href="${href}" title="${name}" aria-label="${name}">${icon}<span>${name}</span></a>`;
+    `<a class="${cls} ${state.route === r ? activeCls : ""}" href="${href}" data-nav-go title="${name}">${icon}<span>${name}</span></a>`;
   return `
-  <aside class="side-nav" id="sideNav">
-    <div class="side-brand">
-      <span class="brand-dot">${IC.logo}</span>
-      <span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span>
-    </div>
     <div class="side-group">
       <div class="side-gt">首页</div>
       ${item("home", "工作台", "#/", IC.home)}
@@ -163,7 +160,17 @@ function sideNav() {
       <div class="side-gt">管理</div>
       ${item("me", "我的", "#/me", IC.user)}
       ${hasApp("admin") ? item("admin", "管理设置", "#/admin", IC.shield) : ""}
+    </div>`;
+}
+
+function sideNav() {
+  return `
+  <aside class="side-nav" id="sideNav">
+    <div class="side-brand">
+      <span class="brand-dot">${IC.logo}</span>
+      <span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span>
     </div>
+    ${navItems("side-item", "active")}
     <div class="side-foot">
       <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
       <span class="who"><b>${esc(whoAmI())}</b><span>${esc(roleLabel())}</span></span>
@@ -171,9 +178,33 @@ function sideNav() {
   </aside>`;
 }
 
+/* 移动端应用切换抽屉（石墨灰，学 WorkBuddy 左侧竖栏；导航抽屉不受「功能面板不做抽屉」约束） */
+function navDrawer() {
+  return `
+  <div class="nav-mask ${navDrawerOpen ? "open" : ""}" data-nav-close></div>
+  <aside class="nav-drawer ${navDrawerOpen ? "open" : ""}" aria-label="应用导航">
+    <div class="nav-drawer-brand">
+      <span class="brand-dot">${IC.logo}</span>
+      <span><div class="t">流光咖啡馆</div><div class="s">Lumen Cafe</div></span>
+    </div>
+    ${navItems("d-item", "on")}
+    <div class="nav-drawer-foot">
+      <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
+      <span class="who"><b>${esc(whoAmI())}</b><span>${esc(roleLabel())}</span></span>
+    </div>
+  </aside>`;
+}
+
+function setNavDrawer(open) {
+  navDrawerOpen = open;
+  document.querySelector(".nav-drawer")?.classList.toggle("open", open);
+  document.querySelector(".nav-mask")?.classList.toggle("open", open);
+}
+
 function topbar(routeName) {
   return `
   <header class="topbar">
+    <button class="icon-btn nav-burger" data-nav-open title="应用菜单" aria-label="应用菜单">${IC.grid}</button>
     <span class="page-title">${routeName}</span>
     <div class="topbar-side">
       ${statusDot()}
@@ -231,9 +262,9 @@ function setUserMenu(open) {
   }
 }
 
-/* 外壳 = 侧栏 + 主列（顶栏 + 内容） */
+/* 外壳 = 侧栏(桌面) + 主列（顶栏 + 内容） + 应用抽屉(移动端) */
 function shell(contentHtml) {
-  return `<div class="app-shell">${sideNav()}<div class="shell-col">${topbar(ROUTE_TITLES[state.route] ?? "")}${contentHtml}</div></div>`;
+  return `<div class="app-shell">${sideNav()}<div class="shell-col">${topbar(ROUTE_TITLES[state.route] ?? "")}${contentHtml}</div></div>${navDrawer()}`;
 }
 
 function statusDot() {
@@ -535,6 +566,12 @@ document.addEventListener("click", (e) => {
   const closeBtn = e.target.closest("[data-close]");
   if (closeBtn) { closeModal(); return; }
 
+  // 移动端应用抽屉：汉堡开、遮罩/菜单项关（路由跳转由 hashchange 接）
+  if (e.target.closest("[data-nav-open]")) { setNavDrawer(true); return; }
+  if (e.target.closest("[data-nav-close]")) { setNavDrawer(false); return; }
+  const navGo = e.target.closest("[data-nav-go]");
+  if (navGo) { setNavDrawer(false); return; } // 正常走 hash 跳转
+
   // 顶栏用户菜单：芯片开关、菜单项动作、点外关闭
   const menuItem = e.target.closest("[data-user-menu-item]");
   if (menuItem) {
@@ -765,9 +802,11 @@ document.addEventListener("click", (e) => {
 
 window.addEventListener("hashchange", render);
 
-// 用户菜单 Esc 关闭（焦点环/其余键盘可达性走 :focus-visible 与原生 dialog）
+// 用户菜单 / 应用抽屉 Esc 关闭（焦点环/其余键盘可达性走 :focus-visible 与原生 dialog）
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && userMenuOpen) setUserMenu(false);
+  if (e.key !== "Escape") return;
+  if (userMenuOpen) setUserMenu(false);
+  if (navDrawerOpen) setNavDrawer(false);
 });
 
 // 顶栏滚动阴影：内容区滚动过 4px 时给顶栏加阴影交代层次（scroll 不冒泡，用捕获）

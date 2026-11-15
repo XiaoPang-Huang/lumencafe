@@ -141,6 +141,7 @@ export function chatRoutes() {
 
       (async () => {
         let full = "";
+        const t0 = Date.now();
         try {
           const contextMessages = msg.history(c.id)
             .filter((m) => m.role !== "assistant" || m.id !== pending.id)
@@ -152,11 +153,11 @@ export function chatRoutes() {
             onDelta: (delta) => body_sse.push(`data: ${JSON.stringify({ delta })}\n\n`),
             meta: { userId: (await userByPrincipal(ctx))?.id ?? 0, app: "chat", conversationId: c.id },
           });
-          msg.markPartial(pending.id, full, "ok");
+          msg.markPartial(pending.id, full, "ok", Date.now() - t0);
           body_sse.push(`data: ${JSON.stringify({ done: true, message_id: pending.id })}\n\n`);
         } catch (error) {
           const stopped = signal?.aborted;
-          msg.markPartial(pending.id, full, stopped ? "stopped" : "failed");
+          msg.markPartial(pending.id, full, stopped ? "stopped" : "failed", Date.now() - t0);
           if (!stopped) {
             console.error("[chat] 生成失败:", error.message);
             body_sse.push(`data: ${JSON.stringify({ error: "生成失败", message_id: pending.id })}\n\n`);
