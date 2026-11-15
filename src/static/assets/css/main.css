@@ -640,15 +640,17 @@ textarea.text-input { line-height: 1.6; }
 .conv-menu-item:hover { background: var(--wash); }
 .conv-menu-item.danger { color: var(--brand-strong); }
 .conv-menu-item.danger:hover { background: var(--brand-soft); }
-/* 管理模式底条：全选 + 计数 + 完成/删除 */
+/* 管理模式底条：全选 + 计数 + 完成/删除（侧栏窄，布局须一行放下：spacer 撑开两组，文字禁折行） */
 .conv-manage-bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-top: 1px solid var(--line);
   background: var(--surface); flex-shrink: 0;
 }
 .conv-manage-bar[hidden] { display: none; }
-.cm-all { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
-.cm-count { font-size: 12.5px; }
+.conv-manage-bar .spacer { flex: 1; min-width: 4px; }
+.cm-all { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.cm-count { font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.conv-manage-bar .btn-sm { padding: 5px 10px; flex-shrink: 0; }
 .conv-pick { flex-shrink: 0; }
 .btn-sm { min-height: 32px; padding: 5px 14px; font-size: 13px; border-radius: 8px; }
 .btn-sm:disabled { opacity: .5; cursor: not-allowed; }
