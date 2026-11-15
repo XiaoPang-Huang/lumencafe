@@ -28,6 +28,10 @@ startPaperWorker();
 import { startPushScheduler } from "./api/digest.mjs";
 startPushScheduler();
 
+// 模型 & API 管理：预载模型注册表（DB 驱动；失败不阻断启动，首次调用时懒加载兜底）
+import { ensureModels } from "./api/llm.mjs";
+ensureModels();
+
 const app = await startServer(
   {
     name: "lumencafe",

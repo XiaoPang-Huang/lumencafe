@@ -4,7 +4,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
-import { getModelByRef, streamSimple, DEFAULT_MODEL_REF, primeFaux } from "./llm.mjs";
+import { getModelByRef, streamSimple, defaultModelRef, primeFaux } from "./llm.mjs";
 import { toolsFor } from "./agent-tools.mjs";
 import { roleOfPrincipal, gateApp } from "./gateway.mjs";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -51,7 +51,7 @@ async function logToolCall(ctx, name, args, blocked, reason = "") {
 /** 跑一轮 agent，把事件推进 SSE；返回最终回答文本与工具轨迹 */
 async function runAgent({ ctx, conversation, userText, body }) {
   const tools = toolsFor(conversation.app, ctx);
-  const model = getModelByRef(conversation.model ?? DEFAULT_MODEL_REF);
+  const model = getModelByRef(conversation.model ?? defaultModelRef());
   if (!model) throw new Error("没有可用模型");
 
   const trace = []; // 工具轨迹（渲染工具卡片用）

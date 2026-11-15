@@ -336,8 +336,56 @@ const generalOverview = () => `
     ${profRow("头像", `<span class="prof-avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span><span class="muted">64×64 PNG，选图自动裁剪</span>`, "avatar")}
     ${profRow("角色", `${esc(roleLabel())}<span class="muted">由管理设置调整</span>`)}
     ${profRow("密码", `••••••••<span class="muted">定期更换</span>`, "pass")}
+    ${profRow("我的模型", `个人接入的供应商与模型<span class="muted">仅自己可用</span>`, "mymodels")}
     ${profRow("登录方式", `账号密码<span class="muted">chord 会话 cookie</span>`)}
   </div>`;
+
+/* ---------- 我的模型（个人接入，仅自己可用；需求-模型API管理-v1.md §5.2） ---------- */
+async function renderMyModels() {
+  const box = document.getElementById("myModelsBox");
+  if (!box) return;
+  let tree;
+  try {
+    const res = await fetch("/api/models/mine", { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.message || `HTTP ${res.status}`);
+    tree = await res.json();
+  } catch (err) {
+    box.innerHTML = `<div class="form-msg err">加载失败：${esc(err.message)}</div>`;
+    return;
+  }
+  const providers = tree.providers ?? [];
+  box.innerHTML = `
+    ${providers.map((p) => `
+      <div class="me-sec mym-provider" data-pid="${p.id}">
+        <div class="me-sec-t">${esc(p.name)} <span class="muted">${esc(p.protocol)} · ${esc(p.baseUrl)}</span>
+          <span class="mysp">密钥 ${esc(p.keyHint || "未配置")}</span></div>
+        <div class="me-sec-acts">
+          <button class="btn btn-ghost mym-test">测试</button>
+          ${p.protocol !== "mineru" ? `<button class="btn btn-ghost mym-fetch">拉模型</button>` : ""}
+          <button class="btn btn-delete-soft mym-del">删除</button>
+          <span class="form-msg mym-msg"></span>
+        </div>
+        <div class="mym-models">
+          ${(p.models ?? []).map((m) => `
+            <label class="chk-line"><input type="checkbox" class="mym-toggle" data-mid="${m.id}" ${m.enabled ? "checked" : ""}>
+              ${esc(m.displayName)} <span class="muted">${esc(m.ref)}</span></label>`).join("")
+            || `<div class="chart-none">还没有模型，点「拉模型」从供应商获取</div>`}
+        </div>
+      </div>`).join("")}
+    <div class="me-sec">
+      <div class="me-sec-t">接入新供应商</div>
+      <label class="login-field"><span class="login-label">名称</span><input class="text-input" id="mymName" maxlength="40" placeholder="如 My OpenRouter"></label>
+      <label class="login-field"><span class="login-label">英文码</span><input class="text-input" id="mymCode" maxlength="24" placeholder="openrouter"></label>
+      <label class="login-field"><span class="login-label">协议</span>
+        <select class="text-input" id="mymProtocol"><option value="openai">OpenAI 兼容</option><option value="anthropic">Anthropic</option></select></label>
+      <label class="login-field"><span class="login-label">接口地址</span><input class="text-input" id="mymBase" placeholder="https://openrouter.ai/api/v1"></label>
+      <label class="login-field"><span class="login-label">API 密钥</span><input class="text-input" id="mymKey" type="password" autocomplete="new-password"></label>
+      <div class="me-sec-acts">
+        <button class="btn btn-primary" id="mymAdd">接入</button>
+        <span class="form-msg" id="mymAddMsg"></span>
+      </div>
+    </div>`;
+}
 
 /* ---------- 头像弹窗（§20 P2，学 RAGFlow avatar-upload：选图 → canvas 裁剪 → 即传即存） ---------- */
 const AVATAR_OUT = 64; // 输出边长（px），与后端 64KB 上限配套
@@ -592,7 +640,78 @@ document.addEventListener("click", (e) => {
       avatarDraft = null;
       openModal("修改头像", avatarBlock(),
         `<button class="btn btn-delete-soft" data-avatar-remove>移除头像</button><button class="btn btn-ghost" data-close>取消</button><button class="btn btn-primary" data-avatar-submit>保存</button>`);
+    } else if (what === "mymodels") {
+      openModal("我的模型", `<div id="myModelsBox"><div class="chart-none">加载中…</div></div>`,
+        `<button class="btn btn-ghost" data-close>关闭</button>`);
+      renderMyModels();
     }
+    return;
+  }
+
+  // 我的模型：供应商内操作（测试/拉模型/删除）+ 模型启停 + 接入新供应商
+  const mymTest = e.target.closest(".mym-test");
+  if (mymTest) {
+    const sec = mymTest.closest("[data-pid]");
+    const msg = sec.querySelector(".mym-msg");
+    mymTest.disabled = true;
+    fetch(`/api/models/mine/providers/${sec.dataset.pid}/test`, { method: "POST" })
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok && !d.error) throw new Error(d.message || `HTTP ${r.status}`);
+        msg.textContent = d.ok ? `连通正常（${d.latencyMs}ms）` : `失败：${d.error}`;
+        msg.className = `form-msg ${d.ok ? "ok" : "err"}`;
+      })
+      .catch((err) => { msg.textContent = err.message; msg.className = "form-msg err"; })
+      .finally(() => { mymTest.disabled = false; });
+    return;
+  }
+  const mymFetch = e.target.closest(".mym-fetch");
+  if (mymFetch) {
+    const sec = mymFetch.closest("[data-pid]");
+    const msg = sec.querySelector(".mym-msg");
+    mymFetch.disabled = true;
+    fetch("/api/models/mine/fetch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ providerId: Number(sec.dataset.pid) }),
+    }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok && d.ok !== false) throw new Error(d.message || `HTTP ${r.status}`);
+      if (d.ok === false) { msg.textContent = `拉取失败：${d.error}`; msg.className = "form-msg err"; }
+      else { msg.textContent = `已拉取 ${d.total} 个模型`; msg.className = "form-msg ok"; renderMyModels(); }
+    }).catch((err) => { msg.textContent = err.message; msg.className = "form-msg err"; })
+      .finally(() => { mymFetch.disabled = false; });
+    return;
+  }
+  const mymDel = e.target.closest(".mym-del");
+  if (mymDel) {
+    const sec = mymDel.closest("[data-pid]");
+    fetch(`/api/models/mine/providers/${sec.dataset.pid}`, { method: "DELETE" })
+      .then(() => renderMyModels())
+      .catch(() => toast("删除失败"));
+    return;
+  }
+  const mymAdd = e.target.closest("#mymAdd");
+  if (mymAdd) {
+    const msg = document.getElementById("mymAddMsg");
+    const payload = {
+      name: document.getElementById("mymName")?.value.trim(),
+      code: document.getElementById("mymCode")?.value.trim(),
+      protocol: document.getElementById("mymProtocol")?.value,
+      baseUrl: document.getElementById("mymBase")?.value.trim(),
+      key: document.getElementById("mymKey")?.value,
+    };
+    mymAdd.disabled = true;
+    fetch("/api/models/mine/providers", {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    }).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.message || `HTTP ${r.status}`);
+      msg.textContent = "已接入，可点「拉模型」获取模型列表";
+      msg.className = "form-msg ok";
+      renderMyModels();
+    }).catch((err) => { msg.textContent = err.message; msg.className = "form-msg err"; })
+      .finally(() => { mymAdd.disabled = false; });
     return;
   }
 
@@ -658,11 +777,20 @@ document.addEventListener("scroll", (e) => {
   col.querySelector(".topbar")?.classList.toggle("scrolled", col.scrollTop > 4);
 }, true);
 
-// 头像选图（change 事件不走 click 委托；弹窗重渲染后旧节点自动失效，无需解绑）
+// 头像选图 / 我的模型启停（change 事件不走 click 委托）
 document.addEventListener("change", (e) => {
   if (e.target.id === "avatarFile") {
     cropAvatarFile(e.target.files?.[0]);
     e.target.value = ""; // 允许重复选同一文件
+    return;
+  }
+  const toggle = e.target.closest?.(".mym-toggle");
+  if (toggle) {
+    fetch(`/api/models/${toggle.dataset.mid}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: toggle.checked }),
+    }).then((r) => { if (!r.ok) toggle.checked = !toggle.checked; })
+      .catch(() => { toggle.checked = !toggle.checked; });
   }
 });
 

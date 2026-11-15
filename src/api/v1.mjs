@@ -14,6 +14,8 @@ export { agentRoutes } from "./agent.mjs";
 export { gateApp } from "./gateway.mjs";
 // 批 4：管理页 API（用户与角色 + 角色权限矩阵）
 export { adminRoutes } from "./admin.mjs";
+// 模型 & API 管理（需求-模型API管理-v1.md：管理端 + 个人模型两组）
+export { modelRoutes } from "./models.mjs";
 
 // chord 自带的成员邀请插件（第 1 批接入：成员账号用邀请链接建，见 plugins/invite）
 export const inviteFacet = () => chordInviteFacet();

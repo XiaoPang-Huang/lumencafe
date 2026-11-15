@@ -1,7 +1,9 @@
 // 对话应用路由（第 1 批，白皮书 §08 时序图实现）
 // 链路：先保存用户消息（请求标识幂等）→ 返回保存确认 → 再发起流式生成
 import { chatDb, conv, msg } from "./chat-db.mjs";
-import { streamChat, listModels, DEFAULT_MODEL_REF, hasRealLlm } from "./llm.mjs";
+import { streamChat, defaultModelRef, hasRealLlm } from "./llm.mjs";
+import { visibleModelList } from "./models.mjs";
+import { userByPrincipal } from "./auth.mjs";
 import { gateApp } from "./gateway.mjs";
 
 const ownerKeyOf = (ctx) => JSON.stringify(ctx.principal);
@@ -43,8 +45,18 @@ const SSE_HEADERS = {
 export function chatRoutes() {
   // 批 3：对话应用门槛（网关单点，无授权 403「无权访问该应用」）
   return gateApp("chat", {
-    "GET /api/chat/models": async () =>
-      json({ models: listModels(), default_model: DEFAULT_MODEL_REF, real: hasRealLlm }),
+    // 模型列表（模型 & API 管理）：按 R3 并集过滤当前用户可见模型
+    "GET /api/chat/models": async (_request, ctx) => {
+      const visible = await visibleModelList(ctx);
+      return json({
+        models: visible.map((m) => ({
+          id: m.ref, provider: m.providerCode, modelId: m.modelId,
+          name: m.displayName, reasoning: false,
+        })),
+        default_model: visible[0]?.ref ?? defaultModelRef(),
+        real: hasRealLlm(),
+      });
+    },
 
     "GET /api/chat/conversations": async (request, ctx) => {
       const ownerKey = ownerKeyOf(ctx);
@@ -134,10 +146,11 @@ export function chatRoutes() {
             .filter((m) => m.role !== "assistant" || m.id !== pending.id)
             .map((m) => ({ role: m.role, content: m.content }));
           full = await streamChat({
-            modelRef: c.model ?? DEFAULT_MODEL_REF,
+            modelRef: c.model ?? defaultModelRef(),
             messages: contextMessages,
             signal,
             onDelta: (delta) => body_sse.push(`data: ${JSON.stringify({ delta })}\n\n`),
+            meta: { userId: (await userByPrincipal(ctx))?.id ?? 0, app: "chat", conversationId: c.id },
           });
           msg.markPartial(pending.id, full, "ok");
           body_sse.push(`data: ${JSON.stringify({ done: true, message_id: pending.id })}\n\n`);

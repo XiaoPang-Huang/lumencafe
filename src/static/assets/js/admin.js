@@ -47,9 +47,11 @@
     me: null, // 当前登录身份映射到的账号（userByPrincipal 语义，用于行内标「我」）
     loading: true,
     error: "",
+    tab: "users", // users=用户与角色 | models=模型 & API
   };
 
   let el = null;
+  let modelsMounted = false;
 
   /* ---------- 数据 ---------- */
   async function loadAll() {
@@ -146,6 +148,15 @@
     if (!el) return;
     const box = el.querySelector(".admin-body");
     if (!box) return;
+    // 页签：模型 & API 区块委托给 admin-models.js 模块
+    if (S.tab === "models") {
+      if (!modelsMounted && window.LC.adminModels) {
+        modelsMounted = true;
+        window.LC.adminModels.mount(box);
+      }
+      return;
+    }
+    if (modelsMounted) { window.LC.adminModels.cleanup(); modelsMounted = false; }
     if (S.loading) {
       box.innerHTML = `<div class="empty-hint">加载中…</div>`;
       return;
@@ -307,6 +318,16 @@
   // 注意：弹窗挂在 #modal（stage 外），故委托绑在 document 上、靠 data-* 属性区分，
   // cleanup 时随视图卸载一并移除
   function onClick(e) {
+    const tabBtn = e.target.closest("[data-admin-tab]");
+    if (tabBtn) {
+      S.tab = tabBtn.dataset.adminTab;
+      // 工具栏是用户页签的；模型页签有自己的工具栏
+      const toolbar = el?.querySelector(".admin-toolbar");
+      if (toolbar) toolbar.style.display = S.tab === "users" ? "" : "none";
+      el.querySelectorAll("[data-admin-tab]").forEach((b) => b.classList.toggle("on", b === tabBtn));
+      paint();
+      return;
+    }
     if (e.target.closest("[data-add-user]")) { addUserModal(); return; }
 
     // 批 5：复制邀请链接（clipboard API，失败退化临时 textarea）
@@ -432,7 +453,11 @@
       <main class="stage">
         <div class="stage-head">
           <h1 class="stage-title">管理设置</h1>
-          <p class="stage-sub">用户与角色、角色权限矩阵——批 4 权限体系落地页。</p>
+          <p class="stage-sub">用户与角色、角色权限矩阵、模型 & API 管理。</p>
+        </div>
+        <div class="admin-tabs view-toggle">
+          <button class="vt-btn ${S.tab === "users" ? "on" : ""}" data-admin-tab="users">用户与角色</button>
+          <button class="vt-btn ${S.tab === "models" ? "on" : ""}" data-admin-tab="models">模型 & API</button>
         </div>
         <div class="admin-toolbar">
           <button class="btn btn-primary" data-add-user>${IC.check} 添加用户</button>
