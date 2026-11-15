@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="45f08544e9ae23f105e0413c123c7b97a1098a3f170cba023f685f48f7bac6f9">
+  <meta name="source-sha256" content="e4bbd3ccb1cd43eaeb184c7c6cdec17ad774905214666d0c1725d20e90334d18">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -287,7 +287,8 @@ tbody tr:hover { background: #fbfcfe; }
 <li><strong>Node 用 nvm-windows 管理</strong>（本机已有 v22.22.2 不冲突），<code>nvm install 24.22.3</code> + <code>nvm use</code>。</li>
 </ol>
 <p><strong>待定两条</strong>（如实记录，未定不猜）：COS mock 接口边界——3b 开工前定；备份脚本落地时间——生产部署前必须落地。
-<strong>已定一条</strong>（2026-11-14）：LLM provider 密钥渠道——多家可配（pi-ai 按 OpenAI 兼容接口逐家配置，密钥只进 <code>.env</code> 不入库），<strong>DeepSeek 官方为第一家</strong>；具体配置项第 1 批开工时随对话应用定稿。</p>
+<strong>已定一条</strong>（2026-11-14）：LLM provider 密钥渠道——多家可配（pi-ai 按 OpenAI 兼容接口逐家配置，密钥只进 <code>.env</code> 不入库），<strong>DeepSeek 官方为第一家</strong>；具体配置项第 1 批开工时随对话应用定稿。
+<strong>本条已被 2026-11-15「模型 &amp; API 管理」取代</strong>（需求文档 <code>docs/需求-模型API管理-v1.md</code>，拍板 R1-R4）：供应商/套餐/模型三级入库管理，密钥 AES-256-GCM 加密入库（<code>LC_SECRET_KEY</code> scrypt 派生），OpenAI/Anthropic/MinerU 三协议，一键拉模型、批量启停、连通测试、授权并集（通用∪角色∪账号∪个人）、个人自接、llm_call_logs 调用日志（token×单价计费）、套餐级 RPM/日额度限流与熔断；llm.mjs 改为 DB 驱动动态注册 pi-ai provider；migration 0008。DEEPSEEK_API_KEY 保留为首次启动的种子来源（自动建官方供应商，模型默认通用）。</p>
 <p><strong>搭建步骤</strong>（装 WSL2 → Docker → Node → 起 PG 容器 → 装依赖配 <code>.env</code> → 验证）全文不进白皮书，避免运维手册把产品契约文档撑臃肿；按本清单执行即可，docker run 锚点命令见上。</p>
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#01-一句话定位"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">01 一句话定位</span></a><a class="chapter-nav-link chapter-nav-next" href="#03-pi-全家桶清单2026-11-10-核实官方-readme"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">03 pi 全家桶清单（2026-11-10 核实官方 README）</span></a></nav></section><section class="chapter" aria-labelledby="03-pi-全家桶清单2026-11-10-核实官方-readme" data-chapter="3"><h2 id="03-pi-全家桶清单2026-11-10-核实官方-readme" class="doc-heading">03 pi 全家桶清单（2026-11-10 核实官方 README）<a class="heading-anchor" href="#03-pi-全家桶清单2026-11-10-核实官方-readme" aria-label="链接到此标题：03 pi 全家桶清单（2026-11-10 核实官方 README）"><span aria-hidden="true">#</span></a></h2><p>pi 是一个开源大仓库（<code>github.com/earendil-works/pi</code>，原 <code>badlogic/pi-mono</code>），MIT 协议，TypeScript。</p>
