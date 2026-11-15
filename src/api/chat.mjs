@@ -53,8 +53,11 @@ export function chatRoutes() {
         models: visible.map((m) => ({
           id: m.ref, provider: m.providerCode, modelId: m.modelId,
           name: m.displayName, reasoning: m.thinking != null || m.thinkingLevels?.length > 0,
-          thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 管理能力；对话内只显示开启/关闭
+          thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 管理能力；对话浮卡档位严格取 thinkingLevels
           supportsImages: m.supportsImages === true, // 图片输入能力（多模态标记）
+          // 详情卡如实展示（三级浮出拍板）：已配置的才显示，不造假
+          inputPrice: m.inputPrice ?? null, outputPrice: m.outputPrice ?? null,
+          contextWindow: m.contextWindow ?? null, maxOutputTokens: m.maxOutputTokens ?? null,
         })),
         default_model: visible[0]?.ref ?? defaultModelRef(),
         real: hasRealLlm(),

@@ -702,10 +702,54 @@ textarea.text-input { line-height: 1.6; }
   transition: background .13s var(--ease), color .13s var(--ease);
 }
 .mm-exp:hover { background: var(--wash-2); color: var(--ink); }
+/* 三级浮出（2026-11-15 四次拍板）：详情卡是 body 级 fixed 浮层，主列表常驻不替换。
+   参考 Open WebUI v0.11 hover 浮卡（主列表不动）与 Arco Cascader（逐级 hover、层级等高对齐）。 */
+.mm-fly {
+  position: fixed; z-index: 60;
+  width: 280px; max-width: calc(100vw - 16px);
+}
+.mm-detail {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow-pop); padding: 8px;
+}
 .mm-detail-head {
-  display: flex; align-items: center; gap: 9px; padding: 5px 6px 11px;
+  display: flex; align-items: flex-start; gap: 9px; padding: 5px 6px 11px;
   border-bottom: 1px solid var(--line);
 }
+.mm-x {
+  width: 24px; height: 24px; border-radius: 7px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3); font-size: 16px; line-height: 1;
+}
+.mm-x:hover { background: var(--wash); color: var(--ink); }
+.mm-cur { flex-shrink: 0; align-self: center; font-size: 11.5px; color: var(--brand-ink); font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--brand-soft); }
+.mm-detail-body { padding: 6px 4px 2px; }
+.mm-fly-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 8px; border-radius: 9px; font-size: 12.5px; color: var(--ink-2);
+}
+.mm-fly-row .tbl-dim { flex-shrink: 0; }
+.mm-think-row { cursor: pointer; }
+.mm-think-row:hover, .mm-think-row:focus-visible { background: var(--wash); color: var(--ink); }
+.mm-think-row .caret-r { color: var(--ink-3); flex-shrink: 0; }
+/* 第三级档位菜单：卡内底部浮出（触屏窄屏）→ 宽屏 JS 定位到卡片左侧 */
+.mm-levels {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 2;
+  display: flex; flex-direction: column; gap: 1px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 11px; box-shadow: var(--shadow-pop); padding: 6px;
+}
+@media (hover: hover) and (min-width: 901px) {
+  .mm-levels { left: auto; right: calc(100% + 8px); bottom: 0; width: 150px; }
+}
+.mm-level {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  padding: 7px 9px; border-radius: 8px; font-size: 12.5px; color: var(--ink);
+  transition: background .13s var(--ease);
+}
+.mm-level:hover { background: var(--wash); }
+.mm-level.on { background: var(--brand-soft); font-weight: 600; }
 .mm-back {
   width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
   color: var(--ink-2); font-size: 26px; line-height: 1;
@@ -723,14 +767,6 @@ textarea.text-input { line-height: 1.6; }
 .mm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-item .tag { flex-shrink: 0; }
 .mm-empty { padding: 14px 10px; font-size: 13px; color: var(--ink-3); }
-.mm-think { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 2px 8px 10px; }
-.mm-chip {
-  font-family: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--ink-2); background: var(--surface);
-  cursor: pointer; transition: all .13s var(--ease);
-}
-.mm-chip:hover { border-color: var(--line-strong); color: var(--ink); }
-.mm-chip.on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 9px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center; color: var(--ink-2);
@@ -986,6 +1022,12 @@ textarea.text-input { line-height: 1.6; }
   .msg-user-bubble { max-width: 92%; }
   .model-btn { max-width: 150px; min-height: 44px; }
   .model-menu { width: min(300px, calc(100vw - 40px)); }
+  /* 触屏窄屏：详情卡改屏幕底部居中弹卡（positionFly 已清空 inline left/top/right）；
+     档位菜单保持卡内底部内嵌（mm-levels 默认样式，见宽屏 media hover 才外浮） */
+  .mm-fly {
+    left: 50% !important; right: auto !important; top: auto !important; bottom: 12px !important;
+    transform: translateX(-50%); width: min(320px, calc(100vw - 24px));
+  }
   /* 触屏无 hover：会话操作与消息操作常显 */
   .conv-ops { display: inline-flex; }
   .msg-actions { opacity: 1; }

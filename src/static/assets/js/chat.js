@@ -46,7 +46,8 @@
     openMenuConv: null,  // ⋯ 菜单展开中的会话 id
     managing: false,     // 会话管理模式（批量删除）
     pickedConvs: new Set(), // 管理模式勾选的会话 id
-    expandedModel: null, // 模型面板中展开思考开关的模型 ref（多级）
+    hoverModel: null,    // 详情卡浮出目标模型 ref（悬停跟随切换 / 触屏点箭头钉住）
+    levelsOpen: false,   // 第三级思考档位菜单是否浮出
   };
 
   /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
@@ -290,42 +291,39 @@
     (S.currentId === NEW_ID ? S.current : S.conversations.find((c) => c.id === S.currentId))?.thinking ?? null
   );
 
-  /* 模型+思考一体面板（学 WorkBuddy）：模型列表 → 该模型自己的思考开关二级页。
-     具体档位只在模型 & API 管理维护；对话内不再暴露 low/medium/high 等档位。 */
+  /* 三级浮出（2026-11-15 四次拍板，学 WorkBuddy 官方交互；参考 Open WebUI v0.11 hover 浮卡、
+     Arco Cascader expandTrigger=hover）：主列表常驻 → 悬停行浮出详情卡（跟随切换）→
+     悬停「思考强度」行浮出档位菜单。档位严格读该模型 thinkingLevels（管理页是唯一档位来源），
+     加「关闭」项；点选 PATCH conversations.thinking=档位/"off"（后端 legacy 档位透传语义现成）。
+     hover intent：进入延时 180ms / 离开收起延时 300ms，层级间移动不误关。 */
+  const THINKING_LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
+  const HOVER_IN_MS = 180;
+  const HOVER_OUT_MS = 300;
+  const fmtK = (n) => (n >= 1024 ? `${Math.round(n / 1024)}K` : String(n));
+  let hoverTimer = null;
+  let collapseTimer = null;
+
+  const cancelCollapse = () => { if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; } };
+
+  function collapseFly() {
+    hoverModelSet(null);
+  }
+
+  function hoverModelSet(id, levels = false) {
+    cancelCollapse();
+    S.hoverModel = id;
+    S.levelsOpen = id ? levels : false;
+    renderModelFly();
+  }
+
   function renderModelMenu() {
     const menu = el.querySelector(".model-menu");
     if (!menu) return;
     const curRef = currentModel();
-    const thinking = curThinking();
-    const detail = S.models.find((m) => m.id === S.expandedModel);
-    if (detail) {
-      const on = detail.id === curRef;
-      const levels = Array.isArray(detail.thinkingLevels) ? detail.thinkingLevels : [];
-      const supportsThinking = Boolean(detail.thinking || levels.length);
-      const chip = (val, label) => {
-        const active = on && (val === "off" ? thinking === "off" : thinking !== "off");
-        return `<button class="mm-chip ${active ? "on" : ""}" data-think-model="${esc(detail.id)}" data-pick-thinking="${val}">${label}</button>`;
-      };
-      menu.innerHTML = `
-        <div class="mm-detail">
-          <div class="mm-detail-head">
-            <button class="mm-back" data-model-back title="返回模型列表" aria-label="返回模型列表">‹</button>
-            <div class="mm-detail-title">
-              <b>${esc(detail.name)}</b>
-              <span class="tbl-dim">${detail.supportsImages ? "模型思考与图片能力按配置生效" : "模型思考配置"}</span>
-            </div>
-            ${on ? "" : `<button class="mm-use" data-pick-model="${esc(detail.id)}">使用此模型</button>`}
-          </div>
-          <div class="mm-sec">思考</div>
-          ${supportsThinking ? `
-            <div class="mm-think">${chip("on", "开启")}${chip("off", "关闭")}</div>
-            <div class="mm-thinking-note">开启时使用模型默认思考强度；未配置默认强度时跟随厂商默认。</div>
-          ` : '<div class="mm-level-empty">该模型未配置思考能力，可在「模型 & API 管理」中设置支持档位或默认强度。</div>'}
-        </div>`;
-      return;
-    }
+    /* 主列表常驻：详情卡是旁侧浮层（挂 body），悬停切换目标由 pointerover 委托驱动，
+       不再替换主列表，也没有「返回」按钮 */
     menu.innerHTML = `
-      <div class="mm-sec">模型（按会话生效；悬停或点击行尾 ▾ 配置思考）</div>
+      <div class="mm-sec">模型（点选生效；悬停或点行尾 ▾ 查看详情与思考强度）</div>
       <div class="mm-list">
         ${S.models.map((m) => {
           const on = m.id === curRef;
@@ -337,10 +335,170 @@
               ${m.reasoning ? '<span class="tag">思考</span>' : ""}
               ${m.supportsImages ? '<span class="tag">图片</span>' : ""}
             </button>
-            <button class="mm-exp" data-exp-model="${esc(m.id)}" title="配置 ${esc(m.name)} 的思考" aria-label="配置 ${esc(m.name)} 的思考">${LC.IC.caret}</button>
+            <button class="mm-exp" data-exp-model="${esc(m.id)}" title="查看 ${esc(m.name)} 详情与思考强度" aria-label="查看 ${esc(m.name)} 详情与思考强度">${LC.IC.caret}</button>
           </div>`;
         }).join("") || '<div class="mm-empty">暂无可用的模型</div>'}
       </div>`;
+    renderModelFly();
+  }
+
+  /* 详情卡 + 第三级档位菜单：独立浮层，定位在主列表面板左侧、底边对齐
+     （WorkBuddy 截图布局；Arco Cascader「不同层级面板保持一样的高度」）。
+     触屏窄屏（≤900px CSS）改中央弹卡 + 档位内嵌列表。 */
+  function renderModelFly() {
+    let fly = document.body.querySelector(".mm-fly");
+    const detail = S.hoverModel ? S.models.find((m) => m.id === S.hoverModel) : null;
+    if (!detail || !S.modelMenuOpen) {
+      fly?.remove();
+      return;
+    }
+    const curRef = currentModel();
+    const thinking = curThinking();
+    const on = detail.id === curRef;
+    const levels = Array.isArray(detail.thinkingLevels) ? detail.thinkingLevels : [];
+    /* 当前档语义：显式档位 > "off" > 会话未选时跟随模型默认强度 > 厂商默认 */
+    const levelText = thinking === "off" ? "已关闭" : THINKING_LABELS[thinking || detail.thinking || ""] || "默认";
+    const priceLine = (detail.inputPrice != null || detail.outputPrice != null)
+      ? `<div class="mm-fly-row"><span class="tbl-dim">价格</span>输入 ¥${detail.inputPrice ?? "—"} · 输出 ¥${detail.outputPrice ?? "—"} / 百万 token</div>` : "";
+    const ctxLine = detail.contextWindow != null
+      ? `<div class="mm-fly-row"><span class="tbl-dim">上下文窗口</span>${fmtK(detail.contextWindow)}${detail.maxOutputTokens != null ? ` · 输出上限 ${fmtK(detail.maxOutputTokens)}` : ""}</div>` : "";
+    const thinkRow = levels.length ? `
+      <div class="mm-fly-row mm-think-row" data-think-open="${esc(detail.id)}" tabindex="0">
+        <span class="tbl-dim">思考强度 · ${levelText}</span><span class="caret-r">▸</span>
+      </div>` : `
+      <div class="mm-level-empty">该模型未配置思考档位，可在「模型 & API 管理」设置支持档位与默认强度。</div>`;
+    const levelsHtml = levels.length && S.levelsOpen ? `
+      <div class="mm-levels">
+        ${levels.map((l) => {
+          const active = thinking === l || (thinking == null && detail.thinking === l);
+          return `<button class="mm-level ${active ? "on" : ""}" data-pick-thinking="${esc(l)}" data-think-model="${esc(detail.id)}"><span class="mm-check">${active ? "✓" : ""}</span>${esc(THINKING_LABELS[l] || l)}</button>`;
+        }).join("")}
+        <button class="mm-level ${thinking === "off" ? "on" : ""}" data-pick-thinking="off" data-think-model="${esc(detail.id)}"><span class="mm-check">${thinking === "off" ? "✓" : ""}</span>关闭</button>
+      </div>` : "";
+    if (!fly) {
+      fly = document.createElement("div");
+      fly.className = "mm-fly";
+      document.body.appendChild(fly);
+      bindFly(fly);
+    }
+    fly.innerHTML = `
+      <div class="mm-detail" data-fly-model="${esc(detail.id)}">
+        <div class="mm-detail-head">
+          <div class="mm-detail-title">
+            <b>${esc(detail.name)}</b>
+            <span class="tbl-dim">${[detail.provider ? esc(detail.provider) : "", detail.reasoning ? "思考" : "", detail.supportsImages ? "图片" : ""].filter(Boolean).join(" · ")}</span>
+          </div>
+          ${on ? '<span class="mm-cur">当前</span>' : `<button class="mm-use" data-pick-model="${esc(detail.id)}">使用此模型</button>`}
+          <button class="mm-x" data-fly-close title="关闭" aria-label="关闭">×</button>
+        </div>
+        <div class="mm-detail-body">
+          ${priceLine}${ctxLine}${thinkRow}
+          <div class="mm-thinking-note">思考强度只对当前会话之后的回答生效。</div>
+        </div>
+        ${levelsHtml}
+      </div>`;
+    positionFly(fly);
+  }
+
+  function positionFly(fly) {
+    /* 窄屏走 CSS（!important 覆盖此处 inline 定位） */
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      fly.style.left = ""; fly.style.top = ""; fly.style.right = "";
+      return;
+    }
+    const menu = el.querySelector(".model-menu");
+    if (!menu) return;
+    const r = menu.getBoundingClientRect();
+    const fw = fly.offsetWidth || 260;
+    const fh = fly.offsetHeight || 220;
+    let left = r.left - fw - 8;
+    if (left < 8) left = Math.max(8, Math.min(r.right - fw, window.innerWidth - fw - 8));
+    let top = r.bottom - fh; // 底边对齐主面板（Cascader 等高对齐惯例）
+    if (top < 8) top = 8;
+    fly.style.position = "fixed";
+    fly.style.left = `${left}px`;
+    fly.style.top = `${top}px`;
+    fly.style.right = "";
+  }
+
+  /* 详情卡浮层事件（元素每次重建后重绑；事件不经过视图容器 el，故绑在 fly 自身） */
+  function bindFly(fly) {
+    fly.addEventListener("pointerover", (e) => {
+      if (e.pointerType !== "mouse" || !S.modelMenuOpen) return;
+      cancelCollapse();
+      const detail = S.models.find((m) => m.id === S.hoverModel);
+      if (!detail) return;
+      const thinkRow = e.target.closest(".mm-think-row");
+      if (thinkRow && !S.levelsOpen && (detail.thinkingLevels?.length ?? 0)) {
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => { hoverTimer = null; hoverModelSet(detail.id, true); }, HOVER_IN_MS);
+      }
+    });
+    fly.addEventListener("pointerout", (e) => {
+      if (e.pointerType !== "mouse" || !S.modelMenuOpen) return;
+      if (fly.contains(e.relatedTarget)) return;
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      if (collapseTimer) clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(() => { collapseTimer = null; collapseFly(); }, HOVER_OUT_MS);
+    });
+    fly.addEventListener("click", async (e) => {
+      if (e.target.closest("[data-fly-close]")) { hoverModelSet(null); return; }
+      const pick = e.target.closest("[data-pick-model]");
+      if (pick) { await selectModel(pick.dataset.pickModel); return; }
+      const th = e.target.closest("[data-pick-thinking]");
+      if (th) { await applyThinking(th.dataset.thinkModel, th.dataset.pickThinking); return; }
+      /* 触屏无 hover：点「思考强度」行开/收第三级档位菜单 */
+      if (e.target.closest(".mm-think-row")) hoverModelSet(S.hoverModel, !S.levelsOpen);
+    });
+  }
+
+  /* 选中模型：会话 + 主列表选中态 + 输入区按钮三处同步；详情卡收起 */
+  async function selectModel(value) {
+    if (S.currentId && S.currentId !== NEW_ID) {
+      await api(`/api/chat/conversations/${S.currentId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: value }),
+      });
+      const c = S.conversations.find((x) => x.id === S.currentId);
+      if (c) c.model = value;
+    } else if (S.current) {
+      S.current.model = value;
+    }
+    hoverModelSet(null);
+    renderModelMenu();
+    renderModelBtn();
+    toast("已切换模型，只影响之后的回答");
+  }
+
+  /* 第三级档位：严格存该模型 thinkingLevels 中的档位或 "off"（后端 legacy 档位透传语义现成）。
+     在别的模型下选档 = 同时切到该模型（浮卡语义与主列表一致）。 */
+  async function applyThinking(modelId, level) {
+    const value = level === "off" ? "off" : level;
+    if (modelId && modelId !== currentModel()) {
+      if (S.currentId && S.currentId !== NEW_ID) {
+        await api(`/api/chat/conversations/${S.currentId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: modelId }),
+        });
+        const c = S.conversations.find((x) => x.id === S.currentId);
+        if (c) c.model = modelId;
+      } else if (S.current) {
+        S.current.model = modelId;
+      }
+    }
+    if (S.currentId && S.currentId !== NEW_ID) {
+      await api(`/api/chat/conversations/${S.currentId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thinking: value }),
+      });
+      const c = S.conversations.find((x) => x.id === S.currentId);
+      if (c) c.thinking = value;
+    } else if (S.current) {
+      S.current.thinking = value;
+    }
+    renderModelMenu();
+    renderModelBtn();
+    toast(value === "off" ? "已关闭思考" : `思考强度已设为「${THINKING_LABELS[value] || value}」，只影响之后的回答`);
   }
 
   function renderModelBtn() {
@@ -351,13 +509,26 @@
     btn.setAttribute("aria-expanded", S.modelMenuOpen ? "true" : "false");
     const menu = el.querySelector(".model-menu");
     if (menu) menu.hidden = !S.modelMenuOpen;
+    if (!S.modelMenuOpen) closeFlyLayers();
+  }
+
+  /* 关闭浮层：删 body 级详情卡与定时器（详情卡不在视图容器内，须显式清理） */
+  function closeFlyLayers() {
+    document.body.classList.remove("mm-open");
+    document.body.querySelector(".mm-fly")?.remove();
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; }
+    S.hoverModel = null;
+    S.levelsOpen = false;
   }
 
   function setModelMenu(open) {
     S.modelMenuOpen = open;
     if (open) {
-      S.expandedModel = null; // 每次打开先回模型主列表，再按模型进入二级配置
+      hoverModelSet(null); // 每次打开从主列表起步，悬停/点箭头才浮详情卡
       renderModelMenu();
+    } else {
+      closeFlyLayers();
     }
     renderModelBtn();
   }
@@ -713,72 +884,14 @@
         renderSidebar();
       }
 
-      // 模型主列表 ↔ 单个模型的思考配置二级页
+      // 模型面板：主列表常驻，详情卡/档位菜单为旁侧浮层（renderModelFly）
       if (e.target.closest("[data-model-menu]")) { setModelMenu(!S.modelMenuOpen); return; }
-      if (e.target.closest("[data-model-back]")) {
-        S.expandedModel = null;
-        renderModelMenu();
-        return;
-      }
       const expModel = e.target.closest("[data-exp-model]");
-      if (expModel) {
-        S.expandedModel = expModel.dataset.expModel;
-        renderModelMenu();
-        return;
-      }
+      if (expModel) { hoverModelSet(expModel.dataset.expModel); return; } // 触屏/点箭头：浮出该模型详情卡
       const pickModel = e.target.closest("[data-pick-model]");
-      if (pickModel) {
-        const value = pickModel.dataset.pickModel;
-        if (S.currentId && S.currentId !== NEW_ID) {
-          await api(`/api/chat/conversations/${S.currentId}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model: value }),
-          });
-          const c = S.conversations.find((x) => x.id === S.currentId);
-          if (c) c.model = value;
-        } else if (S.current) {
-          S.current.model = value;
-        }
-        S.expandedModel = null; // 选模型后回主列表；悬停/点右侧箭头才进入配置页
-        renderModelMenu();
-        renderModelBtn(); // 弹层选中态与输入区按钮必须同步，避免“已保存但仍显示旧模型”
-        toast("已切换模型，只影响之后的回答");
-        return;
-      }
+      if (pickModel) { await selectModel(pickModel.dataset.pickModel); return; }
       const pickThinking = e.target.closest("[data-pick-thinking]");
-      if (pickThinking) {
-        // 开启存 NULL：优先模型默认强度，未配置则跟随厂商；关闭存 off。旧档位只读兼容。
-        const value = pickThinking.dataset.pickThinking === "off" ? "off" : null;
-        const modelId = pickThinking.dataset.thinkModel;
-        // 在别的模型下操作开关 = 同时切到该模型（多级面板的语义）
-        if (modelId && modelId !== currentModel()) {
-          if (S.currentId && S.currentId !== NEW_ID) {
-            await api(`/api/chat/conversations/${S.currentId}`, {
-              method: "PATCH", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ model: modelId }),
-            });
-            const c = S.conversations.find((x) => x.id === S.currentId);
-            if (c) c.model = modelId;
-          } else if (S.current) {
-            S.current.model = modelId;
-          }
-        }
-        if (S.currentId && S.currentId !== NEW_ID) {
-          await api(`/api/chat/conversations/${S.currentId}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ thinking: value }),
-          });
-          const c = S.conversations.find((x) => x.id === S.currentId);
-          if (c) c.thinking = value;
-        } else if (S.current) {
-          S.current.thinking = value;
-        }
-        S.expandedModel = modelId ?? S.expandedModel;
-        renderModelMenu();
-        renderModelBtn();
-        toast(value === "off" ? "已关闭思考" : "已开启思考，只影响之后的回答");
-        return;
-      }
+      if (pickThinking) { await applyThinking(pickThinking.dataset.thinkModel, pickThinking.dataset.pickThinking); return; }
 
       // 附件：添加 / 移除
       if (e.target.closest("[data-attach]")) {
@@ -951,14 +1064,28 @@
       }
     });
 
-    // 桌面鼠标悬停模型行/右侧箭头进入二级页；不为二级页绑定 pointerout 关闭，避免移入即消失。
-    // 触屏 pointerover 被忽略，仍走上方点击 [data-exp-model] 的委托路径。
+    // 桌面悬停主列表行 → 详情卡跟随切换（去掉旧「已展开就早退」逻辑）。
+    // hover intent：进入 180ms 才浮出（穿越行间隙不闪卡）；行↔卡之间移动由
+    // fly 层 pointerover + 300ms 收起定时器兜底，不会意外关闭。触屏 pointerType 忽略，走点击箭头。
     el.addEventListener("pointerover", (e) => {
-      if (e.pointerType !== "mouse" || !S.modelMenuOpen || S.expandedModel) return;
+      if (e.pointerType !== "mouse" || !S.modelMenuOpen) return;
       const row = e.target.closest("[data-hover-model]");
       if (!row || row.contains(e.relatedTarget)) return;
-      S.expandedModel = row.dataset.hoverModel;
-      renderModelMenu();
+      cancelCollapse();
+      const id = row.dataset.hoverModel;
+      if (S.hoverModel === id && !S.levelsOpen) return; // 同行重复 enter 不重渲染
+      if (hoverTimer) clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => { hoverTimer = null; hoverModelSet(id); }, HOVER_IN_MS);
+    });
+    // 鼠标离开主列表区（且未进入 fly 卡）→ 300ms 后收起浮卡
+    el.addEventListener("pointerout", (e) => {
+      if (e.pointerType !== "mouse" || !S.modelMenuOpen || !S.hoverModel) return;
+      const list = el.querySelector(".mm-list");
+      if (!list || !list.contains(e.target)) return;
+      if (list.contains(e.relatedTarget) || document.body.querySelector(".mm-fly")?.contains(e.relatedTarget)) return;
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      if (collapseTimer) clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(() => { collapseTimer = null; collapseFly(); }, HOVER_OUT_MS);
     });
 
     el.addEventListener("change", async (e) => {
@@ -1076,6 +1203,9 @@
   /* ---------- 视图结构 ---------- */
   function mount(container) {
     el = container;
+    // 重挂载时面板回到关闭态（浮卡/档位菜单是 body 级浮层，须随旧视图清掉）
+    S.modelMenuOpen = false;
+    closeFlyLayers();
     el.innerHTML = `
       <div class="chat-wrap">
         <div class="chat-backdrop ${S.sidebarOpen ? "show" : ""}"></div>
@@ -1150,6 +1280,7 @@
 
   function cleanup() {
     S.abort?.abort();
+    closeFlyLayers();
     el = null;
   }
 
