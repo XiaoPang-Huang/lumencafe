@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="a7d7812227a06d4764fb54e9a20efe9762b3ff06bc2491ca9ce708ac7c2b186f">
+  <meta name="source-sha256" content="0b265c0c50de5a9829830edc46f9624bbdbbeb727a5f58afe7a5701cf21ff7d7">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -2076,7 +2076,7 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 </tr>
 </tbody>
 </table></div><p><strong>数据契约</strong>：点档位 PATCH <code>conversations.thinking = &lt;档位&gt;</code>；点「关闭」PATCH <code>&quot;off&quot;</code>。后端 <code>resolveThinkingLevel</code> 对 legacy 具体档位透传的语义现成，无迁移。无 <code>thinkingLevels</code> 的模型：详情卡思考行显示不可用态，不浮档位菜单。消耗倍率/繁忙程度等<strong>后端没有的数据不展示</strong>（未新增统计接口）。价格/上下文为 models 表已有字段，<code>GET /api/chat/models</code> 最小透传（<code>inputPrice/outputPrice/contextWindow/maxOutputTokens</code>），不造假。</p>
-<p><strong>回归约束（更新 chat-ui.test.mjs）</strong>：①悬停模型行浮出详情卡且主列表仍在 DOM；②悬停另一模型行浮卡跟随切换；③悬停思考强度行浮出档位菜单；④档位严格来自该模型 thinkingLevels +「关闭」；⑤触屏点箭头浮出详情卡、档位可点击；⑥模型切换后 <code>.model-btn</code> 同步刷新。静态资源版本 <code>?v=2c2</code>。</p>
+<p><strong>回归约束（更新 chat-ui.test.mjs）</strong>：①悬停模型行浮出详情卡且主列表仍在 DOM；②悬停另一模型行浮卡跟随切换；③悬停思考强度行浮出档位菜单；④档位严格来自该模型 thinkingLevels +「关闭」；⑤触屏点箭头浮出详情卡、档位可点击；⑥模型选中后 <code>.model-btn</code> 同步刷新，且<strong>双端点选模型后面板即收起</strong>（下拉选择惯例，QA 返工项；<code>closeFlyLayers</code> 清理 body 级浮卡节点无残留）；⑦跨模型浮卡点档位 = 同时 PATCH model+thinking（语义锁定）。静态资源版本 <code>?v=2c3</code>。</p>
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#20-整体风格对齐-ragflow-账号体系改造2026-11-15-拍板"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">20 整体风格对齐 RAGFlow + 账号体系改造（2026-11-15 拍板）</span></a><a class="chapter-nav-link chapter-nav-next" href="#21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）</span></a></nav></section><section class="chapter" aria-labelledby="21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" data-chapter="22"><h2 id="21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" class="doc-heading">21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）<a class="heading-anchor" href="#21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" aria-label="链接到此标题：21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）"><span aria-hidden="true">#</span></a></h2><p><strong>定位</strong>：管理后台统一接入外部模型服务——官方 API、渠道套餐（tokenplan / agentplan 类）、MinerU 等第三方；管理员配渠道，用户可自接个人模型；配好的模型对话应用（含 agent 模式）直接可用。需求细节全文见 <code>docs/需求-模型API管理-v1.md</code>（实施依据），本节约定架构契约。</p>
 <h3 id="拍板四条硬约束" class="doc-heading">拍板四条（硬约束）<a class="heading-anchor" href="#拍板四条硬约束" aria-label="链接到此标题：拍板四条（硬约束）"><span aria-hidden="true">#</span></a></h3><div class="table-wrap" role="region" aria-label="表格，可横向滚动" tabindex="0"><table><thead>

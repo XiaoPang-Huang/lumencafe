@@ -452,7 +452,8 @@
     });
   }
 
-  /* 选中模型：会话 + 主列表选中态 + 输入区按钮三处同步；详情卡收起 */
+  /* 选中模型：会话 + 主列表选中态 + 输入区按钮三处同步；面板与详情卡一起收起
+     （下拉选择惯例，双端一致；再操作思考档位重新点开即可） */
   async function selectModel(value) {
     if (S.currentId && S.currentId !== NEW_ID) {
       await api(`/api/chat/conversations/${S.currentId}`, {
@@ -464,9 +465,8 @@
     } else if (S.current) {
       S.current.model = value;
     }
-    hoverModelSet(null);
-    renderModelMenu();
-    renderModelBtn();
+    renderModelMenu(); // 先同步主列表选中态，再关面板（隐藏 DOM 不留旧 ✓）
+    setModelMenu(false); // 关面板（closeFlyLayers 清浮卡定时器与 body 节点；renderModelBtn 同步按钮）
     toast("已切换模型，只影响之后的回答");
   }
 
@@ -514,7 +514,6 @@
 
   /* 关闭浮层：删 body 级详情卡与定时器（详情卡不在视图容器内，须显式清理） */
   function closeFlyLayers() {
-    document.body.classList.remove("mm-open");
     document.body.querySelector(".mm-fly")?.remove();
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     if (collapseTimer) { clearTimeout(collapseTimer); collapseTimer = null; }

@@ -209,7 +209,7 @@ async function runBrowser(caseName) {
           await tick();
           const tp = calls.filter((c) => c.method === "PATCH" && c.url.includes("/c2"));
           check(tp.some((c) => c.body?.thinking === "high"), "触屏点档位没有保存 high");
-          // ⑥ 主列表点选模型：会话/按钮/选中态同步 + 详情卡收起（点会话行顺带关面板，重开）
+          // ⑥ 主列表点选模型：会话/按钮/选中态同步 + 面板与详情卡一起收起（双端一致）
           click('[data-conv="c1"]');
           await tick();
           click("[data-model-menu]");
@@ -221,11 +221,23 @@ async function runBrowser(caseName) {
           check(sp.some((c) => c.body?.model === "b/chat"), "主列表点选模型没有保存");
           check(document.querySelector(".model-btn").textContent.includes("模型乙"), "点选模型后输入区按钮仍显示旧模型");
           check(document.querySelector(".mm-item.on")?.dataset.pickModel === "b/chat", "主列表选中态没有同步");
-          check(!document.querySelector(".mm-detail"), "点选模型后详情卡应收起");
+          // 注：面板收起后 DOM 隐藏但仍在视图内，选中态断言先于关闭完成 renderModelMenu 已重绘；
+          // 若面板重开则选中态可见——重开验证：
+          check(document.querySelector(".model-menu").hidden, "点选模型后面板没有收起（下拉选择惯例：选完即关）");
+          check(!document.body.querySelector(".mm-fly"), "面板收起后 body 残留详情卡浮层");
+          click("[data-model-menu]");
+          check(document.querySelector(".mm-item.on")?.dataset.pickModel === "b/chat", "重开面板后主列表选中态仍是旧模型");
           // ⑦ hover-intent：从主列表移入详情卡不意外关闭
           await hover('[data-hover-model="a/chat"]');
           document.querySelector(".mm-detail").dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
           check(!document.querySelector(".model-menu").hidden && document.querySelector(".mm-detail"), "移入详情卡后面板意外关闭");
+          // ⑧ 跨模型档位语义锁定：在另一模型浮卡里点档位 = 同时保存该模型（PATCH model+thinking）
+          await hover(".mm-think-row"); // 打开模型甲档位菜单（当前会话模型已是乙 → 跨模型）
+          document.querySelector('[data-pick-thinking="low"]').click();
+          await tick();
+          const xp = calls.filter((c) => c.method === "PATCH" && c.url.includes("/c1"));
+          check(xp.some((c) => c.body?.model === "a/chat"), "跨模型浮卡点档位没有同时切换并保存模型");
+          check(xp.some((c) => c.body?.thinking === "low"), "跨模型点档位没有保存所选思考档位");
         }
         (async () => {
           if (${JSON.stringify(caseName)} === "manage") await record("会话批量管理", testManage);
