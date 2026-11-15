@@ -207,6 +207,16 @@
     ${field("mmMax", "最大输出 token", "number", `value="${m.maxOutputTokens ?? ""}" min="0"`)}
     ${field("mmIn", "输入价格（元/百万 token，可空）", "number", `value="${m.inputPrice ?? ""}" step="0.000001" min="0"`)}
     ${field("mmOut", "输出价格（元/百万 token，可空）", "number", `value="${m.outputPrice ?? ""}" step="0.000001" min="0"`)}
+    <label class="login-field"><span class="login-label">思考强度（推理模式，学 WorkBuddy）</span>
+      <select class="text-input" id="mmThinking">
+        <option value="" ${!m.thinking ? "selected" : ""}>关闭（默认不走推理）</option>
+        ${[["minimal", "最轻"], ["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
+          .map(([v, t]) => `<option value="${v}" ${m.thinking === v ? "selected" : ""}>默认 · ${t}</option>`).join("")}
+      </select></label>
+    <div class="me-sec"><div class="me-sec-t">支持的思考强度档位（对话内可调范围）</div>
+      ${[["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
+        .map(([v, t]) => `<label class="chk-line"><input type="checkbox" data-think-lv="${v}" ${(m.thinkingLevels ?? ["low", "medium", "high", "xhigh", "max"]).includes(v) ? "checked" : ""}> ${t}</label>`).join("")}
+    </div>
     <div class="form-msg" id="mmfMsg"></div>`;
 
   const grantsForm = (m) => {
@@ -427,12 +437,15 @@
 
   function saveModel(btn) {
     const id = Number(btn.dataset.mmSaveModel);
+    const modal = document.getElementById("modal");
     const body = {
       displayName: document.getElementById("mmName")?.value.trim(),
       contextWindow: numOrNull(document.getElementById("mmCtx")?.value),
       maxOutputTokens: numOrNull(document.getElementById("mmMax")?.value),
       inputPrice: numOrNull(document.getElementById("mmIn")?.value),
       outputPrice: numOrNull(document.getElementById("mmOut")?.value),
+      thinking: document.getElementById("mmThinking")?.value || null,
+      thinkingLevels: [...modal.querySelectorAll("[data-think-lv]:checked")].map((c) => c.dataset.thinkLv),
     };
     const msg = document.getElementById("mmfMsg");
     req(`/api/models/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })

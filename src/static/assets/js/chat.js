@@ -33,7 +33,6 @@
     models: [],
     defaultModel: null,
     realLlm: true,
-    hubId: null,       // 总对话 id（恒 agent）
     currentId: null,   // 当前会话 id；null = 未选中
     current: null,     // 当前会话对象（含 model/app；hub 为合成对象）
     messages: [],
@@ -233,11 +232,10 @@
   }
 
   /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复） */
-  function convItemHtml(c, hubActive) {
+  function convItemHtml(c) {
     return `
-      <div class="conv-item ${c.id === S.currentId && !hubActive ? "active" : ""}" data-conv="${c.id}">
+      <div class="conv-item ${c.id === S.currentId ? "active" : ""}" data-conv="${c.id}">
         <span class="conv-title">${esc(c.title)}</span>
-        ${c.mode === "agent" ? '<span class="tag soon">agent</span>' : ""}
         <span class="conv-ops">
           <button class="conv-op" data-rename="${c.id}" title="重命名">${LC.IC.sliders}</button>
           <button class="conv-op" data-del="${c.id}" title="删除">${LC.IC.close}</button>
@@ -248,17 +246,10 @@
   function renderSidebar() {
     const list = el.querySelector(".chat-list");
     if (!list) return;
-    const hubActive = S.current?.app === "hub";
     const q = S.query.trim();
     const shown = S.conversations.filter((c) => !q || c.title.includes(q));
-    list.innerHTML = `
-      <div class="conv-item hub-item ${hubActive ? "active" : ""}" data-hub="1">
-        <span class="conv-title">总对话 · 跨应用查询</span>
-        <span class="tag soon">agent</span>
-      </div>
-      <div class="conv-sep"></div>
-      ${shown.map((c) => convItemHtml(c, hubActive)).join("")
-        || `<div class="conv-none">${q ? "没有匹配的会话" : "还没有会话"}</div>`}`;
+    list.innerHTML = shown.map((c) => convItemHtml(c)).join("")
+      || `<div class="conv-none">${q ? "没有匹配的会话" : "还没有会话"}</div>`;
   }
 
   function renderHeader() {
@@ -268,10 +259,26 @@
         `<option value="${esc(m.id)}" ${m.id === currentModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
       sel.disabled = S.generating;
     }
+    // 思考强度选择：档位随当前模型支持列表而定（学 WorkBuddy）；「跟随模型」=不覆盖
+    const thSel = el.querySelector(".thinking-select");
+    if (thSel) {
+      const cur = S.models.find((x) => x.id === currentModel());
+      const levels = cur?.thinkingLevels?.length ? cur.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
+      const LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
+      const curThinking = S.currentId === NEW_ID ? (S.current?.thinking ?? "") : (S.current?.thinking ?? "");
+      const options = [`<option value="">跟随模型${cur?.thinking ? `（${LABELS[cur.thinking] ?? cur.thinking}）` : "（关闭）"}</option>`];
+      if (cur?.thinking) options.push(`<option value="off" ${curThinking === "off" ? "selected" : ""}>关闭思考</option>`);
+      for (const l of levels) {
+        options.push(`<option value="${l}" ${curThinking === l ? "selected" : ""}>思考·${LABELS[l] ?? l}</option>`);
+      }
+      thSel.innerHTML = options.join("");
+      thSel.disabled = S.generating || !cur;
+      thSel.hidden = !cur?.thinking && !curThinking; // 模型不支持推理时不显示
+    }
     const conv = S.current;
     const titleEl = el.querySelector(".chat-title");
     // 空标题占位（第一批拍板）：新会话/未选中时头部显示「新会话」
-    if (titleEl) titleEl.textContent = conv?.app === "hub" ? "总对话（只读工具，跨应用查询）" : (conv?.title || "新会话");
+    if (titleEl) titleEl.textContent = conv?.title || "新会话";
     const banner = el.querySelector(".chat-banner");
     if (banner) banner.hidden = S.realLlm;
   }
@@ -305,32 +312,18 @@
   async function loadConversations(selectId = null) {
     const data = await api("/api/chat/conversations");
     S.conversations = data.conversations;
-    const hub = await api("/api/chat/hub").catch(() => null);
-    S.hubId = hub?.conversation?.id ?? null;
     if (selectId === NEW_ID || (!selectId && S.currentId === NEW_ID)) {
       S.currentId = NEW_ID; // 新会话占位不在服务端列表里，单独保持
       S.current = newConvObj();
     } else if (selectId) {
       S.currentId = selectId;
       S.current = S.conversations.find((c) => c.id === selectId) ?? null;
-    } else if (S.current?.app === "hub") {
-      // 保持总对话选中
     } else if (S.currentId && !S.conversations.some((c) => c.id === S.currentId)) {
       S.currentId = null;
       S.current = null;
     }
     renderSidebar();
     renderHeader();
-  }
-
-  function openHub() {
-    S.currentId = null;
-    S.current = { id: S.hubId, app: "hub", mode: "agent", title: "总对话" };
-    S.sidebarOpen = false;
-    location.hash = "#/chat";
-    api(`/api/chat/conversations/${S.hubId}/messages`)
-      .then((d) => { S.messages = d.messages; S.winSize = 80; renderAll(); })
-      .catch(() => { S.messages = []; renderAll(); });
   }
 
   async function loadMessages(convId) {
@@ -357,8 +350,10 @@
     if (!text || S.generating) return;
     const wasNew = S.current?.id === NEW_ID; // 占位草稿键迁移用（A1 配套）
     if (!S.current || S.current.id === NEW_ID) {
-      // 懒创建：占位阶段选的模型随创建落库（A1 配套）
-      const payload = S.current?.id === NEW_ID ? { model: S.current.model ?? null } : {};
+      // 懒创建：占位阶段选的模型/思考强度随创建落库（A1 配套）
+      const payload = S.current?.id === NEW_ID
+        ? { model: S.current.model ?? null, thinking: S.current.thinking ?? null }
+        : {};
       const { conversation } = await api("/api/chat/conversations", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
@@ -638,7 +633,6 @@
         if (ta) { ta.value = suggest.dataset.suggest; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
         return;
       }
-      if (e.target.closest("[data-hub]")) { openHub(); return; }
       if (newBtn) {
         // A1 修复：不落库，本地占位；发送首条消息时才创建（懒创建拍板）
         S.currentId = NEW_ID;
@@ -670,13 +664,9 @@
         return;
       }
       if (!convEl) {
-        const rename = e.target.closest("[data-rename]");
-        const del = e.target.closest("[data-del]");
         const copy = e.target.closest("[data-copy]");
         const retry = e.target.closest("[data-retry]");
         const regen = e.target.closest("[data-regen]");
-        if (rename) return renameConv(rename.dataset.rename);
-        if (del) return deleteConv(del.dataset.del);
         if (copy) {
           const m = S.messages.find((x) => x.id === copy.dataset.copy);
           if (m) { await navigator.clipboard.writeText(m.content).catch(() => {}); toast("已复制"); }
@@ -686,6 +676,11 @@
         if (regen) return generate({ regenerate: true });
         return;
       }
+      // 重命名/删除按钮在会话项内部：先于会话切换处理（修复删除按钮点了只切换会话的 bug）
+      const rename = e.target.closest("[data-rename]");
+      const del = e.target.closest("[data-del]");
+      if (rename) return renameConv(rename.dataset.rename);
+      if (del) return deleteConv(del.dataset.del);
       const id = convEl.dataset.conv;
       if (id !== S.currentId) {
         S.currentId = id;
@@ -698,6 +693,22 @@
     });
 
     el.addEventListener("change", async (e) => {
+      const thSel = e.target.closest(".thinking-select");
+      if (thSel && S.currentId) {
+        const value = thSel.value === "" ? null : thSel.value; // ""=跟随模型；"off"=显式关闭
+        if (S.currentId !== NEW_ID) {
+          await api(`/api/chat/conversations/${S.currentId}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ thinking: value }),
+          });
+          const c = S.conversations.find((x) => x.id === S.currentId);
+          if (c) c.thinking = value;
+        } else if (S.current) {
+          S.current.thinking = value;
+        }
+        toast(value === null ? "已恢复跟随模型默认" : value === "off" ? "已关闭思考" : "思考强度已切换，只影响之后的回答");
+        return;
+      }
       const sel = e.target.closest(".model-select");
       if (!sel || !S.currentId) return;
       // 新会话占位未落库：模型只记本地，创建时随首条消息带上（A1 配套）
@@ -712,6 +723,7 @@
       } else if (S.current) {
         S.current.model = sel.value;
       }
+      renderHeader(); // 换了模型要重算思考强度档位选项
       toast("已切换模型，只影响之后的回答");
     });
 
@@ -826,6 +838,7 @@
           <div class="chat-composer">
             <div class="composer-ctl">
               <select class="model-select" title="模型选择（按会话生效）"></select>
+              <select class="thinking-select" title="思考强度（档位随模型支持；跟随模型=不覆盖）"></select>
               <span class="spacer"></span>
               <span class="kbd-hint">Enter 发送 · Shift+Enter 换行</span>
             </div>

@@ -44,6 +44,7 @@ for (const ddl of [
   "ALTER TABLE messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'",
   "ALTER TABLE conversations ADD COLUMN mode TEXT NOT NULL DEFAULT 'chat'", // chat=单次调用 agent=pi 接管（第 5 批）
   "ALTER TABLE messages ADD COLUMN latency_ms INTEGER", // 对话界面改版：AI 消息「已完成 Xs」耗时标注（2026-11-15）
+  "ALTER TABLE conversations ADD COLUMN thinking TEXT", // 会话思考强度覆盖（NULL=跟随模型默认；学 WorkBuddy）
 ]) {
   try { chatDb.exec(ddl); } catch { /* 列已存在 */ }
 }
@@ -53,6 +54,7 @@ const uuid = () => crypto.randomUUID();
 
 const rowToConv = (r) => ({
   id: r.id, title: r.title, model: r.model, app: r.app, mode: r.mode,
+  thinking: r.thinking ?? null, // 会话思考强度覆盖（NULL=跟随模型默认）
   created_at: r.created_at, updated_at: r.updated_at, last_msg_at: r.last_msg_at,
 });
 const rowToMsg = (r) => ({
@@ -71,13 +73,13 @@ export const conv = {
     const r = chatDb.prepare("SELECT * FROM conversations WHERE owner_key = ? AND id = ?").get(ownerKey, id);
     return r ? rowToConv(r) : null;
   },
-  create(ownerKey, { title = "新会话", model = null, app = "chat", mode = "chat" } = {}) {
+  create(ownerKey, { title = "新会话", model = null, app = "chat", mode = "chat", thinking = null } = {}) {
     const id = uuid();
     const t = now();
     // 懒创建配套：新会话占位阶段选的模型/模式随首条消息落库（A1 修复）
     chatDb.prepare(
-      "INSERT INTO conversations (id, owner_key, title, model, app, mode, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?,?,?)",
-    ).run(id, ownerKey, title, model, app, mode === "agent" ? "agent" : "chat", t, t, t);
+      "INSERT INTO conversations (id, owner_key, title, model, app, mode, thinking, created_at, updated_at, last_msg_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    ).run(id, ownerKey, title, model, app, mode === "agent" ? "agent" : "chat", thinking, t, t, t);
     return conv.get(ownerKey, id);
   },
   /** 应用专属对话（每人每应用一条，如记账对话） */
@@ -96,6 +98,12 @@ export const conv = {
   setModel(ownerKey, id, model) {
     chatDb.prepare("UPDATE conversations SET model = ?, updated_at = ? WHERE owner_key = ? AND id = ?")
       .run(model, now(), ownerKey, id);
+    return conv.get(ownerKey, id);
+  },
+  /** 思考强度覆盖：null=跟随模型默认（学 WorkBuddy：档位只对当前会话生效） */
+  setThinking(ownerKey, id, thinking) {
+    chatDb.prepare("UPDATE conversations SET thinking = ?, updated_at = ? WHERE owner_key = ? AND id = ?")
+      .run(thinking, now(), ownerKey, id);
     return conv.get(ownerKey, id);
   },
   remove(ownerKey, id) {

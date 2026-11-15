@@ -85,15 +85,17 @@ const viewPushLogs = (ctx) => t(
   { ownerOnly: true },
 );
 
-/** 工具装载：按会话应用给工具集；总对话（hub）挂全部只读工具。
+/** 工具装载：按会话应用给工具集。
+ *  2026-11-15 修订（总对话删除 + 单档拍板）：普通对话挂全部只读工具——由 AI 自己识别该查哪个应用
+ *  （用户后续接专门的小路由模型）；money/papers 应用自己的 AI 对话仍只挂本域工具（窄而准）。
  *  ownerOnly 工具照常装载（模型看得见），调用前由 beforeToolCall 按角色复核拒绝——
  *  白皮书 §12：写死能用哪些 + 调用前再查一遍角色，双保险。 */
 export function toolsFor(app, ctx) {
   const all = [moneyMonthSummary(ctx), moneyCategoryQuery(ctx), papersSearch(ctx), viewPushLogs(ctx)];
   switch (app) {
-    case "hub": return all;
+    case "chat": return all;
     case "money": return all.filter((x) => x.name.startsWith("money_"));
     case "papers": return all.filter((x) => x.name.startsWith("papers_"));
-    default: return []; // 普通对话：agent 模式先不带工具，后续按域加
+    default: return [];
   }
 }

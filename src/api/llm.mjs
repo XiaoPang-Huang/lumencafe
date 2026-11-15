@@ -32,27 +32,42 @@ async function seedFromEnv(pg) {
   );
   const providerId = p[0].id;
   for (const m of Object.values(DEEPSEEK_MODELS)) {
-    // 官方种子默认可用：is_common=true（R3 并集的第一来源；管理员可在后台改）
+    // 官方种子默认可用：is_common=true（R3 并集的第一来源；管理员可在后台改）；
+    // 思考档位取 pi 目录的 thinkingLevelMap（映射 null 的档不支持）；默认推理关闭（成本考量，管理员可开）
+    const supportedLevels = m.thinkingLevelMap ? THINKING_LEVELS.filter((l) => m.thinkingLevelMap[l] != null) : [];
     await pg.query(
-      `INSERT INTO models (plan_id, provider_id, model_id, ref, display_name, source, is_common, context_window, max_output_tokens, input_price, output_price)
-       VALUES (NULL,$1,$2,$3,$4,'manual',TRUE,$5,$6,$7,$8)
+      `INSERT INTO models (plan_id, provider_id, model_id, ref, display_name, source, is_common, context_window, max_output_tokens, input_price, output_price, thinking_levels)
+       VALUES (NULL,$1,$2,$3,$4,'manual',TRUE,$5,$6,$7,$8,$9)
        ON CONFLICT (provider_id, model_id) DO NOTHING`,
       [providerId, m.id, `deepseek/${m.id}`, m.name, m.contextWindow ?? null, m.maxTokens ?? null,
-       m.cost?.input ?? null, m.cost?.output ?? null],
+       m.cost?.input ?? null, m.cost?.output ?? null, supportedLevels.join(",")],
     );
   }
   console.log("[llm] 已从 DEEPSEEK_API_KEY 种子 DeepSeek 官方供应商（模型 & API 管理可见）");
 }
 
+/* 思考强度（学 WorkBuddy 模型配置）：thinking=默认强度（null=推理关闭）；
+   thinkingLevels=支持的档位 CSV。pi 值域 minimal/low/medium/high/xhigh/max，
+   映射按同名字符串直传（DeepSeek/Claude 系兼容），不支持的档位映射 null。 */
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
+const THINKING_LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
+export { THINKING_LEVELS, THINKING_LABELS };
+
 function buildPiModel(dbModel, provider, plan) {
   const api = API_OF[provider.protocol];
+  const thinking = dbModel.thinking ?? null;
+  const supported = (dbModel.thinkingLevels?.length ? dbModel.thinkingLevels : ["low", "medium", "high", "xhigh", "max"]);
+  const thinkingLevelMap = thinking
+    ? Object.fromEntries(THINKING_LEVELS.map((l) => [l, supported.includes(l) ? l : null]))
+    : undefined;
   return {
     id: dbModel.modelId,
     name: dbModel.displayName,
     api,
     provider: `db-${provider.code}`,
     baseUrl: plan?.baseUrl || provider.baseUrl,
-    reasoning: false,
+    reasoning: Boolean(thinking),
+    ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
     input: ["text"],
     cost: {
       input: Number(dbModel.inputPrice ?? 0),
@@ -110,6 +125,7 @@ export async function reloadModels() {
         modelId: m.model_id, displayName: m.display_name,
         inputPrice: m.input_price, outputPrice: m.output_price,
         contextWindow: m.context_window, maxOutputTokens: m.max_output_tokens,
+        thinking: m.thinking, thinkingLevels: m.thinking_levels ? String(m.thinking_levels).split(",") : [],
       }, { protocol: prow.protocol, code: prow.code, baseUrl: prow.base_url }, { baseUrl: m.plan_base_url })),
       api: prow.protocol === "anthropic" ? anthropicMessagesApi() : openAICompletionsApi(),
     });
@@ -121,6 +137,8 @@ export async function reloadModels() {
         db: {
           modelId: m.id, planId: m.plan_id, providerId: prow.id,
           isCommon: m.is_common === true,
+          thinking: m.thinking ?? null,
+          thinkingLevels: m.thinking_levels ? String(m.thinking_levels).split(",") : [],
           rpmLimit: m.rpm_limit ?? 0, dailyLimit: m.daily_limit ?? 0,
           inputPrice: m.input_price != null ? Number(m.input_price) : null,
           outputPrice: m.output_price != null ? Number(m.output_price) : null,
@@ -215,6 +233,22 @@ export function getModelByRef(ref) {
   return entry?.piModel ?? null;
 }
 
+/** 注册表元数据（思考强度等 DB 配置快照；供调用方做档位解析） */
+export function getModelMeta(ref) {
+  return byRef.get(String(ref ?? ""))?.db ?? null;
+}
+
+/** 生效思考强度：会话覆盖优先（"off"=显式关闭），其次模型默认；模型不支持该档 → null */
+export function resolveThinking(conversationThinking, ref) {
+  if (conversationThinking === "off") return null;
+  const entry = byRef.get(String(ref ?? "")) ?? byRef.get(defaultModelRef());
+  if (!entry?.db) return null;
+  const level = conversationThinking || entry.db.thinking;
+  if (!level) return null;
+  const supported = entry.db.thinkingLevels?.length ? entry.db.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
+  return supported.includes(level) ? level : null;
+}
+
 export const streamSimple = (model, context, options) => models.streamSimple(model, context, options);
 
 /** 全部已注册模型（管理/调试用；前台可见列表走 models.mjs visibleModelList） */
@@ -272,18 +306,20 @@ function fauxCanned(systemPrompt, userText) {
  * meta: { userId, app, conversationId } 用于记账（可省略）。
  * 失败直接抛错（白皮书三态由调用方处理）；限流/熔断错误带 .code。
  */
-export async function streamChat({ modelRef, systemPrompt, messages, onDelta, signal, meta = {} }) {
+export async function streamChat({ modelRef, systemPrompt, messages, onDelta, signal, meta = {}, thinking = null }) {
   await ensureModels();
   const ref = byRef.has(modelRef) ? modelRef : defaultModelRef();
   const entry = byRef.get(ref);
   if (!entry?.piModel) throw new Error("没有可用模型");
+  // 思考强度：会话覆盖或模型默认，模型不支持该档则不传（pi 按模型 thinkingLevelMap 执行）
+  const thinkingLevel = resolveThinking(thinking, ref);
 
   // faux：补剧本走假回复，记 0 费日志
   if (!entry.db) {
     const last = [...messages].reverse().find((m) => m.role === "user");
     faux.appendResponses([fauxAssistantMessage([fauxText(fauxCanned(systemPrompt ?? "", last?.content ?? ""))])]);
     const t0 = Date.now();
-    const result = await runStream(entry.piModel, systemPrompt, messages, onDelta, signal);
+    const result = await runStream(entry.piModel, systemPrompt, messages, onDelta, signal, thinkingLevel);
     await logCall({
       modelId: null, planId: null, providerId: null,
       userId: meta.userId ?? 0, app: meta.app ?? "chat", conversationId: meta.conversationId ?? "",
@@ -299,7 +335,7 @@ export async function streamChat({ modelRef, systemPrompt, messages, onDelta, si
 
   const t0 = Date.now();
   try {
-    const result = await runStream(entry.piModel, systemPrompt, messages, onDelta, signal);
+    const result = await runStream(entry.piModel, systemPrompt, messages, onDelta, signal, thinkingLevel);
     recordOk(db);
     const usage = result.usage;
     const costFen = usage && db.inputPrice != null && db.outputPrice != null
@@ -333,8 +369,8 @@ export async function streamChat({ modelRef, systemPrompt, messages, onDelta, si
   }
 }
 
-/** 底层流式执行：返回 { text, usage, aborted } */
-async function runStream(piModel, systemPrompt, messages, onDelta, signal) {
+/** 底层流式执行：返回 { text, usage, aborted }；thinkingLevel 为 pi 思考强度档（null=不传） */
+async function runStream(piModel, systemPrompt, messages, onDelta, signal, thinkingLevel = null) {
   const context = {
     systemPrompt: systemPrompt ?? "你是流光咖啡馆的 AI 助手，回答简洁、准确，用中文。",
     messages: messages.map((m) => ({ role: m.role, content: m.content, timestamp: Date.now() })),
@@ -342,7 +378,7 @@ async function runStream(piModel, systemPrompt, messages, onDelta, signal) {
   let full = "";
   let usage = null;
   let aborted = false;
-  const stream = models.stream(piModel, context, { signal });
+  const stream = models.stream(piModel, context, { signal, ...(thinkingLevel ? { thinkingLevel } : {}) });
   for await (const event of stream) {
     if (signal?.aborted) {
       aborted = true;

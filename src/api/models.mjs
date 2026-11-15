@@ -252,6 +252,14 @@ function adminModelRoutes() {
       if (body.inputPrice !== undefined) patch.inputPrice = body.inputPrice === null || body.inputPrice === "" ? null : Number(body.inputPrice);
       if (body.outputPrice !== undefined) patch.outputPrice = body.outputPrice === null || body.outputPrice === "" ? null : Number(body.outputPrice);
       if (body.supportsTools !== undefined) patch.supportsTools = body.supportsTools === true;
+      // 思考强度（学 WorkBuddy）：默认强度 null=推理关闭；支持档位白名单校验
+      if (body.thinking !== undefined) {
+        patch.thinking = [null, "minimal", "low", "medium", "high", "xhigh", "max"].includes(body.thinking) ? body.thinking : null;
+      }
+      if (body.thinkingLevels !== undefined) {
+        const ALLOWED = ["minimal", "low", "medium", "high", "xhigh", "max"];
+        patch.thinkingLevels = (Array.isArray(body.thinkingLevels) ? body.thinkingLevels : []).filter((l) => ALLOWED.includes(l));
+      }
       const model = await db.updateModel(id, patch);
       await reloadModels();
       return json({ model });

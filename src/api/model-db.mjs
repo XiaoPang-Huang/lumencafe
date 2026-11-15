@@ -27,6 +27,8 @@ const toModel = (r) => ({
   inputPrice: r.input_price != null ? Number(r.input_price) : null,
   outputPrice: r.output_price != null ? Number(r.output_price) : null,
   supportsTools: r.supports_tools, source: r.source, fetchedAt: r.fetched_at,
+  thinking: r.thinking ?? null, // 默认思考强度（NULL=推理关闭；学 WorkBuddy 模型配置）
+  thinkingLevels: r.thinking_levels ? String(r.thinking_levels).split(",") : [],
   createdAt: r.created_at, updatedAt: r.updated_at,
   // join 而来
   providerName: r.provider_name ?? null, providerCode: r.provider_code ?? null,
@@ -191,6 +193,8 @@ export async function updateModel(id, patch) {
   if (patch.inputPrice !== undefined) push("input_price", patch.inputPrice);
   if (patch.outputPrice !== undefined) push("output_price", patch.outputPrice);
   if (patch.supportsTools !== undefined) push("supports_tools", patch.supportsTools);
+  if (patch.thinking !== undefined) push("thinking", patch.thinking);
+  if (patch.thinkingLevels !== undefined) push("thinking_levels", (patch.thinkingLevels ?? []).join(","));
   if (!sets.length) return getModel(id);
   params.push(id);
   const { rows } = await pg().query(

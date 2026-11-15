@@ -4,7 +4,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
-import { getModelByRef, streamSimple, defaultModelRef, primeFaux } from "./llm.mjs";
+import { getModelByRef, streamSimple, defaultModelRef, primeFaux, resolveThinking } from "./llm.mjs";
 import { toolsFor } from "./agent-tools.mjs";
 import { roleOfPrincipal, gateApp } from "./gateway.mjs";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -53,6 +53,8 @@ async function runAgent({ ctx, conversation, userText, body }) {
   const tools = toolsFor(conversation.app, ctx);
   const model = getModelByRef(conversation.model ?? defaultModelRef());
   if (!model) throw new Error("没有可用模型");
+  // 思考强度：会话覆盖优先，其次模型默认；模型不支持该档 → 不传（pi 按模型配置执行）
+  const thinkingLevel = resolveThinking(conversation.thinking ?? null, conversation.model ?? defaultModelRef());
 
   const trace = []; // 工具轨迹（渲染工具卡片用）
   let steps = 0;
@@ -69,7 +71,7 @@ async function runAgent({ ctx, conversation, userText, body }) {
       model,
       tools,
     },
-    streamFn: (m, c, o) => streamSimple(m, c, o),
+    streamFn: (m, c, o) => streamSimple(m, c, { ...o, ...(thinkingLevel ? { thinkingLevel } : {}) }),
     beforeToolCall: async ({ toolCall }) => {
       steps++;
       const tool = tools.find((x) => x.name === toolCall.name);
@@ -136,9 +138,8 @@ export function agentRoutes() {
       },
     },
 
-    // 总对话（§09 方案 C）：每人一条，恒 agent 模式，挂全部只读工具
-    "GET /api/chat/hub": async (_r, ctx) =>
-      json({ conversation: chatConv.ensureApp(keyOf(ctx), "hub", "总对话") }),
+    // 总对话已删除（2026-11-15 用户拍板：只留普通对话，由 AI 自己识别应用；
+    // 后续接专门的小路由模型）。工具装载见 agent-tools.toolsFor——chat 会话挂全部只读工具。
 
     // agent 模式对话（SSE：文本增量 + 工具卡片事件）
     "POST /api/chat/agent": async (request, ctx) => {

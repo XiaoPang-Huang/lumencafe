@@ -51,7 +51,8 @@ export function chatRoutes() {
       return json({
         models: visible.map((m) => ({
           id: m.ref, provider: m.providerCode, modelId: m.modelId,
-          name: m.displayName, reasoning: false,
+          name: m.displayName, reasoning: m.thinking != null,
+          thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 思考强度（对话内可调档）
         })),
         default_model: visible[0]?.ref ?? defaultModelRef(),
         real: hasRealLlm(),
@@ -66,7 +67,9 @@ export function chatRoutes() {
 
     "POST /api/chat/conversations": async (request, ctx) => {
       const body = await request.json().catch(() => ({}));
-      return json({ conversation: conv.create(ownerKeyOf(ctx), { title: body?.title, model: body?.model ?? null, mode: body?.mode }) }, 201);
+      const THINKING = [null, "off", "minimal", "low", "medium", "high", "xhigh", "max"];
+      const thinking = THINKING.includes(body?.thinking) ? body.thinking : null;
+      return json({ conversation: conv.create(ownerKeyOf(ctx), { title: body?.title, model: body?.model ?? null, mode: body?.mode, thinking }) }, 201);
     },
 
     "PATCH /api/chat/conversations/:id": async (request, ctx) => {
@@ -77,6 +80,12 @@ export function chatRoutes() {
       let c = conv.get(ownerKey, id);
       if (typeof body?.title === "string") c = conv.rename(ownerKey, id, body.title);
       if (typeof body?.model === "string") c = conv.setModel(ownerKey, id, body.model);
+      if (body?.thinking !== undefined) {
+        // "off" = 显式关闭思考（覆盖模型默认）；null = 跟随模型；其余为 pi 思考强度档
+        const THINKING = [null, "off", "minimal", "low", "medium", "high", "xhigh", "max"];
+        const thinking = THINKING.includes(body.thinking) ? body.thinking : null;
+        c = conv.setThinking(ownerKey, id, thinking);
+      }
       return json({ conversation: c });
     },
 
@@ -152,6 +161,7 @@ export function chatRoutes() {
             signal,
             onDelta: (delta) => body_sse.push(`data: ${JSON.stringify({ delta })}\n\n`),
             meta: { userId: (await userByPrincipal(ctx))?.id ?? 0, app: "chat", conversationId: c.id },
+            thinking: c.thinking ?? null, // 会话思考强度覆盖（NULL=跟随模型默认）
           });
           msg.markPartial(pending.id, full, "ok", Date.now() - t0);
           body_sse.push(`data: ${JSON.stringify({ done: true, message_id: pending.id })}\n\n`);
