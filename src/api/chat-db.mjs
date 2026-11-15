@@ -36,6 +36,16 @@ chatDb.exec(`
     created_at      INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages (conversation_id, created_at);
+  CREATE TABLE IF NOT EXISTS chat_uploads (
+    id          TEXT PRIMARY KEY,
+    owner_key   TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    size        INTEGER NOT NULL DEFAULT 0,
+    storage_key TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_upload_owner ON chat_uploads (owner_key, created_at);
 `);
 
 // 旧库补列（0002 起 messages.kind / conversations.app 存在；首次启动的库已在建表语句里）
@@ -172,5 +182,20 @@ export const msg = {
       "SELECT * FROM messages WHERE conversation_id = ? AND role = 'assistant' ORDER BY created_at DESC, rowid DESC LIMIT 1",
     ).get(conversationId);
     return r ? rowToMsg(r) : null;
+  },
+};
+
+/* 对话附件上传元数据（文件本体在 storage.mjs 对象存储；按 owner 隔离） */
+export const chatUploads = {
+  save(ownerKey, { name, mime, size, storageKey }) {
+    const id = uuid();
+    chatDb.prepare(
+      "INSERT INTO chat_uploads (id, owner_key, name, mime, size, storage_key, created_at) VALUES (?,?,?,?,?,?,?)",
+    ).run(id, ownerKey, name, mime, size, storageKey, now());
+    return { id, name, mime, size };
+  },
+  get(ownerKey, id) {
+    const r = chatDb.prepare("SELECT * FROM chat_uploads WHERE id = ? AND owner_key = ?").get(id, ownerKey);
+    return r ? { id: r.id, name: r.name, mime: r.mime, size: r.size, storageKey: r.storage_key } : null;
   },
 };

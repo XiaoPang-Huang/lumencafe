@@ -86,13 +86,14 @@
     <div class="tbl-wrap mm-tbl-wrap"><table class="tbl mm-tbl">
       <thead><tr>
         <th><input type="checkbox" class="grant-chk mm-check-all" data-provider-check="${p.id}" title="全选"></th>
-        <th>模型</th><th>ref</th><th>价格(入/出 每百万token)</th><th>来源</th><th>通用</th><th>启用</th><th>授权</th><th></th>
+        <th>模型</th><th>能力</th><th>ref</th><th>价格(入/出 每百万token)</th><th>来源</th><th>通用</th><th>启用</th><th>授权</th><th></th>
       </tr></thead>
       <tbody>
         ${models.map((m) => `
         <tr data-model-row="${m.id}">
           <td><input type="checkbox" class="grant-chk mm-check" data-check="${m.id}" ${S.picked.has(m.id) ? "checked" : ""}></td>
-          <td><b>${esc(m.displayName)}</b></td>
+          <td><b>${esc(m.displayName)}</b>${m.displayOrder === 0 && models[0]?.id === m.id ? ' <span class="tag" title="排序第一位 = 全员默认模型（学 WorkBuddy）">默认</span>' : ""}</td>
+          <td>${[m.supportsImages ? '<span class="tag">图片</span>' : "", (m.thinkingLevels?.length || m.thinking) ? '<span class="tag soon">思考</span>' : ""].join("") || '<span class="tbl-dim">—</span>'}</td>
           <td class="tbl-dim mm-mono">${esc(m.ref)}</td>
           <td class="mm-mono">${fmtPrice(m.inputPrice)} / ${fmtPrice(m.outputPrice)}</td>
           <td>${m.source === "fetched" ? `<span class="tag">拉取</span>` : `<span class="tag soon">手录</span>`}</td>
@@ -100,6 +101,8 @@
           <td><input type="checkbox" class="grant-chk mm-enable" data-enable="${m.id}" ${m.enabled ? "checked" : ""}></td>
           <td><button class="row-act mm-grants" data-grants="${m.id}" data-name="${esc(m.displayName)}">${m.grants?.length ?? 0} 项</button></td>
           <td><div class="row-acts">
+            <button class="row-act mm-sort" data-sort-up="${m.id}" title="上移（排序第一位=默认模型）" ${models.indexOf(m) === 0 ? "disabled" : ""}>↑</button>
+            <button class="row-act mm-sort" data-sort-down="${m.id}" title="下移" ${models.indexOf(m) === models.length - 1 ? "disabled" : ""}>↓</button>
             <button class="row-act mm-edit-model" data-edit-model="${m.id}">编辑</button>
             <button class="row-act danger mm-del-model" data-del-model="${m.id}">删除</button>
           </div></td>
@@ -124,10 +127,57 @@
         ? S.providers.map(providerCard).join("")
         : `<div class="empty-hint">还没有供应商。点「添加供应商」接入官方 API 或渠道套餐（MinerU 选 mineru 协议）。</div>`}
       <div class="card card-gap">
+        <div class="card-title card-title-gap">权限查询 <span class="tbl-dim card-sub">输入成员账号，看他最终可用哪些模型（并集规则）</span></div>
+        <div class="mm-visbar">
+          <input class="text-input mm-vis-input" placeholder="成员账号，如 zhangsan" data-mm-vis-input>
+          <button class="btn btn-ghost" data-mm-vis-go>查询</button>
+          <span class="form-msg" data-mm-vis-result></span>
+        </div>
+      </div>
+      <div class="card card-gap">
         <div class="card-title card-title-gap">调用日志 <span class="tbl-dim card-sub">最近 50 条</span></div>
         <div data-mm-logs><div class="chart-none">加载中…</div></div>
       </div>`;
     loadLogs();
+  }
+
+  /* 权限查询：某成员最终可见模型（学 WorkBuddy 企业版「权限查询」） */
+  async function queryVisibility() {
+    const input = el.querySelector("[data-mm-vis-input]");
+    const out = el.querySelector("[data-mm-vis-result]");
+    const username = input?.value.trim();
+    if (!username || !out) return;
+    out.textContent = "查询中…";
+    out.className = "form-msg";
+    try {
+      const data = await req(`/api/models/visibility?username=${encodeURIComponent(username)}`);
+      const enabled = data.models.filter((m) => m.enabled);
+      out.className = "form-msg ok";
+      out.textContent = data.isAdmin
+        ? `${username}（管理员）可见全部 ${data.models.length} 个模型`
+        : `${username}（${data.user.role === "member" ? "成员" : data.user.role}）可用 ${enabled.length} 个：${enabled.slice(0, 6).map((m) => m.name).join("、")}${enabled.length > 6 ? ` 等 ${enabled.length} 个` : ""}`;
+    } catch (err) {
+      out.className = "form-msg err";
+      out.textContent = err.message;
+    }
+  }
+
+  /* 排序：与相邻模型交换位次（排序第一位=全员默认模型，学 WorkBuddy） */
+  async function sortModel(id, dir) {
+    for (const p of S.providers) {
+      const models = p.models ?? [];
+      const idx = models.findIndex((m) => m.id === id);
+      if (idx < 0) continue;
+      const swap = dir === "up" ? idx - 1 : idx + 1;
+      if (swap < 0 || swap >= models.length) return;
+      const reordered = [...models];
+      [reordered[idx], reordered[swap]] = [reordered[swap], reordered[idx]];
+      await Promise.all(reordered.map((m, i) =>
+        req(`/api/models/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayOrder: i * 10 }) })));
+      setMsg("已调整排序：第一位即默认模型", true);
+      loadAll();
+      return;
+    }
   }
 
   async function loadLogs() {
@@ -213,6 +263,8 @@
         ${[["minimal", "最轻"], ["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
           .map(([v, t]) => `<option value="${v}" ${m.thinking === v ? "selected" : ""}>默认 · ${t}</option>`).join("")}
       </select></label>
+    <label class="login-field mm-img-row"><span class="login-label">图片输入（多模态：对话可发照片，模型按图理解——需供应商支持视觉）</span>
+      <input type="checkbox" class="grant-chk" id="mmImages" ${m.supportsImages ? "checked" : ""}></label>
     <div class="me-sec"><div class="me-sec-t">支持的思考强度档位（对话内可调范围）</div>
       ${[["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
         .map(([v, t]) => `<label class="chk-line"><input type="checkbox" data-think-lv="${v}" ${(m.thinkingLevels ?? ["low", "medium", "high", "xhigh", "max"]).includes(v) ? "checked" : ""}> ${t}</label>`).join("")}
@@ -321,6 +373,12 @@
     if (e.target.closest("[data-mm-batch-enable]")) return batchSet(true);
     if (e.target.closest("[data-mm-batch-disable]")) return batchSet(false);
 
+    // 权限查询 + 排序
+    if (e.target.closest("[data-mm-vis-go]")) return queryVisibility();
+    const sortUp = e.target.closest("[data-sort-up]");
+    if (sortUp) return sortModel(Number(sortUp.dataset.sortUp), "up");
+    const sortDown = e.target.closest("[data-sort-down]");
+    if (sortDown) return sortModel(Number(sortDown.dataset.sortDown), "down");
     // 保存类
     if (e.target.closest("[data-mm-save-provider]")) return saveProvider(e.target.closest("[data-mm-save-provider]"));
     if (e.target.closest("[data-mm-save-plan]")) return savePlan(e.target.closest("[data-mm-save-plan]"));
@@ -446,6 +504,7 @@
       outputPrice: numOrNull(document.getElementById("mmOut")?.value),
       thinking: document.getElementById("mmThinking")?.value || null,
       thinkingLevels: [...modal.querySelectorAll("[data-think-lv]:checked")].map((c) => c.dataset.thinkLv),
+      supportsImages: document.getElementById("mmImages")?.checked === true,
     };
     const msg = document.getElementById("mmfMsg");
     req(`/api/models/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })

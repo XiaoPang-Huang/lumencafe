@@ -68,7 +68,7 @@ function buildPiModel(dbModel, provider, plan) {
     baseUrl: plan?.baseUrl || provider.baseUrl,
     reasoning: Boolean(thinking),
     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
-    input: ["text"],
+    input: dbModel.supportsImages ? ["text", "image"] : ["text"], // 图片输入能力（0010；多模态标记）
     cost: {
       input: Number(dbModel.inputPrice ?? 0),
       output: Number(dbModel.outputPrice ?? 0),
@@ -97,7 +97,7 @@ export async function reloadModels() {
       `SELECT m.*, pl.base_url AS plan_base_url, pl.key_cipher AS plan_key, pl.enabled AS plan_enabled,
               pl.rpm_limit, pl.daily_limit, pl.id AS plan_id
        FROM models m LEFT JOIN model_plans pl ON pl.id = m.plan_id
-       WHERE m.provider_id = $1 AND m.enabled = TRUE ORDER BY m.id`,
+       WHERE m.provider_id = $1 AND m.enabled = TRUE ORDER BY m.display_order, m.id`,
       [prow.id],
     );
     const usable = modelRows.filter((m) => m.plan_id == null || m.plan_enabled);
@@ -126,6 +126,7 @@ export async function reloadModels() {
         inputPrice: m.input_price, outputPrice: m.output_price,
         contextWindow: m.context_window, maxOutputTokens: m.max_output_tokens,
         thinking: m.thinking, thinkingLevels: m.thinking_levels ? String(m.thinking_levels).split(",") : [],
+        supportsImages: m.supports_images === true,
       }, { protocol: prow.protocol, code: prow.code, baseUrl: prow.base_url }, { baseUrl: m.plan_base_url })),
       api: prow.protocol === "anthropic" ? anthropicMessagesApi() : openAICompletionsApi(),
     });
@@ -137,6 +138,8 @@ export async function reloadModels() {
         db: {
           modelId: m.id, planId: m.plan_id, providerId: prow.id,
           isCommon: m.is_common === true,
+          displayOrder: m.display_order ?? 0,
+          supportsImages: m.supports_images === true,
           thinking: m.thinking ?? null,
           thinkingLevels: m.thinking_levels ? String(m.thinking_levels).split(",") : [],
           rpmLimit: m.rpm_limit ?? 0, dailyLimit: m.daily_limit ?? 0,

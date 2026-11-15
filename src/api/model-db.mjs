@@ -29,6 +29,8 @@ const toModel = (r) => ({
   supportsTools: r.supports_tools, source: r.source, fetchedAt: r.fetched_at,
   thinking: r.thinking ?? null, // 默认思考强度（NULL=推理关闭；学 WorkBuddy 模型配置）
   thinkingLevels: r.thinking_levels ? String(r.thinking_levels).split(",") : [],
+  displayOrder: r.display_order ?? 0,      // 排序：越靠前越优先，第一位=默认模型（学 WorkBuddy）
+  supportsImages: r.supports_images === true, // 图片输入能力（多模态标记；对话附件据此提示）
   createdAt: r.created_at, updatedAt: r.updated_at,
   // join 而来
   providerName: r.provider_name ?? null, providerCode: r.provider_code ?? null,
@@ -153,7 +155,7 @@ export async function listModels({ providerId = null, scope = null, ownerUserId 
   if (scope) { params.push(scope); conds.push(`p.scope = $${params.length}`); }
   if (ownerUserId != null) { params.push(ownerUserId); conds.push(`p.owner_user_id = $${params.length}`); }
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const { rows } = await pg().query(`${MODEL_JOIN} ${where} ORDER BY m.provider_id, m.id`, params);
+  const { rows } = await pg().query(`${MODEL_JOIN} ${where} ORDER BY m.display_order, m.provider_id, m.id`, params);
   return rows.map(toModel);
 }
 
@@ -195,6 +197,8 @@ export async function updateModel(id, patch) {
   if (patch.supportsTools !== undefined) push("supports_tools", patch.supportsTools);
   if (patch.thinking !== undefined) push("thinking", patch.thinking);
   if (patch.thinkingLevels !== undefined) push("thinking_levels", (patch.thinkingLevels ?? []).join(","));
+  if (patch.displayOrder !== undefined) push("display_order", patch.displayOrder);
+  if (patch.supportsImages !== undefined) push("supports_images", patch.supportsImages);
   if (!sets.length) return getModel(id);
   params.push(id);
   const { rows } = await pg().query(
@@ -223,7 +227,7 @@ export async function listVisibleModels({ role = null, userId = null }) {
                      AND ((g.grantee_type = 'role' AND g.grantee = $2)
                        OR (g.grantee_type = 'user' AND g.grantee = $3)))
        )
-     ORDER BY m.is_common DESC, p.id, m.id`,
+     ORDER BY m.display_order, m.is_common DESC, p.id, m.id`,
     [userId, role, userId != null ? String(userId) : ""],
   );
   return rows.map(toModel);

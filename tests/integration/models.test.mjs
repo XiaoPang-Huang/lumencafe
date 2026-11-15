@@ -191,3 +191,53 @@ test("权限门槛：匿名 401；member 访问管理端 403", async () => {
   // 管理接口(member 可走的个人接口)不受影响
   assert.equal((await member.get("/api/models/mine")).status, 200);
 });
+
+test("权限查询：管理员输入成员账号 → 其并集可见模型", async () => {
+  const vis = await admin.get("/api/models/visibility?username=member1");
+  assert.equal(vis.status, 200);
+  assert.equal(vis.json.user.username, "member1");
+  assert.ok(Array.isArray(vis.json.models));
+  // member1 可见通用模型（boss/admin 创建的官方种子）
+  assert.ok(vis.json.models.length >= 1);
+  // 管理员自己 → 全量
+  const visAdmin = await admin.get("/api/models/visibility?username=boss");
+  assert.equal(visAdmin.json.isAdmin, true);
+  // 不存在账号 404；member 调用管理接口 403
+  assert.equal((await admin.get("/api/models/visibility?username=nobody")).status, 404);
+  const member = await loginAs(server, "member1", "member-pass-1");
+  assert.equal((await member.get("/api/models/visibility?username=member1")).status, 403);
+});
+
+test("对话附件：上传→下载→归属隔离", async () => {
+  // 原始字节上传（服务端无 formData，走 ?name= + 原始 body）
+  const upRes = await fetch(`${server.baseUrl}/api/chat/uploads?name=${encodeURIComponent("笔记.txt")}`, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", Cookie: admin.cookie },
+    body: "附件内容 abc",
+  });
+  assert.equal(upRes.status, 201);
+  const { upload } = await upRes.json();
+  assert.equal(upload.name, "笔记.txt");
+  // 下载回环
+  const dl = await fetch(`${server.baseUrl}${upload.url}`, { headers: { Cookie: admin.cookie } });
+  assert.equal(dl.status, 200);
+  assert.equal(await dl.text(), "附件内容 abc");
+  // 他人不可下载（owner 隔离）
+  const member = await loginAs(server, "member1", "member-pass-1");
+  const dl2 = await fetch(`${server.baseUrl}${upload.url}`, { headers: { Cookie: member.cookie } });
+  assert.equal(dl2.status, 404);
+  // 消息引用：attachments 校验归属后入库
+  const conv = await admin.post("/api/chat/conversations", {});
+  const bad = await admin.post("/api/chat/messages", {
+    conversation_id: conv.json.conversation.id, content: "带附件", req_id: "req-att-1",
+    attachments: [{ id: upload.id }],
+  });
+  assert.equal(bad.status, 200); // 本人附件可用
+  assert.match(bad.json.message.content, /\[笔记\.txt\]\(\/api\/chat\/uploads\//);
+  // 引用他人附件 id → 404
+  const bad2 = await member.post("/api/chat/messages", {
+    conversation_id: conv.json.conversation.id, content: "偷附件", req_id: "req-att-2",
+    attachments: [{ id: upload.id }],
+  });
+  assert.equal(bad2.status, 404);
+});

@@ -252,6 +252,8 @@ function adminModelRoutes() {
       if (body.inputPrice !== undefined) patch.inputPrice = body.inputPrice === null || body.inputPrice === "" ? null : Number(body.inputPrice);
       if (body.outputPrice !== undefined) patch.outputPrice = body.outputPrice === null || body.outputPrice === "" ? null : Number(body.outputPrice);
       if (body.supportsTools !== undefined) patch.supportsTools = body.supportsTools === true;
+      if (body.supportsImages !== undefined) patch.supportsImages = body.supportsImages === true;
+      if (body.displayOrder !== undefined) patch.displayOrder = Math.max(0, Number(body.displayOrder) || 0);
       // 思考强度（学 WorkBuddy）：默认强度 null=推理关闭；支持档位白名单校验
       if (body.thinking !== undefined) {
         patch.thinking = [null, "minimal", "low", "medium", "high", "xhigh", "max"].includes(body.thinking) ? body.thinking : null;
@@ -308,6 +310,29 @@ function adminModelRoutes() {
         limit: limit ? Number(limit) : 50,
       });
       return json({ logs });
+    }),
+
+    // 权限查询（学 WorkBuddy 企业版）：输入成员账号 → 他最终可见的模型清单（并集规则 R3）
+    "GET /api/models/visibility": requireAdmin(async (request) => {
+      const username = (request.query.get("username") || "").trim();
+      if (!username) return bad(400, "缺少 username");
+      const { rows } = await getPg().query(
+        "SELECT id, username, role, enabled FROM users WHERE username = $1", [username],
+      );
+      const user = rows[0];
+      if (!user) return bad(404, "账号不存在");
+      const isAdmin = user.role === "admin";
+      const models = isAdmin
+        ? await db.listModels({})
+        : await db.listVisibleModels({ role: user.role, userId: user.id });
+      return json({
+        user: { id: user.id, username: user.username, role: user.role, enabled: user.enabled },
+        isAdmin, // 管理员全量可见（全站可管）
+        models: models.map((m) => ({
+          id: m.id, ref: m.ref, name: m.displayName, enabled: m.enabled, isCommon: m.isCommon,
+          provider: m.providerName,
+        })),
+      });
     }),
   };
 }

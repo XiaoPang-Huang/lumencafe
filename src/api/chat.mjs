@@ -1,10 +1,11 @@
 // 对话应用路由（第 1 批，白皮书 §08 时序图实现）
 // 链路：先保存用户消息（请求标识幂等）→ 返回保存确认 → 再发起流式生成
-import { chatDb, conv, msg } from "./chat-db.mjs";
+import { chatDb, conv, msg, chatUploads } from "./chat-db.mjs";
 import { streamChat, defaultModelRef, hasRealLlm } from "./llm.mjs";
 import { visibleModelList } from "./models.mjs";
 import { userByPrincipal } from "./auth.mjs";
 import { gateApp } from "./gateway.mjs";
+import { storage } from "./storage.mjs";
 
 const ownerKeyOf = (ctx) => JSON.stringify(ctx.principal);
 const bad = (status, message) => ({ kind: "error", status, message });
@@ -53,6 +54,7 @@ export function chatRoutes() {
           id: m.ref, provider: m.providerCode, modelId: m.modelId,
           name: m.displayName, reasoning: m.thinking != null,
           thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 思考强度（对话内可调档）
+          supportsImages: m.supportsImages === true, // 图片输入能力（多模态标记）
         })),
         default_model: visible[0]?.ref ?? defaultModelRef(),
         real: hasRealLlm(),
@@ -101,6 +103,55 @@ export function chatRoutes() {
     },
 
     // 第一步：幂等保存用户消息，返回保存确认（时序图：保存确认后再生成）
+    // 对话附件：上传（原始字节直传：?name=文件名，body ≤20MB；chord 请求无 formData，body() 读原始流）
+    // 与下载（owner 隔离；图片内联显示，文件触发下载）
+    "POST /api/chat/uploads": async (request, ctx) => {
+      const LIMIT = 20 * 1024 * 1024;
+      const name = (request.query.get("name") || "file").slice(0, 200) || "file";
+      const mime = request.headers.get("content-type") || "application/octet-stream";
+      const chunks = [];
+      let size = 0;
+      try {
+        for await (const chunk of request.body(LIMIT + 1)) {
+          size += chunk.length;
+          if (size > LIMIT) return bad(400, "文件超过 20MB 上限");
+          chunks.push(chunk);
+        }
+      } catch (err) {
+        if (err?.status === 413) return bad(400, "文件超过 20MB 上限");
+        throw err;
+      }
+      if (!size) return bad(400, "文件内容为空");
+      const id = crypto.randomUUID();
+      const safe = name.replace(/[^\w.\-一-龥]/g, "_").slice(-80) || "file";
+      const storageKey = `chat-uploads/${id}_${safe}`;
+      await storage.put(storageKey, Buffer.concat(chunks.map((c) => Buffer.from(c))));
+      const meta = chatUploads.save(ownerKeyOf(ctx), { name, mime, size, storageKey });
+      return json({ upload: { ...meta, url: `/api/chat/uploads/${meta.id}` } }, 201);
+    },
+
+    "GET /api/chat/uploads/:id": async (request, ctx) => {
+      const up = chatUploads.get(ownerKeyOf(ctx), request.params.id);
+      if (!up) return bad(404, "附件不存在");
+      const bytes = await storage.get(up.storageKey);
+      if (!bytes) return bad(404, "附件文件缺失");
+      const inline = up.mime.startsWith("image/") || up.mime === "application/pdf";
+      let sent = false;
+      return {
+        kind: "bytes", mime: up.mime,
+        read: () => {
+          if (sent) return new Uint8Array(0); // 空块收尾（SSE 同款协议）
+          sent = true;
+          return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        },
+        headers: {
+          "Content-Type": up.mime,
+          ...(inline ? {} : { "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(up.name)}` }),
+          "X-Content-Type-Options": "nosniff",
+        },
+      };
+    },
+
     "POST /api/chat/messages": async (request, ctx) => {
       const body = await request.json().catch(() => null);
       const ownerKey = ownerKeyOf(ctx);
@@ -109,7 +160,19 @@ export function chatRoutes() {
       if (typeof body?.content !== "string" || !body.content.trim() || typeof body?.req_id !== "string" || !body.req_id) {
         return bad(400, "消息内容或请求标识缺失");
       }
-      const { message, duplicated } = msg.saveUser(c.id, { reqId: body.req_id, content: body.content });
+      // 附件：校验归属后把引用追加进内容（图片走 Markdown 图，文件走链接；AI 侧以文本引用感知）
+      let content = body.content;
+      if (Array.isArray(body.attachments) && body.attachments.length) {
+        const refs = [];
+        for (const a of body.attachments.slice(0, 9)) {
+          const up = chatUploads.get(ownerKey, String(a?.id ?? ""));
+          if (!up) return bad(404, `附件不存在或无权使用：${a?.name ?? a?.id ?? "?"}`);
+          const url = `/api/chat/uploads/${up.id}`;
+          refs.push(up.mime.startsWith("image/") ? `![${up.name}](${url})` : `[${up.name}](${url})`);
+        }
+        content = `${content}\n\n${refs.join("\n")}`;
+      }
+      const { message, duplicated } = msg.saveUser(c.id, { reqId: body.req_id, content });
       conv.touch(ownerKey, c.id);
       conv.autoTitle(ownerKey, c.id, body.content); // 首条消息取前 20~30 字作标题
       return json({ message, duplicated, conversation: conv.get(ownerKey, c.id) });

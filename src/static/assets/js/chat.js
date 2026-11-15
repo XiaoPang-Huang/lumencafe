@@ -41,6 +41,8 @@
     sidebarOpen: false,  // 移动端抽屉（入口在对话头部 chat-menu，白皮书 §20 C8 拍板保留）
     query: "",           // 会话搜索词（过滤与主列表共用同一渲染函数）
     winSize: 80,         // 长对话视窗：默认渲染最近 80 条（性能项）
+    attachments: [],     // 待发送附件（已上传到服务端，[{id,name,mime,size,url}]）
+    modelMenuOpen: false, // 模型+思考强度一体面板（学 WorkBuddy 模型切换面板）
   };
 
   /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
@@ -103,7 +105,8 @@
     S.messages.slice(start).forEach((m, i) => {
       const idx = start + i;
       if (m.role === "user") {
-        rows.push(`<div class="msg msg-user" data-idx="${idx}"><div class="msg-user-bubble">${esc(m.content)}</div>
+        // 用户气泡走 Markdown：附件引用（![图](url)/[文件](url)）得以渲染（学 WorkBuddy 消息排版）
+        rows.push(`<div class="msg msg-user" data-idx="${idx}"><div class="msg-user-bubble">${renderMd(m.content)}</div>
           <button class="msg-user-edit" data-edit-user="${idx}" title="编辑重发">✎ 编辑</button></div>`);
         return;
       }
@@ -252,29 +255,69 @@
       || `<div class="conv-none">${q ? "没有匹配的会话" : "还没有会话"}</div>`;
   }
 
+  /* 思考强度档位标签（模型面板共用） */
+  const THINK_LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
+  const curThinking = () => (S.current?.thinking ?? null); // null=跟随模型；"off"=显式关闭
+
+  /* 模型+思考强度一体面板（学 WorkBuddy：一个面板里选模型、调思考档位） */
+  function renderModelMenu() {
+    const menu = el.querySelector(".model-menu");
+    if (!menu) return;
+    const curRef = currentModel();
+    const cur = S.models.find((x) => x.id === curRef);
+    const levels = cur?.thinkingLevels?.length ? cur.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
+    const thinking = curThinking();
+    const thinkingRow = !cur ? "" : `
+      <div class="mm-sec">思考强度${cur.thinking ? ` · 模型默认「${THINK_LABELS[cur.thinking] ?? cur.thinking}」` : " · 模型默认关闭"}</div>
+      <div class="mm-think">
+        <button class="mm-chip ${thinking === null ? "on" : ""}" data-pick-thinking="">跟随模型</button>
+        ${cur.thinking ? `<button class="mm-chip ${thinking === "off" ? "on" : ""}" data-pick-thinking="off">关闭</button>` : ""}
+        ${levels.map((l) => `<button class="mm-chip ${thinking === l ? "on" : ""}" data-pick-thinking="${l}">${THINK_LABELS[l] ?? l}</button>`).join("")}
+      </div>`;
+    menu.innerHTML = `
+      <div class="mm-sec">模型（按会话生效）</div>
+      <div class="mm-list">
+        ${S.models.map((m) => `
+          <button class="mm-item ${m.id === curRef ? "on" : ""}" data-pick-model="${esc(m.id)}">
+            <span class="mm-check">${m.id === curRef ? "✓" : ""}</span>
+            <span class="mm-name">${esc(m.name)}</span>
+            ${m.reasoning ? '<span class="tag">思考</span>' : ""}
+            ${m.supportsImages ? '<span class="tag">图片</span>' : ""}
+          </button>`).join("") || '<div class="mm-empty">暂无可用的模型</div>'}
+      </div>
+      ${thinkingRow}`;
+  }
+
+  function renderModelBtn() {
+    const btn = el.querySelector(".model-btn");
+    if (!btn) return;
+    btn.innerHTML = `${esc(modelNameOf())} <span class="caret">${LC.IC.caret}</span>`;
+    btn.disabled = S.generating || !S.models.length;
+    btn.setAttribute("aria-expanded", S.modelMenuOpen ? "true" : "false");
+    const menu = el.querySelector(".model-menu");
+    if (menu) menu.hidden = !S.modelMenuOpen;
+  }
+
+  function setModelMenu(open) {
+    S.modelMenuOpen = open;
+    if (open) renderModelMenu();
+    renderModelBtn();
+  }
+
+  /* 附件 chips（待发送区） */
+  function renderAttach() {
+    const row = el.querySelector(".attach-row");
+    if (!row) return;
+    row.innerHTML = S.attachments.map((a) => `
+      <span class="attach-chip">
+        ${a.mime.startsWith("image/") ? "🖼" : "📄"} ${esc(a.name)}
+        <button class="attach-x" data-unattach="${a.id}" title="移除" aria-label="移除">×</button>
+      </span>`).join("");
+    row.hidden = S.attachments.length === 0;
+  }
+
   function renderHeader() {
-    const sel = el.querySelector(".model-select");
-    if (sel) {
-      sel.innerHTML = S.models.map((m) =>
-        `<option value="${esc(m.id)}" ${m.id === currentModel() ? "selected" : ""}>${esc(m.name)}</option>`).join("");
-      sel.disabled = S.generating;
-    }
-    // 思考强度选择：档位随当前模型支持列表而定（学 WorkBuddy）；「跟随模型」=不覆盖
-    const thSel = el.querySelector(".thinking-select");
-    if (thSel) {
-      const cur = S.models.find((x) => x.id === currentModel());
-      const levels = cur?.thinkingLevels?.length ? cur.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
-      const LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
-      const curThinking = S.currentId === NEW_ID ? (S.current?.thinking ?? "") : (S.current?.thinking ?? "");
-      const options = [`<option value="">跟随模型${cur?.thinking ? `（${LABELS[cur.thinking] ?? cur.thinking}）` : "（关闭）"}</option>`];
-      if (cur?.thinking) options.push(`<option value="off" ${curThinking === "off" ? "selected" : ""}>关闭思考</option>`);
-      for (const l of levels) {
-        options.push(`<option value="${l}" ${curThinking === l ? "selected" : ""}>思考·${LABELS[l] ?? l}</option>`);
-      }
-      thSel.innerHTML = options.join("");
-      thSel.disabled = S.generating || !cur;
-      thSel.hidden = !cur?.thinking && !curThinking; // 模型不支持推理时不显示
-    }
+    renderModelBtn();
     const conv = S.current;
     const titleEl = el.querySelector(".chat-title");
     // 空标题占位（第一批拍板）：新会话/未选中时头部显示「新会话」
@@ -297,6 +340,8 @@
     // 草稿恢复（白皮书：切换/刷新后回填）；占位会话用固定草稿键，创建后迁移到真实 id
     const draft = draftId() ? readDraft(draftId()) : null;
     if (document.activeElement !== ta) ta.value = draft?.text ?? "";
+    S.attachments = Array.isArray(draft?.attachments) ? draft.attachments : [];
+    renderAttach();
   }
 
   function renderAll() {
@@ -377,18 +422,24 @@
       await api("/api/chat/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: convId, content: text, req_id: draft.reqId }),
+        body: JSON.stringify({
+          conversation_id: convId, content: text, req_id: draft.reqId,
+          ...(S.attachments.length ? { attachments: S.attachments.map((a) => ({ id: a.id, name: a.name })) } : {}),
+        }),
       });
-    } catch {
-      // 情况 1：用户消息未保存——原文回填输入框（B4，学 RAGFlow pendingInput），草稿保留供重试
+    } catch (err) {
+      // 情况 1：用户消息未保存——原文回填输入框（B4，学 RAGFlow pendingInput），草稿与附件保留供重试
       ta.value = draft.text;
       ta.focus();
-      toast("发送失败，原文已回填，可重新发送");
+      toast(err?.message?.includes("附件") ? err.message : "发送失败，原文已回填，可重新发送");
       return;
     }
     clearDraft(convId);
     ta.value = "";
     draft = null;
+    // 附件引用已随消息落库（服务端校验归属后追加引用）；清空待发区
+    S.attachments = [];
+    renderAttach();
     await loadConversations(); // 标题可能自动生成
     await agentSend(text);
   }
@@ -571,9 +622,88 @@
     toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
   }
 
+  /* 附件上传（multipart 直传；20MB 上限与服务端一致） */
+  async function uploadFiles(fileList) {
+    for (const f of fileList) {
+      if (f.size > 20 * 1024 * 1024) { toast(`${f.name} 超过 20MB，已跳过`); continue; }
+      try {
+        // 原始字节直传（服务端 chord 请求无 formData；文件名走 query，类型走 Content-Type）
+        const { upload } = await api(`/api/chat/uploads?name=${encodeURIComponent(f.name)}`, {
+          method: "POST",
+          headers: { "Content-Type": f.type || "application/octet-stream" },
+          body: f,
+        });
+        S.attachments.push(upload);
+      } catch {
+        toast(`上传失败：${f.name}`);
+      }
+    }
+    renderAttach();
+    if (draftId()) {
+      const prev = readDraft(draftId()) || {};
+      writeDraft(draftId(), { ...prev, attachments: S.attachments });
+    }
+  }
+
   /* ---------- 事件 ---------- */
   function bind() {
     el.addEventListener("click", async (e) => {
+      // 模型面板：点外关闭（面板内交互各自处理）
+      if (S.modelMenuOpen && !e.target.closest(".model-wrap")) setModelMenu(false);
+
+      // 模型+思考强度一体面板（学 WorkBuddy）
+      if (e.target.closest("[data-model-menu]")) { setModelMenu(!S.modelMenuOpen); return; }
+      const pickModel = e.target.closest("[data-pick-model]");
+      if (pickModel) {
+        const value = pickModel.dataset.pickModel;
+        if (S.currentId && S.currentId !== NEW_ID) {
+          await api(`/api/chat/conversations/${S.currentId}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: value }),
+          });
+          const c = S.conversations.find((x) => x.id === S.currentId);
+          if (c) c.model = value;
+        } else if (S.current) {
+          S.current.model = value;
+        }
+        renderModelMenu(); // 档位列表随模型变
+        toast("已切换模型，只影响之后的回答");
+        return;
+      }
+      const pickThinking = e.target.closest("[data-pick-thinking]");
+      if (pickThinking) {
+        const value = pickThinking.dataset.pickThinking || null; // ""=跟随模型
+        if (S.currentId && S.currentId !== NEW_ID) {
+          await api(`/api/chat/conversations/${S.currentId}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ thinking: value }),
+          });
+          const c = S.conversations.find((x) => x.id === S.currentId);
+          if (c) c.thinking = value;
+        } else if (S.current) {
+          S.current.thinking = value;
+        }
+        renderModelMenu();
+        toast(value === null ? "已恢复跟随模型默认" : value === "off" ? "已关闭思考" : "思考强度已切换，只影响之后的回答");
+        return;
+      }
+
+      // 附件：添加 / 移除
+      if (e.target.closest("[data-attach]")) {
+        el.querySelector(".attach-input")?.click();
+        return;
+      }
+      const unattach = e.target.closest("[data-unattach]");
+      if (unattach) {
+        S.attachments = S.attachments.filter((a) => a.id !== unattach.dataset.unattach);
+        renderAttach();
+        if (draftId()) {
+          const prev = readDraft(draftId()) || {};
+          writeDraft(draftId(), { ...prev, attachments: S.attachments });
+        }
+        return;
+      }
+
       // 代码块复制（按钮在 pre 里，随消息重渲染重新注入，无需解绑）
       const copyCode = e.target.closest(".copy-code");
       if (copyCode) {
@@ -693,38 +823,12 @@
     });
 
     el.addEventListener("change", async (e) => {
-      const thSel = e.target.closest(".thinking-select");
-      if (thSel && S.currentId) {
-        const value = thSel.value === "" ? null : thSel.value; // ""=跟随模型；"off"=显式关闭
-        if (S.currentId !== NEW_ID) {
-          await api(`/api/chat/conversations/${S.currentId}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ thinking: value }),
-          });
-          const c = S.conversations.find((x) => x.id === S.currentId);
-          if (c) c.thinking = value;
-        } else if (S.current) {
-          S.current.thinking = value;
-        }
-        toast(value === null ? "已恢复跟随模型默认" : value === "off" ? "已关闭思考" : "思考强度已切换，只影响之后的回答");
-        return;
+      // 附件选择 → 上传为待发 chips
+      const fileInput = e.target.closest(".attach-input");
+      if (fileInput) {
+        await uploadFiles([...fileInput.files]);
+        fileInput.value = ""; // 允许重复选同一文件
       }
-      const sel = e.target.closest(".model-select");
-      if (!sel || !S.currentId) return;
-      // 新会话占位未落库：模型只记本地，创建时随首条消息带上（A1 配套）
-      if (S.currentId !== NEW_ID) {
-        await api(`/api/chat/conversations/${S.currentId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: sel.value }),
-        });
-        const c = S.conversations.find((x) => x.id === S.currentId);
-        if (c) c.model = sel.value;
-      } else if (S.current) {
-        S.current.model = sel.value;
-      }
-      renderHeader(); // 换了模型要重算思考强度档位选项
-      toast("已切换模型，只影响之后的回答");
     });
 
     el.addEventListener("input", (e) => {
@@ -836,15 +940,17 @@
             <nav class="chat-ticks" aria-label="提问导航"></nav>
           </div>
           <div class="chat-composer">
-            <div class="composer-ctl">
-              <select class="model-select" title="模型选择（按会话生效）"></select>
-              <select class="thinking-select" title="思考强度（档位随模型支持；跟随模型=不覆盖）"></select>
-              <span class="spacer"></span>
-              <span class="kbd-hint">Enter 发送 · Shift+Enter 换行</span>
-            </div>
+            <div class="attach-row" hidden></div>
             <textarea class="composer-input" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
             <div class="composer-bar">
-              <span class="composer-hint"></span>
+              <button class="attach-btn" data-attach title="添加文件 / 照片" aria-label="添加文件或照片">＋</button>
+              <input type="file" class="attach-input" multiple hidden>
+              <span class="composer-hint">Enter 发送 · Shift+Enter 换行</span>
+              <span class="spacer"></span>
+              <span class="model-wrap">
+                <button class="model-btn" data-model-menu aria-haspopup="true" aria-expanded="false" title="模型与思考强度"></button>
+                <div class="model-menu" hidden></div>
+              </span>
               <button class="composer-send" title="发送 / 停止">${LC.IC.arrow}</button>
             </div>
           </div>
