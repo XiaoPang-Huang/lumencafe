@@ -145,16 +145,19 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
   background: var(--graphite);
   color: var(--ink-on-dark);
   display: flex; flex-direction: column;
-  padding: 16px 0 0;
+  /* 顶部零 padding：品牌区分隔线要与顶栏底边（56px）严格同高（2026-11-15 用户拍板对齐） */
+  padding: 0;
   position: sticky; top: 0; height: 100vh;
   overflow-y: auto;
 }
+/* 品牌区总高 = 10+34(logo点)+11 + 1px 分隔线 = 56px，与顶栏底边对齐 */
 .side-brand {
   display: flex; align-items: center; gap: 10px;
-  padding: 2px 18px 16px;
+  padding: 10px 18px 11px;
   border-bottom: 1px solid var(--graphite-line);
   margin-bottom: 10px;
 }
+.side-brand .s { line-height: 1.2; } /* 副标题行高压到 12.6px，防文字块高过 34px logo 点撑破 56px */
 .side-brand .brand-dot {
   width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
   background: linear-gradient(135deg, var(--brand), var(--brand-strong));
@@ -215,8 +218,9 @@ a:focus-visible, .side-item:focus-visible, .card:focus-visible,
    取代原抽屉拍板，无汉堡菜单、无遮罩）。触控目标 44px。 */
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 56px minmax(0, 1fr); }
-  .side-nav { padding: 10px 0 0; }
-  .side-brand { justify-content: center; padding: 2px 0 12px; }
+  .side-nav { padding: 0; }
+  /* 移动端同样对齐 56px：10+34(logo点)+11+1 = 56 */
+  .side-brand { justify-content: center; padding: 10px 0 11px; }
   .side-brand > span:last-child { display: none; } /* 只留 logo 点 */
   .side-gt { display: none; }                      /* 分组标题收起 */
   .side-group { padding: 4px 6px; }
