@@ -12,6 +12,7 @@ npm test          # = node --test tests/（Node 内置运行器，零新增依�
   - `crypto-password`：scrypt 哈希/校验（批 1）
   - `gateway-guards`：requireRole/gateApp 包装语义，只用不触库的 principal（批 2/3）
   - `notify-channels`：推送三态，本地假 webhook，不外网（批 5）
+  - `chat-ui`：真实 Chrome/Edge 跑对话页交互（会话全选批量删除、模型二级思考配置）；无浏览器环境自动跳过
 - `integration/` — 起真实服务做全链路验证，每个文件一个服务实例
   - `auth-flow`：登录/登出/改密/限速/停用/引导建号（批 1）
   - `rbac-gates`：网关 403 矩阵、应用开关、缺行拒绝（批 2/3）

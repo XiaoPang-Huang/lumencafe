@@ -605,6 +605,7 @@ textarea.text-input { line-height: 1.6; }
   display: flex; align-items: center; gap: 8px;
   padding: 10px 12px; border-radius: 10px; cursor: pointer;
   color: var(--ink-2); font-size: 14px; min-height: 40px;
+  position: relative;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
 .conv-item:hover { background: var(--wash); }
@@ -616,12 +617,41 @@ textarea.text-input { line-height: 1.6; }
 .conv-op {
   width: 28px; height: 28px; border-radius: 7px;
   display: flex; align-items: center; justify-content: center; color: var(--ink-3);
+  font-size: 16px; line-height: 1;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
 .conv-op:hover { background: var(--wash-2); color: var(--ink); }
 .conv-op:active { background: var(--wash-2); }
 .conv-op svg { width: 14px; height: 14px; }
 .conv-none { padding: 18px 10px; font-size: 13px; color: var(--ink-3); text-align: center; }
+/* ⋯ 菜单：重命名 / 管理 / 删除 */
+.conv-menu {
+  position: absolute; right: 8px; top: calc(100% - 4px); z-index: 35;
+  min-width: 150px; padding: 5px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 11px; box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column;
+}
+.conv-menu-item {
+  font-family: inherit; font-size: 13.5px; text-align: left;
+  padding: 9px 12px; border-radius: 7px; color: var(--ink);
+  transition: background .13s var(--ease);
+}
+.conv-menu-item:hover { background: var(--wash); }
+.conv-menu-item.danger { color: var(--brand-strong); }
+.conv-menu-item.danger:hover { background: var(--brand-soft); }
+/* 管理模式底条：全选 + 计数 + 完成/删除 */
+.conv-manage-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-top: 1px solid var(--line);
+  background: var(--surface); flex-shrink: 0;
+}
+.conv-manage-bar[hidden] { display: none; }
+.cm-all { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; cursor: pointer; }
+.cm-count { font-size: 12.5px; }
+.conv-pick { flex-shrink: 0; }
+.btn-sm { min-height: 32px; padding: 5px 14px; font-size: 13px; border-radius: 8px; }
+.btn-sm:disabled { opacity: .5; cursor: not-allowed; }
 
 .chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .chat-head {
@@ -660,6 +690,30 @@ textarea.text-input { line-height: 1.6; }
 }
 .mm-item:hover { background: var(--wash); }
 .mm-item.on { background: var(--brand-soft); font-weight: 600; }
+/* 模型列表 → 单模型思考配置二级页（学 WorkBuddy 模型选择器） */
+.mm-model { display: flex; align-items: center; gap: 2px; }
+.mm-model .mm-item { flex: 1; width: auto; min-width: 0; }
+.mm-exp {
+  width: 30px; height: 34px; margin-right: 4px; border-radius: 8px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3); transform: rotate(-90deg);
+  transition: background .13s var(--ease), color .13s var(--ease);
+}
+.mm-exp:hover { background: var(--wash-2); color: var(--ink); }
+.mm-detail-head {
+  display: flex; align-items: center; gap: 9px; padding: 5px 6px 11px;
+  border-bottom: 1px solid var(--line);
+}
+.mm-back {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  color: var(--ink-2); font-size: 26px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.mm-back:hover { background: var(--wash); color: var(--ink); }
+.mm-detail-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mm-detail-title b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-detail-title span { font-size: 11.5px; }
+.mm-level-empty { margin: 0 8px 10px; padding: 10px; border-radius: 8px; background: var(--wash); color: var(--ink-3); font-size: 12px; line-height: 1.55; }
 .mm-check { width: 16px; flex-shrink: 0; color: var(--brand-ink); font-weight: 700; }
 .mm-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-item .tag { flex-shrink: 0; }

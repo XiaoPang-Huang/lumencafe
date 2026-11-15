@@ -43,6 +43,10 @@
     winSize: 80,         // 长对话视窗：默认渲染最近 80 条（性能项）
     attachments: [],     // 待发送附件（已上传到服务端，[{id,name,mime,size,url}]）
     modelMenuOpen: false, // 模型+思考强度一体面板（学 WorkBuddy 模型切换面板）
+    openMenuConv: null,  // ⋯ 菜单展开中的会话 id
+    managing: false,     // 会话管理模式（批量删除）
+    pickedConvs: new Set(), // 管理模式勾选的会话 id
+    expandedModel: null, // 模型面板中展开思考档位的模型 ref（多级）
   };
 
   /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
@@ -234,16 +238,41 @@
     });
   }
 
-  /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复） */
+  /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复）。
+     常态：⋯ 菜单（重命名/管理/删除）；管理模式：勾选框 + 底部全选/删除条 */
   function convItemHtml(c) {
+    if (S.managing) {
+      return `
+      <div class="conv-item ${c.id === S.currentId ? "active" : ""}" data-conv="${c.id}">
+        <input type="checkbox" class="grant-chk conv-pick" data-pick-conv="${c.id}" ${S.pickedConvs.has(c.id) ? "checked" : ""} title="勾选">
+        <span class="conv-title">${esc(c.title)}</span>
+      </div>`;
+    }
     return `
       <div class="conv-item ${c.id === S.currentId ? "active" : ""}" data-conv="${c.id}">
         <span class="conv-title">${esc(c.title)}</span>
         <span class="conv-ops">
-          <button class="conv-op" data-rename="${c.id}" title="重命名">${LC.IC.sliders}</button>
-          <button class="conv-op" data-del="${c.id}" title="删除">${LC.IC.close}</button>
+          <button class="conv-op" data-conv-menu="${c.id}" title="更多" aria-label="更多">⋮</button>
         </span>
+        ${S.openMenuConv === c.id ? `
+        <div class="conv-menu">
+          <button class="conv-menu-item" data-rename="${c.id}">重命名</button>
+          <button class="conv-menu-item" data-manage="${c.id}">管理（批量删除）</button>
+          <button class="conv-menu-item danger" data-del="${c.id}">删除</button>
+        </div>` : ""}
       </div>`;
+  }
+
+  function renderManageBar() {
+    const bar = el.querySelector(".conv-manage-bar");
+    if (!bar) return;
+    bar.hidden = !S.managing;
+    if (!S.managing) return;
+    const total = S.conversations.length;
+    const all = total > 0 && S.pickedConvs.size === total;
+    bar.querySelector("[data-sel-all]").checked = all;
+    bar.querySelector(".cm-count").textContent = S.pickedConvs.size ? `已选 ${S.pickedConvs.size} 项` : "勾选会话";
+    bar.querySelector("[data-batch-del]").disabled = S.pickedConvs.size === 0;
   }
 
   function renderSidebar() {
@@ -253,39 +282,64 @@
     const shown = S.conversations.filter((c) => !q || c.title.includes(q));
     list.innerHTML = shown.map((c) => convItemHtml(c)).join("")
       || `<div class="conv-none">${q ? "没有匹配的会话" : "还没有会话"}</div>`;
+    renderManageBar();
   }
 
   /* 思考强度档位标签（模型面板共用） */
   const THINK_LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
   const curThinking = () => (S.current?.thinking ?? null); // null=跟随模型；"off"=显式关闭
 
-  /* 模型+思考强度一体面板（学 WorkBuddy：一个面板里选模型、调思考档位） */
+  /* 模型+思考强度一体面板（学 WorkBuddy）：模型列表 → 该模型自己的思考配置二级页。
+     档位严格来自模型&API配置；在其他模型下选档位会同时切换模型。 */
   function renderModelMenu() {
     const menu = el.querySelector(".model-menu");
     if (!menu) return;
     const curRef = currentModel();
-    const cur = S.models.find((x) => x.id === curRef);
-    const levels = cur?.thinkingLevels?.length ? cur.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
     const thinking = curThinking();
-    const thinkingRow = !cur ? "" : `
-      <div class="mm-sec">思考强度${cur.thinking ? ` · 模型默认「${THINK_LABELS[cur.thinking] ?? cur.thinking}」` : " · 模型默认关闭"}</div>
-      <div class="mm-think">
-        <button class="mm-chip ${thinking === null ? "on" : ""}" data-pick-thinking="">跟随模型</button>
-        ${cur.thinking ? `<button class="mm-chip ${thinking === "off" ? "on" : ""}" data-pick-thinking="off">关闭</button>` : ""}
-        ${levels.map((l) => `<button class="mm-chip ${thinking === l ? "on" : ""}" data-pick-thinking="${l}">${THINK_LABELS[l] ?? l}</button>`).join("")}
-      </div>`;
+    const detail = S.models.find((m) => m.id === S.expandedModel);
+    if (detail) {
+      const on = detail.id === curRef;
+      const levels = Array.isArray(detail.thinkingLevels) ? detail.thinkingLevels : [];
+      const chip = (val, label) => {
+        const active = on && thinking === (val || null);
+        return `<button class="mm-chip ${active ? "on" : ""}" data-think-model="${esc(detail.id)}" data-pick-thinking="${val}">${label}</button>`;
+      };
+      menu.innerHTML = `
+        <div class="mm-detail">
+          <div class="mm-detail-head">
+            <button class="mm-back" data-model-back title="返回模型列表" aria-label="返回模型列表">‹</button>
+            <div class="mm-detail-title">
+              <b>${esc(detail.name)}</b>
+              <span class="tbl-dim">${detail.supportsImages ? "推理与图片能力按模型配置" : "模型思考配置"}</span>
+            </div>
+          </div>
+          <div class="mm-sec">思考强度${detail.thinking ? ` · 模型默认「${THINK_LABELS[detail.thinking] ?? detail.thinking}」` : " · 模型默认关闭"}</div>
+          <div class="mm-think">
+            ${chip("", "跟随模型")}
+            ${detail.thinking ? chip("off", "关闭") : ""}
+            ${levels.map((l) => chip(l, THINK_LABELS[l] ?? l)).join("")}
+          </div>
+          ${levels.length ? "" : '<div class="mm-level-empty">该模型未配置可调思考档位，可在「模型 & API 管理」中设置。</div>'}
+        </div>`;
+      return;
+    }
     menu.innerHTML = `
-      <div class="mm-sec">模型（按会话生效）</div>
+      <div class="mm-sec">模型（按会话生效；右侧 ▾ 配置该模型思考强度）</div>
       <div class="mm-list">
-        ${S.models.map((m) => `
-          <button class="mm-item ${m.id === curRef ? "on" : ""}" data-pick-model="${esc(m.id)}">
-            <span class="mm-check">${m.id === curRef ? "✓" : ""}</span>
-            <span class="mm-name">${esc(m.name)}</span>
-            ${m.reasoning ? '<span class="tag">思考</span>' : ""}
-            ${m.supportsImages ? '<span class="tag">图片</span>' : ""}
-          </button>`).join("") || '<div class="mm-empty">暂无可用的模型</div>'}
-      </div>
-      ${thinkingRow}`;
+        ${S.models.map((m) => {
+          const on = m.id === curRef;
+          return `
+          <div class="mm-model">
+            <button class="mm-item ${on ? "on" : ""}" data-pick-model="${esc(m.id)}">
+              <span class="mm-check">${on ? "✓" : ""}</span>
+              <span class="mm-name">${esc(m.name)}</span>
+              ${m.reasoning ? '<span class="tag">思考</span>' : ""}
+              ${m.supportsImages ? '<span class="tag">图片</span>' : ""}
+            </button>
+            <button class="mm-exp" data-exp-model="${esc(m.id)}" title="配置 ${esc(m.name)} 的思考强度" aria-label="配置 ${esc(m.name)} 的思考强度">${LC.IC.caret}</button>
+          </div>`;
+        }).join("") || '<div class="mm-empty">暂无可用的模型</div>'}
+      </div>`;
   }
 
   function renderModelBtn() {
@@ -300,7 +354,10 @@
 
   function setModelMenu(open) {
     S.modelMenuOpen = open;
-    if (open) renderModelMenu();
+    if (open) {
+      S.expandedModel = null; // 每次打开先回模型主列表，再按模型进入二级配置
+      renderModelMenu();
+    }
     renderModelBtn();
   }
 
@@ -648,11 +705,26 @@
   /* ---------- 事件 ---------- */
   function bind() {
     el.addEventListener("click", async (e) => {
-      // 模型面板：点外关闭（面板内交互各自处理）
+      // 模型面板 / 会话 ⋯ 菜单：点外关闭
       if (S.modelMenuOpen && !e.target.closest(".model-wrap")) setModelMenu(false);
+      if (S.openMenuConv && !e.target.closest(".conv-menu") && !e.target.closest("[data-conv-menu]")) {
+        S.openMenuConv = null;
+        renderSidebar();
+      }
 
-      // 模型+思考强度一体面板（学 WorkBuddy）
+      // 模型主列表 ↔ 单个模型的思考配置二级页
       if (e.target.closest("[data-model-menu]")) { setModelMenu(!S.modelMenuOpen); return; }
+      if (e.target.closest("[data-model-back]")) {
+        S.expandedModel = null;
+        renderModelMenu();
+        return;
+      }
+      const expModel = e.target.closest("[data-exp-model]");
+      if (expModel) {
+        S.expandedModel = expModel.dataset.expModel;
+        renderModelMenu();
+        return;
+      }
       const pickModel = e.target.closest("[data-pick-model]");
       if (pickModel) {
         const value = pickModel.dataset.pickModel;
@@ -666,13 +738,28 @@
         } else if (S.current) {
           S.current.model = value;
         }
-        renderModelMenu(); // 档位列表随模型变
+        S.expandedModel = null; // 选模型仍留在主列表；点右侧箭头才进入配置页
+        renderModelMenu();
         toast("已切换模型，只影响之后的回答");
         return;
       }
       const pickThinking = e.target.closest("[data-pick-thinking]");
       if (pickThinking) {
         const value = pickThinking.dataset.pickThinking || null; // ""=跟随模型
+        const modelId = pickThinking.dataset.thinkModel;
+        // 在别的模型下选档位 = 同时切到该模型（多级面板的语义）
+        if (modelId && modelId !== currentModel()) {
+          if (S.currentId && S.currentId !== NEW_ID) {
+            await api(`/api/chat/conversations/${S.currentId}`, {
+              method: "PATCH", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: modelId }),
+            });
+            const c = S.conversations.find((x) => x.id === S.currentId);
+            if (c) c.model = modelId;
+          } else if (S.current) {
+            S.current.model = modelId;
+          }
+        }
         if (S.currentId && S.currentId !== NEW_ID) {
           await api(`/api/chat/conversations/${S.currentId}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -683,6 +770,7 @@
         } else if (S.current) {
           S.current.thinking = value;
         }
+        S.expandedModel = modelId ?? S.expandedModel;
         renderModelMenu();
         toast(value === null ? "已恢复跟随模型默认" : value === "off" ? "已关闭思考" : "思考强度已切换，只影响之后的回答");
         return;
@@ -793,6 +881,29 @@
         scrollToMsgIdx(Number(gotoMsg.dataset.gotoMsg));
         return;
       }
+      // 批量管理底条不在 [data-conv] 内，必须先于“非会话项”分支处理。
+      if (e.target.closest("[data-manage-done]")) {
+        S.managing = false;
+        S.pickedConvs = new Set();
+        renderSidebar();
+        return;
+      }
+      const pickConv = e.target.closest("[data-pick-conv]");
+      if (pickConv) {
+        const id = pickConv.dataset.pickConv;
+        if (S.pickedConvs.has(id)) S.pickedConvs.delete(id);
+        else S.pickedConvs.add(id);
+        renderManageBar();
+        return;
+      }
+      if (e.target.closest("[data-sel-all]")) {
+        const box = e.target.closest("[data-sel-all]");
+        const total = S.conversations.length;
+        S.pickedConvs = box.checked && S.pickedConvs.size !== total ? new Set(S.conversations.map((c) => c.id)) : new Set();
+        renderSidebar();
+        return;
+      }
+      if (e.target.closest("[data-batch-del]")) return batchDeleteConvs();
       if (!convEl) {
         const copy = e.target.closest("[data-copy]");
         const retry = e.target.closest("[data-retry]");
@@ -806,7 +917,21 @@
         if (regen) return generate({ regenerate: true });
         return;
       }
-      // 重命名/删除按钮在会话项内部：先于会话切换处理（修复删除按钮点了只切换会话的 bug）
+      // ⋯ 菜单 / 管理模式：先于会话切换处理（按钮在会话项内部）
+      const convMenuBtn = e.target.closest("[data-conv-menu]");
+      if (convMenuBtn) {
+        S.openMenuConv = S.openMenuConv === convMenuBtn.dataset.convMenu ? null : convMenuBtn.dataset.convMenu;
+        renderSidebar();
+        return;
+      }
+      const manageBtn = e.target.closest("[data-manage]");
+      if (manageBtn) {
+        S.managing = true;
+        S.pickedConvs = new Set(manageBtn.dataset.manage ? [manageBtn.dataset.manage] : []);
+        S.openMenuConv = null;
+        renderSidebar();
+        return;
+      }
       const rename = e.target.closest("[data-rename]");
       const del = e.target.closest("[data-del]");
       if (rename) return renameConv(rename.dataset.rename);
@@ -905,6 +1030,35 @@
     });
   }
 
+  /* 批量删除：删除勾选的会话（含本机草稿），完成后退出管理模式 */
+  function batchDeleteConvs() {
+    const ids = [...S.pickedConvs];
+    if (!ids.length) return;
+    openModal("批量删除会话", `
+      <p>将永久删除 <b>${ids.length}</b> 个会话和它们的全部消息，<b>不可恢复</b>。本机草稿会一并清除。</p>
+    `, `<button class="btn btn-ghost" data-close>取消</button>
+        <button class="btn btn-danger" id="bdel-ok">永久删除 ${ids.length} 个</button>`);
+    document.getElementById("bdel-ok")?.addEventListener("click", async () => {
+      let failed = 0;
+      for (const id of ids) {
+        try { await api(`/api/chat/conversations/${id}`, { method: "DELETE" }); clearDraft(id); }
+        catch { failed += 1; }
+      }
+      const wasCurrent = ids.includes(S.currentId);
+      LC.closeModal();
+      S.managing = false;
+      S.pickedConvs = new Set();
+      if (wasCurrent) {
+        S.currentId = null;
+        S.messages = [];
+        location.hash = "#/chat";
+      }
+      await loadConversations(S.currentId);
+      renderAll();
+      if (failed) toast(`${ids.length - failed} 个已删除，${failed} 个失败`);
+    });
+  }
+
   /* ---------- 视图结构 ---------- */
   function mount(container) {
     el = container;
@@ -920,6 +1074,13 @@
             <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
             <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
             <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
+          </div>
+          <div class="conv-manage-bar" hidden>
+            <label class="cm-all"><input type="checkbox" class="grant-chk" data-sel-all> 全选</label>
+            <span class="cm-count tbl-dim">勾选会话</span>
+            <span class="spacer"></span>
+            <button class="btn btn-ghost btn-sm" data-manage-done>完成</button>
+            <button class="btn btn-danger btn-sm" data-batch-del disabled>删除</button>
           </div>
         </aside>
         <section class="chat-main">

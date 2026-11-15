@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="source-sha256" content="43d341e59dcd22806b5e4cdd3a43b280e0d5c44b554c71469f67f96e855446c9">
+  <meta name="source-sha256" content="30fe5e00fa88297d73b56a52d2c9a9b79816afe985846047d719a150ec5a3f37">
   <meta name="generator" content="tools/build-whitepaper.mjs">
   <title>流光咖啡馆 · 白皮书 v3 · 完整阅读版</title>
   <style>
@@ -1987,8 +1987,8 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 </thead>
 <tbody>
 <tr>
-<td>模型+思考一体面板</td>
-<td>✅ 撤销控件行双 select；右下角「模型名 ▾」按钮（与发送并列）弹出 WorkBuddy 式面板：模型列表（✓当前/思考/图片标记）+ 思考强度 chips（跟随模型/关闭/模型支持档位）；点外/Esc 关闭；按会话生效不变</td>
+<td>模型+思考二级面板</td>
+<td>✅ 撤销控件行双 select；右下角「模型名 ▾」按钮（与发送并列）弹出 WorkBuddy 式面板。主列表只负责选模型（✓当前/思考/图片标记），每行右侧 ▾ 进入<strong>该模型自己的思考配置二级页</strong>（带返回）；档位严格读取该模型 <code>thinking_levels</code>，未配置时显示空态提示、不自动补五档。在其他模型下选档位会同时切换模型并保存会话覆盖；点外关闭，按会话生效不变</td>
 </tr>
 <tr>
 <td>附件（文件/照片）</td>
@@ -2002,9 +2002,14 @@ pgvector 够用。Qdrant、Milvus、LanceDB 服务都是为几十万上百万条
 <td>用户消息 Markdown 化</td>
 <td>✅ 用户气泡改 renderMd——附件图片/链接得以渲染（原纯文本转义会露裸 Markdown）</td>
 </tr>
+<tr>
+<td>会话批量管理</td>
+<td>✅ 会话行 × 改为竖向 ⋮，菜单含重命名/管理/删除；「管理」进入勾选态，底部固定操作条提供全选、已选计数、完成与批量删除。批量删除二次确认、逐个走 owner 隔离 DELETE、清理本机草稿；底条事件先于非会话项分支，避免全选/删除被提前 return</td>
+</tr>
 </tbody>
 </table></div><ul>
-<li>版本号 <code>?v=2b7</code>，npm test 63/63。</li>
+<li>前一版 <code>?v=2b7</code>，npm test 63/63。</li>
+<li>本次 <code>?v=2b9</code>：新增 <code>tests/unit/chat-ui.test.mjs</code>，用真实 Chrome/Edge 走通会话全选批量删除与模型二级配置；参考 Open WebUI 侧栏批量选择底条、WorkBuddy 模型配置页。</li>
 </ul>
 <hr>
 <nav class="chapter-nav" aria-label="章节翻页"><a class="chapter-nav-link chapter-nav-previous" href="#20-整体风格对齐-ragflow-账号体系改造2026-11-15-拍板"><span class="chapter-nav-direction">← 上一章</span><span class="chapter-nav-title">20 整体风格对齐 RAGFlow + 账号体系改造（2026-11-15 拍板）</span></a><a class="chapter-nav-link chapter-nav-next" href="#21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条"><span class="chapter-nav-direction">下一章 →</span><span class="chapter-nav-title">21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）</span></a></nav></section><section class="chapter" aria-labelledby="21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" data-chapter="22"><h2 id="21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" class="doc-heading">21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）<a class="heading-anchor" href="#21-模型与-api-管理2026-11-15-拍板落地取代-03密钥只进-env旧条" aria-label="链接到此标题：21 模型与 API 管理（2026-11-15 拍板落地，取代 §03「密钥只进 .env」旧条）"><span aria-hidden="true">#</span></a></h2><p><strong>定位</strong>：管理后台统一接入外部模型服务——官方 API、渠道套餐（tokenplan / agentplan 类）、MinerU 等第三方；管理员配渠道，用户可自接个人模型；配好的模型对话应用（含 agent 模式）直接可用。需求细节全文见 <code>docs/需求-模型API管理-v1.md</code>（实施依据），本节约定架构契约。</p>
