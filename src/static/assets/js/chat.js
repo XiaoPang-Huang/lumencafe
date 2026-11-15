@@ -121,6 +121,16 @@
     el.querySelectorAll("pre code").forEach((block) => {
       try { hljs.highlightElement(block); } catch { /* 未知语言跳过 */ }
     });
+    // 代码块一键复制：每个 pre 右上角注入按钮（复制文案走委托，见 bind()）
+    el.querySelectorAll(".msg-ai-body pre").forEach((pre) => {
+      if (pre.querySelector(".copy-code")) return; // 防重复注入
+      const btn = document.createElement("button");
+      btn.className = "copy-code";
+      btn.type = "button";
+      btn.title = "复制代码";
+      btn.innerHTML = `${LC.IC.copy}<span>复制</span>`;
+      pre.appendChild(btn);
+    });
   }
 
   /* 会话列表单一渲染入口：主列表与搜索过滤共用（A2 修复：不再两处重复、过滤不丢 agent 标签） */
@@ -317,7 +327,8 @@
     const answerEl = msgEl?.querySelector('[data-render="pending"]');
     let answerText = "";
     const flush = throttle(() => {
-      if (answerEl) answerEl.innerHTML = renderMd(answerText) || '<span class="msg-thinking">正在输入…</span>';
+      // 流式光标：回答末尾追加闪烁 caret，finishGen 后由 loadMessages 重渲染自然消失
+      if (answerEl) answerEl.innerHTML = (renderMd(answerText) || '<span class="msg-thinking">正在输入…</span>') + '<span class="stream-caret" aria-hidden="true"></span>';
       const box = el.querySelector(".chat-msgs");
       if (box) box.scrollTop = box.scrollHeight;
     }, 80);
@@ -390,7 +401,7 @@
     let full = "";
     let failed = false;
     const flush = throttle(() => {
-      if (bodyEl) bodyEl.innerHTML = renderMd(full);
+      if (bodyEl) bodyEl.innerHTML = renderMd(full) + '<span class="stream-caret" aria-hidden="true"></span>';
       const box = el.querySelector(".chat-msgs");
       if (box) box.scrollTop = box.scrollHeight;
     }, 80);
@@ -500,6 +511,20 @@
 
       if (stopGen) { S.abort?.abort(); return; }
       if (sendBtn) { await send(); return; }
+      // 代码块复制（按钮在 pre 里，随消息重渲染重新注入，无需解绑）
+      const copyCode = e.target.closest(".copy-code");
+      if (copyCode) {
+        const code = copyCode.closest("pre")?.querySelector("code");
+        const label = copyCode.querySelector("span");
+        if (code) {
+          await navigator.clipboard.writeText(code.textContent).catch(() => {});
+          copyCode.classList.add("copied");
+          if (label) label.textContent = "已复制";
+          setTimeout(() => { copyCode.classList.remove("copied"); if (label) label.textContent = "复制"; }, 1600);
+          toast("代码已复制");
+        }
+        return;
+      }
       // B7：建议问题 chip → 填入输入框并聚焦（不直接发送，给用户改的机会）
       const suggest = e.target.closest("[data-suggest]");
       if (suggest) {
@@ -648,7 +673,11 @@
             <button class="btn btn-primary btn-new" data-new>${LC.IC.chat} 新会话</button>
             <input class="text-input conv-search" placeholder="搜索会话标题">
           </div>
-          <div class="chat-list"></div>
+          <div class="chat-list">
+            <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
+            <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
+            <div class="skeleton sk-conv"></div><div class="skeleton sk-conv"></div>
+          </div>
         </aside>
         <section class="chat-main">
           <div class="chat-head">

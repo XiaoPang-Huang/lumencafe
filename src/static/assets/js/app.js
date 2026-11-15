@@ -39,6 +39,8 @@ const IC = {
   refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 5v6h-6"/>', 14),
   logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>', 16),
   caret: svg('<path d="m6 9 6 6 6-6"/>', 14),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>', 16),
+  moon: svg('<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/>', 16),
 };
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -189,6 +191,17 @@ function topbar(routeName) {
 let userMenuOpen = false;
 let userMenuEl = null;
 
+/** 当前是否暗色（theme.js 已设 data-theme） */
+const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+
+/** 切换主题：写 localStorage + 即时换 data-theme（CSS 全部跟着 token 反转），菜单原地重建刷新文案 */
+function toggleTheme() {
+  const next = isDark() ? "light" : "dark";
+  try { localStorage.setItem("lc_theme", next); } catch { /* 静默 */ }
+  if (next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+}
+
 const userMenuHtml = () => `
   <div class="user-menu-head">
     <span class="avatar">${avatarInner(esc(whoAmI().slice(0, 1)))}</span>
@@ -198,6 +211,7 @@ const userMenuHtml = () => `
     </span>
   </div>
   <button class="user-menu-item" data-user-menu-item="me">${IC.user} 我的 · 账号与设置</button>
+  <button class="user-menu-item" data-user-menu-item="theme">${isDark() ? IC.sun : IC.moon} ${isDark() ? "切换为浅色" : "切换为深色"}</button>
   <button class="user-menu-item danger" data-user-menu-item="logout">${IC.logout} 退出登录</button>`;
 
 /** 开关用户菜单；open=true 时在芯片下方面板渲染（挂在 wrap 里随顶栏定位） */
@@ -476,6 +490,12 @@ document.addEventListener("click", (e) => {
   // 顶栏用户菜单：芯片开关、菜单项动作、点外关闭
   const menuItem = e.target.closest("[data-user-menu-item]");
   if (menuItem) {
+    // 主题项不关菜单，原地重建刷新文案（保持面板常开）
+    if (menuItem.dataset.userMenuItem === "theme") {
+      toggleTheme();
+      setUserMenu(true);
+      return;
+    }
     setUserMenu(false);
     if (menuItem.dataset.userMenuItem === "logout") {
       // 先本地清会话态再调登出：chord 会话记录是闲置过期，登出是「前端弃用 + 清 cookie」语义，

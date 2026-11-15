@@ -114,7 +114,11 @@
   }
 
   async function mountLibrary(container) {
-    container.innerHTML = libHtml();
+    // 骨架屏：加载轮询前展示论文卡占位
+    container.innerHTML = `<div class="money-page papers-page">
+      <div class="skeleton sk-line sk-w200"></div>
+      <div class="skeleton sk-paper"></div><div class="skeleton sk-paper"></div><div class="skeleton sk-paper"></div>
+    </div>`;
     const render = () => { container.innerHTML = libHtml(); };
     try { await loadLibrary(); } catch (e) { container.innerHTML = `<div class="empty-hint">加载失败：${esc(e.message)}</div>`; return; }
     render();

@@ -91,8 +91,10 @@
           <div class="chart-title">分类汇总（支出）</div>
           ${d.by_category.filter((c) => c.kind === "expense").slice(0, 8).map((c) => {
             const max = Math.max(...d.by_category.map((x) => x.total), 1);
-            return `<div class="bar-row"><span class="bar-name">${esc(c.name)}</span>
-              <span class="bar-track"><span class="bar-fill expense" data-w="${Math.round((c.total / max) * 100)}"></span></span>
+            const pct = Math.round((c.total / max) * 100);
+            // data-tip 驱动 CSS-only tooltip（hover 条形显示 分类 ¥金额 · 占最高占比%）
+            return `<div class="bar-row" data-tip="${esc(c.name)} ¥${yuan(c.total)} · ${pct}%"><span class="bar-name">${esc(c.name)}</span>
+              <span class="bar-track"><span class="bar-fill expense" data-w="${pct}"></span></span>
               <span class="bar-val">¥${yuan(c.total)}</span></div>`;
           }).join("") || `<div class="chart-none">本月还没有支出</div>`}
         </div>
@@ -101,7 +103,7 @@
           ${(() => {
             const max = Math.max(...d.trend.map((t) => Math.max(t.expense, t.income)), 1);
             return `<div class="trend">${d.trend.map((t) => `
-              <div class="trend-col" title="${t.month}：支 ¥${yuan(t.expense)} / 收 ¥${yuan(t.income)}">
+              <div class="trend-col" data-tip="${t.month} · 支 ¥${yuan(t.expense)} / 收 ¥${yuan(t.income)}">
                 <span class="trend-bar income" data-hi="${Math.round((t.income / max) * 100)}"></span>
                 <span class="trend-bar expense" data-he="${Math.round((t.expense / max) * 100)}"></span>
                 <span class="trend-m">${t.month.slice(5)}月</span>
@@ -381,7 +383,13 @@
 
   async function mount(container) {
     el = container;
-    el.innerHTML = `<div class="money-page"><div class="money-body"></div></div>`;
+    // 骨架屏：数据到达前展示占位（卡片+图表+流水），render() 到达即整体替换
+    el.innerHTML = `<div class="money-page"><div class="money-body">
+      <div class="money-head-row"><div class="skeleton sk-line sk-w240"></div></div>
+      <div class="sk-cards"><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div><div class="skeleton sk-card"></div></div>
+      <div class="sk-charts"><div class="skeleton sk-chart"></div><div class="skeleton sk-chart"></div></div>
+      <div class="skeleton sk-list"></div>
+    </div></div>`;
     bind();
     await loadAll();
     render();
