@@ -113,35 +113,63 @@ async function runBrowser(caseName) {
           check(calls.filter((c) => c.method === "DELETE").length === 3, "没有逐个删除选中的三个会话");
           check(document.querySelector(".conv-manage-bar").hidden, "批量删除后没有退出管理模式");
         }
-        async function testModels() {
+        async function mountC1() {
           location.hash = "#/chat/c1";
           LC.views.chat.mount(document.getElementById("view"));
           await tick();
           click("[data-model-menu]");
-          check(!document.querySelector(".mm-detail"), "模型主列表不应直接显示某个模型的配置页");
-          click('[data-exp-model="b/chat"]');
-          check(document.querySelector(".mm-detail"), "点击模型配置入口没有进入二级页面");
-          check(document.querySelector("[data-model-back]"), "二级页面没有返回模型列表入口");
-          let chips = [...document.querySelectorAll("[data-pick-thinking]")].map((n) => n.textContent);
-          check(chips.join("|") === "跟随模型|中|极致", "模型乙没有严格使用自己的 medium/max 档位：" + chips.join("|"));
-          click('[data-pick-thinking="medium"]');
+        }
+        async function testModelSwitch() {
+          await mountC1();
+          click('[data-pick-model="b/chat"]');
           await tick();
           const patches = calls.filter((c) => c.method === "PATCH");
-          check(patches.some((c) => c.body?.model === "b/chat"), "在其他模型下选档位没有同时切换模型");
-          check(patches.some((c) => c.body?.thinking === "medium"), "思考档位没有保存到会话");
+          check(patches.some((c) => c.body?.model === "b/chat"), "点击模型主列表没有保存新模型");
+          check(document.querySelector(".model-btn").textContent.includes("模型乙"), "模型已保存但输入区按钮仍显示旧模型");
+          check(document.querySelector(".mm-item.on")?.dataset.pickModel === "b/chat", "主列表选中态没有切到模型乙");
+        }
+        async function testModels() {
+          await mountC1();
+          check(!document.querySelector(".mm-detail"), "模型主列表不应直接显示某个模型的配置页");
+          const row = document.querySelector('[data-hover-model="b/chat"]');
+          check(row, "模型行缺少 hover 配置入口");
+          row.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+          check(document.querySelector(".mm-detail"), "桌面悬停模型行没有进入二级页面");
+          check(document.querySelector("[data-model-back]"), "二级页面没有返回模型列表入口");
+          let switches = [...document.querySelectorAll("[data-pick-thinking]")].map((n) => n.textContent);
+          check(switches.join("|") === "开启|关闭", "对话内思考没有简化为开启/关闭：" + switches.join("|"));
+          document.querySelector(".mm-detail").dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+          check(!document.querySelector(".model-menu").hidden && document.querySelector(".mm-detail"), "移入二级页面后面板意外关闭");
+          click('[data-pick-thinking="on"]');
+          await tick();
+          let patches = calls.filter((c) => c.method === "PATCH");
+          check(patches.some((c) => c.body?.model === "b/chat"), "在其他模型下开启思考没有同时切换模型");
+          check(patches.some((c) => c.body && Object.hasOwn(c.body, "thinking") && c.body.thinking === null), "开启思考没有保存 NULL（模型/厂商默认）语义");
+          check(document.querySelector(".model-btn").textContent.includes("模型乙"), "二级页切换模型后输入区按钮仍显示旧模型");
+          click('[data-pick-thinking="off"]');
+          await tick();
+          patches = calls.filter((c) => c.method === "PATCH");
+          check(patches.some((c) => c.body?.thinking === "off"), "关闭思考没有保存 off");
+          check(document.querySelector('[data-pick-thinking="off"]').classList.contains("on"), "关闭后选中态没有更新");
           click("[data-model-back]");
-          click('[data-exp-model="a/chat"]');
-          chips = [...document.querySelectorAll("[data-pick-thinking]")].map((n) => n.textContent);
-          check(chips.join("|") === "跟随模型|关闭|低|高", "模型甲没有严格使用自己的 low/high 档位：" + chips.join("|"));
+          const arrow = document.querySelector('[data-exp-model="a/chat"]');
+          arrow.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
+          check(document.querySelector(".mm-detail-title b")?.textContent === "模型甲", "悬停右侧箭头没有进入对应模型二级页");
+          switches = [...document.querySelectorAll("[data-pick-thinking]")].map((n) => n.textContent);
+          check(switches.join("|") === "开启|关闭", "模型甲二级页仍展示具体强度档位：" + switches.join("|"));
           click("[data-model-back]");
-          click('[data-exp-model="c/chat"]');
-          chips = [...document.querySelectorAll("[data-pick-thinking]")].map((n) => n.textContent);
-          check(chips.join("|") === "跟随模型", "未配置档位的模型被错误补了默认档位：" + chips.join("|"));
-          check(document.querySelector(".mm-level-empty"), "未配置档位时没有空态说明");
+          const touchArrow = document.querySelector('[data-exp-model="c/chat"]');
+          touchArrow.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "touch" }));
+          check(!document.querySelector(".mm-detail"), "触屏 pointerover 被误当成桌面 hover");
+          touchArrow.click();
+          check(document.querySelector(".mm-detail"), "触屏点击箭头无法进入二级页面");
+          check(document.querySelector(".mm-level-empty"), "未配置思考能力时没有空态说明");
+          check(document.querySelectorAll("[data-pick-thinking]").length === 0, "未配置思考能力的模型仍显示无效开关");
         }
         (async () => {
           if (${JSON.stringify(caseName)} === "manage") await record("会话批量管理", testManage);
-          else await record("模型二级思考配置", testModels);
+          else if (${JSON.stringify(caseName)} === "switch") await record("模型主列表切换", testModelSwitch);
+          else await record("模型二级思考开关", testModels);
           const pre = document.createElement("pre");
           pre.id = "test-results";
           pre.textContent = JSON.stringify(results);
@@ -204,7 +232,12 @@ test("会话三点菜单、全选与批量删除可走完整流程", { skip: !br
   assert.ok(results.every((r) => r.ok), results.filter((r) => !r.ok).map((r) => r.error).join("；"));
 });
 
-test("模型二级页只显示该模型在模型 & API 中配置的思考档位", { skip: !browser && "未找到 Chrome/Edge" }, async () => {
+test("模型主列表切换会同步保存并更新输入区模型按钮", { skip: !browser && "未找到 Chrome/Edge" }, async () => {
+  const results = await runBrowser("switch");
+  assert.ok(results.every((r) => r.ok), results.filter((r) => !r.ok).map((r) => r.error).join("；"));
+});
+
+test("模型二级页支持桌面 hover、触屏点击与思考开关", { skip: !browser && "未找到 Chrome/Edge" }, async () => {
   const results = await runBrowser("models");
   assert.ok(results.every((r) => r.ok), results.filter((r) => !r.ok).map((r) => r.error).join("；"));
 });

@@ -52,8 +52,8 @@ export function chatRoutes() {
       return json({
         models: visible.map((m) => ({
           id: m.ref, provider: m.providerCode, modelId: m.modelId,
-          name: m.displayName, reasoning: m.thinking != null,
-          thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 思考强度（对话内可调档）
+          name: m.displayName, reasoning: m.thinking != null || m.thinkingLevels?.length > 0,
+          thinking: m.thinking, thinkingLevels: m.thinkingLevels, // 管理能力；对话内只显示开启/关闭
           supportsImages: m.supportsImages === true, // 图片输入能力（多模态标记）
         })),
         default_model: visible[0]?.ref ?? defaultModelRef(),
@@ -83,7 +83,7 @@ export function chatRoutes() {
       if (typeof body?.title === "string") c = conv.rename(ownerKey, id, body.title);
       if (typeof body?.model === "string") c = conv.setModel(ownerKey, id, body.model);
       if (body?.thinking !== undefined) {
-        // "off" = 显式关闭思考（覆盖模型默认）；null = 跟随模型；其余为 pi 思考强度档
+        // "off"=显式关闭；null=开启并跟随模型/厂商默认；其余为旧会话 pi 档位（保留兼容）
         const THINKING = [null, "off", "minimal", "low", "medium", "high", "xhigh", "max"];
         const thinking = THINKING.includes(body.thinking) ? body.thinking : null;
         c = conv.setThinking(ownerKey, id, thinking);
@@ -224,7 +224,7 @@ export function chatRoutes() {
             signal,
             onDelta: (delta) => body_sse.push(`data: ${JSON.stringify({ delta })}\n\n`),
             meta: { userId: (await userByPrincipal(ctx))?.id ?? 0, app: "chat", conversationId: c.id },
-            thinking: c.thinking ?? null, // 会话思考强度覆盖（NULL=跟随模型默认）
+            thinking: c.thinking ?? null, // NULL=开启并跟随模型/厂商默认；off=关闭；旧档位兼容
           });
           msg.markPartial(pending.id, full, "ok", Date.now() - t0);
           body_sse.push(`data: ${JSON.stringify({ done: true, message_id: pending.id })}\n\n`);

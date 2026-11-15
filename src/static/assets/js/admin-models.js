@@ -257,15 +257,15 @@
     ${field("mmMax", "最大输出 token", "number", `value="${m.maxOutputTokens ?? ""}" min="0"`)}
     ${field("mmIn", "输入价格（元/百万 token，可空）", "number", `value="${m.inputPrice ?? ""}" step="0.000001" min="0"`)}
     ${field("mmOut", "输出价格（元/百万 token，可空）", "number", `value="${m.outputPrice ?? ""}" step="0.000001" min="0"`)}
-    <label class="login-field"><span class="login-label">思考强度（推理模式，学 WorkBuddy）</span>
+    <label class="login-field"><span class="login-label">默认思考强度（对话开启思考时使用）</span>
       <select class="text-input" id="mmThinking">
-        <option value="" ${!m.thinking ? "selected" : ""}>关闭（默认不走推理）</option>
+        <option value="" ${!m.thinking ? "selected" : ""}>未配置（跟随厂商默认）</option>
         ${[["minimal", "最轻"], ["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
           .map(([v, t]) => `<option value="${v}" ${m.thinking === v ? "selected" : ""}>默认 · ${t}</option>`).join("")}
       </select></label>
     <label class="login-field mm-img-row"><span class="login-label">图片输入（多模态：对话可发照片，模型按图理解——需供应商支持视觉）</span>
       <input type="checkbox" class="grant-chk" id="mmImages" ${m.supportsImages ? "checked" : ""}></label>
-    <div class="me-sec"><div class="me-sec-t">支持的思考强度档位（对话内可调范围）</div>
+    <div class="me-sec"><div class="me-sec-t">支持的思考强度档位（用于模型能力与默认强度校验）</div>
       ${[["low", "低"], ["medium", "中"], ["high", "高"], ["xhigh", "超高"], ["max", "极致"]]
         .map(([v, t]) => `<label class="chk-line"><input type="checkbox" data-think-lv="${v}" ${(m.thinkingLevels ?? ["low", "medium", "high", "xhigh", "max"]).includes(v) ? "checked" : ""}> ${t}</label>`).join("")}
     </div>

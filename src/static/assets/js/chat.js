@@ -46,7 +46,7 @@
     openMenuConv: null,  // ⋯ 菜单展开中的会话 id
     managing: false,     // 会话管理模式（批量删除）
     pickedConvs: new Set(), // 管理模式勾选的会话 id
-    expandedModel: null, // 模型面板中展开思考档位的模型 ref（多级）
+    expandedModel: null, // 模型面板中展开思考开关的模型 ref（多级）
   };
 
   /* 新会话占位 id：点击「新会话」不再落库（懒创建，白皮书拍板），
@@ -285,12 +285,13 @@
     renderManageBar();
   }
 
-  /* 思考强度档位标签（模型面板共用） */
-  const THINK_LABELS = { minimal: "最轻", low: "低", medium: "中", high: "高", xhigh: "超高", max: "极致" };
-  const curThinking = () => (S.current?.thinking ?? null); // null=跟随模型；"off"=显式关闭
+  /* null/旧档位=开启；"off"=显式关闭。已有会话与本地占位读取同一数据源。 */
+  const curThinking = () => (
+    (S.currentId === NEW_ID ? S.current : S.conversations.find((c) => c.id === S.currentId))?.thinking ?? null
+  );
 
-  /* 模型+思考强度一体面板（学 WorkBuddy）：模型列表 → 该模型自己的思考配置二级页。
-     档位严格来自模型&API配置；在其他模型下选档位会同时切换模型。 */
+  /* 模型+思考一体面板（学 WorkBuddy）：模型列表 → 该模型自己的思考开关二级页。
+     具体档位只在模型 & API 管理维护；对话内不再暴露 low/medium/high 等档位。 */
   function renderModelMenu() {
     const menu = el.querySelector(".model-menu");
     if (!menu) return;
@@ -300,8 +301,9 @@
     if (detail) {
       const on = detail.id === curRef;
       const levels = Array.isArray(detail.thinkingLevels) ? detail.thinkingLevels : [];
+      const supportsThinking = Boolean(detail.thinking || levels.length);
       const chip = (val, label) => {
-        const active = on && thinking === (val || null);
+        const active = on && (val === "off" ? thinking === "off" : thinking !== "off");
         return `<button class="mm-chip ${active ? "on" : ""}" data-think-model="${esc(detail.id)}" data-pick-thinking="${val}">${label}</button>`;
       };
       menu.innerHTML = `
@@ -310,33 +312,32 @@
             <button class="mm-back" data-model-back title="返回模型列表" aria-label="返回模型列表">‹</button>
             <div class="mm-detail-title">
               <b>${esc(detail.name)}</b>
-              <span class="tbl-dim">${detail.supportsImages ? "推理与图片能力按模型配置" : "模型思考配置"}</span>
+              <span class="tbl-dim">${detail.supportsImages ? "模型思考与图片能力按配置生效" : "模型思考配置"}</span>
             </div>
+            ${on ? "" : `<button class="mm-use" data-pick-model="${esc(detail.id)}">使用此模型</button>`}
           </div>
-          <div class="mm-sec">思考强度${detail.thinking ? ` · 模型默认「${THINK_LABELS[detail.thinking] ?? detail.thinking}」` : " · 模型默认关闭"}</div>
-          <div class="mm-think">
-            ${chip("", "跟随模型")}
-            ${detail.thinking ? chip("off", "关闭") : ""}
-            ${levels.map((l) => chip(l, THINK_LABELS[l] ?? l)).join("")}
-          </div>
-          ${levels.length ? "" : '<div class="mm-level-empty">该模型未配置可调思考档位，可在「模型 & API 管理」中设置。</div>'}
+          <div class="mm-sec">思考</div>
+          ${supportsThinking ? `
+            <div class="mm-think">${chip("on", "开启")}${chip("off", "关闭")}</div>
+            <div class="mm-thinking-note">开启时使用模型默认思考强度；未配置默认强度时跟随厂商默认。</div>
+          ` : '<div class="mm-level-empty">该模型未配置思考能力，可在「模型 & API 管理」中设置支持档位或默认强度。</div>'}
         </div>`;
       return;
     }
     menu.innerHTML = `
-      <div class="mm-sec">模型（按会话生效；右侧 ▾ 配置该模型思考强度）</div>
+      <div class="mm-sec">模型（按会话生效；悬停或点击行尾 ▾ 配置思考）</div>
       <div class="mm-list">
         ${S.models.map((m) => {
           const on = m.id === curRef;
           return `
-          <div class="mm-model">
+          <div class="mm-model" data-hover-model="${esc(m.id)}">
             <button class="mm-item ${on ? "on" : ""}" data-pick-model="${esc(m.id)}">
               <span class="mm-check">${on ? "✓" : ""}</span>
               <span class="mm-name">${esc(m.name)}</span>
               ${m.reasoning ? '<span class="tag">思考</span>' : ""}
               ${m.supportsImages ? '<span class="tag">图片</span>' : ""}
             </button>
-            <button class="mm-exp" data-exp-model="${esc(m.id)}" title="配置 ${esc(m.name)} 的思考强度" aria-label="配置 ${esc(m.name)} 的思考强度">${LC.IC.caret}</button>
+            <button class="mm-exp" data-exp-model="${esc(m.id)}" title="配置 ${esc(m.name)} 的思考" aria-label="配置 ${esc(m.name)} 的思考">${LC.IC.caret}</button>
           </div>`;
         }).join("") || '<div class="mm-empty">暂无可用的模型</div>'}
       </div>`;
@@ -738,16 +739,18 @@
         } else if (S.current) {
           S.current.model = value;
         }
-        S.expandedModel = null; // 选模型仍留在主列表；点右侧箭头才进入配置页
+        S.expandedModel = null; // 选模型后回主列表；悬停/点右侧箭头才进入配置页
         renderModelMenu();
+        renderModelBtn(); // 弹层选中态与输入区按钮必须同步，避免“已保存但仍显示旧模型”
         toast("已切换模型，只影响之后的回答");
         return;
       }
       const pickThinking = e.target.closest("[data-pick-thinking]");
       if (pickThinking) {
-        const value = pickThinking.dataset.pickThinking || null; // ""=跟随模型
+        // 开启存 NULL：优先模型默认强度，未配置则跟随厂商；关闭存 off。旧档位只读兼容。
+        const value = pickThinking.dataset.pickThinking === "off" ? "off" : null;
         const modelId = pickThinking.dataset.thinkModel;
-        // 在别的模型下选档位 = 同时切到该模型（多级面板的语义）
+        // 在别的模型下操作开关 = 同时切到该模型（多级面板的语义）
         if (modelId && modelId !== currentModel()) {
           if (S.currentId && S.currentId !== NEW_ID) {
             await api(`/api/chat/conversations/${S.currentId}`, {
@@ -772,7 +775,8 @@
         }
         S.expandedModel = modelId ?? S.expandedModel;
         renderModelMenu();
-        toast(value === null ? "已恢复跟随模型默认" : value === "off" ? "已关闭思考" : "思考强度已切换，只影响之后的回答");
+        renderModelBtn();
+        toast(value === "off" ? "已关闭思考" : "已开启思考，只影响之后的回答");
         return;
       }
 
@@ -945,6 +949,16 @@
         await loadMessages(id);
         renderAll();
       }
+    });
+
+    // 桌面鼠标悬停模型行/右侧箭头进入二级页；不为二级页绑定 pointerout 关闭，避免移入即消失。
+    // 触屏 pointerover 被忽略，仍走上方点击 [data-exp-model] 的委托路径。
+    el.addEventListener("pointerover", (e) => {
+      if (e.pointerType !== "mouse" || !S.modelMenuOpen || S.expandedModel) return;
+      const row = e.target.closest("[data-hover-model]");
+      if (!row || row.contains(e.relatedTarget)) return;
+      S.expandedModel = row.dataset.hoverModel;
+      renderModelMenu();
     });
 
     el.addEventListener("change", async (e) => {

@@ -254,7 +254,7 @@ function adminModelRoutes() {
       if (body.supportsTools !== undefined) patch.supportsTools = body.supportsTools === true;
       if (body.supportsImages !== undefined) patch.supportsImages = body.supportsImages === true;
       if (body.displayOrder !== undefined) patch.displayOrder = Math.max(0, Number(body.displayOrder) || 0);
-      // 思考强度（学 WorkBuddy）：默认强度 null=推理关闭；支持档位白名单校验
+      // 思考强度：默认强度 null=未配置（对话开启时跟随厂商默认）；支持档位白名单校验
       if (body.thinking !== undefined) {
         patch.thinking = [null, "minimal", "low", "medium", "high", "xhigh", "max"].includes(body.thinking) ? body.thinking : null;
       }

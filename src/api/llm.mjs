@@ -33,7 +33,7 @@ async function seedFromEnv(pg) {
   const providerId = p[0].id;
   for (const m of Object.values(DEEPSEEK_MODELS)) {
     // 官方种子默认可用：is_common=true（R3 并集的第一来源；管理员可在后台改）；
-    // 思考档位取 pi 目录的 thinkingLevelMap（映射 null 的档不支持）；默认推理关闭（成本考量，管理员可开）
+    // 思考档位取 pi 目录的 thinkingLevelMap（映射 null 的档不支持）；默认强度留空，开启时跟随厂商默认
     const supportedLevels = m.thinkingLevelMap ? THINKING_LEVELS.filter((l) => m.thinkingLevelMap[l] != null) : [];
     await pg.query(
       `INSERT INTO models (plan_id, provider_id, model_id, ref, display_name, source, is_common, context_window, max_output_tokens, input_price, output_price, thinking_levels)
@@ -46,7 +46,7 @@ async function seedFromEnv(pg) {
   console.log("[llm] 已从 DEEPSEEK_API_KEY 种子 DeepSeek 官方供应商（模型 & API 管理可见）");
 }
 
-/* 思考强度（学 WorkBuddy 模型配置）：thinking=默认强度（null=推理关闭）；
+/* 思考强度（学 WorkBuddy 模型配置）：thinking=默认强度（null=未配置，跟随厂商默认）；
    thinkingLevels=支持的档位 CSV。pi 值域 minimal/low/medium/high/xhigh/max，
    映射按同名字符串直传（DeepSeek/Claude 系兼容），不支持的档位映射 null。 */
 const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
@@ -57,7 +57,8 @@ function buildPiModel(dbModel, provider, plan) {
   const api = API_OF[provider.protocol];
   const thinking = dbModel.thinking ?? null;
   const supported = (dbModel.thinkingLevels?.length ? dbModel.thinkingLevels : ["low", "medium", "high", "xhigh", "max"]);
-  const thinkingLevelMap = thinking
+  const supportsThinking = Boolean(thinking || dbModel.thinkingLevels?.length);
+  const thinkingLevelMap = supportsThinking
     ? Object.fromEntries(THINKING_LEVELS.map((l) => [l, supported.includes(l) ? l : null]))
     : undefined;
   return {
@@ -66,7 +67,7 @@ function buildPiModel(dbModel, provider, plan) {
     api,
     provider: `db-${provider.code}`,
     baseUrl: plan?.baseUrl || provider.baseUrl,
-    reasoning: Boolean(thinking),
+    reasoning: supportsThinking,
     ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
     input: dbModel.supportsImages ? ["text", "image"] : ["text"], // 图片输入能力（0010；多模态标记）
     cost: {
@@ -241,18 +242,49 @@ export function getModelMeta(ref) {
   return byRef.get(String(ref ?? ""))?.db ?? null;
 }
 
-/** 生效思考强度：会话覆盖优先（"off"=显式关闭），其次模型默认；模型不支持该档 → null */
-export function resolveThinking(conversationThinking, ref) {
-  if (conversationThinking === "off") return null;
-  const entry = byRef.get(String(ref ?? "")) ?? byRef.get(defaultModelRef());
-  if (!entry?.db) return null;
-  const level = conversationThinking || entry.db.thinking;
+/**
+ * 生效思考设置："off"=显式关闭；具体档位=模型默认或旧会话覆盖；
+ * null=开启但未指定强度，必须跟随厂商默认，不能擅自选择最低/第一档。
+ */
+export function resolveThinkingLevel(conversationThinking, modelMeta) {
+  if (conversationThinking === "off") return "off";
+  if (!modelMeta) return null;
+  const level = conversationThinking || modelMeta.thinking;
   if (!level) return null;
-  const supported = entry.db.thinkingLevels?.length ? entry.db.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
+  const supported = modelMeta.thinkingLevels?.length ? modelMeta.thinkingLevels : ["low", "medium", "high", "xhigh", "max"];
   return supported.includes(level) ? level : null;
 }
 
+/** 按当前注册表解析会话思考设置。 */
+export function resolveThinking(conversationThinking, ref) {
+  const entry = byRef.get(String(ref ?? "")) ?? byRef.get(defaultModelRef());
+  return resolveThinkingLevel(conversationThinking, entry?.db ?? null);
+}
+
 export const streamSimple = (model, context, options) => models.streamSimple(model, context, options);
+
+/**
+ * 转换成 pi-ai 1.5.2 streamSimple 参数。
+ * - 有档位：传 reasoning:<level>，真正开启并指定强度；
+ * - off：不传 reasoning，pi 适配器据此发送厂商关闭字段；
+ * - null：以 reasoning:false 的模型副本调用，阻止 pi 自动补关闭字段，保留厂商默认。
+ */
+export function thinkingStreamArgs(model, options = {}, thinkingLevel = null) {
+  const cleanOptions = { ...options };
+  delete cleanOptions.reasoning;
+  delete cleanOptions.thinkingLevel;
+  if (thinkingLevel === null || thinkingLevel === undefined) {
+    return { model: { ...model, reasoning: false }, options: cleanOptions };
+  }
+  if (thinkingLevel === "off") return { model, options: cleanOptions };
+  return { model, options: { ...cleanOptions, reasoning: thinkingLevel } };
+}
+
+/** 对话统一入口：generate 与 agent 共用，避免把 pi 的 reasoning 误写成 thinkingLevel。 */
+export function streamWithThinking(model, context, options = {}, thinkingLevel = null) {
+  const args = thinkingStreamArgs(model, options, thinkingLevel);
+  return models.streamSimple(args.model, context, args.options);
+}
 
 /** 全部已注册模型（管理/调试用；前台可见列表走 models.mjs visibleModelList） */
 export function listModels() {
@@ -314,7 +346,7 @@ export async function streamChat({ modelRef, systemPrompt, messages, onDelta, si
   const ref = byRef.has(modelRef) ? modelRef : defaultModelRef();
   const entry = byRef.get(ref);
   if (!entry?.piModel) throw new Error("没有可用模型");
-  // 思考强度：会话覆盖或模型默认，模型不支持该档则不传（pi 按模型 thinkingLevelMap 执行）
+  // 思考开关：会话覆盖或模型默认；null=厂商默认，off=显式关闭，具体档位兼容旧会话
   const thinkingLevel = resolveThinking(thinking, ref);
 
   // faux：补剧本走假回复，记 0 费日志
@@ -372,7 +404,7 @@ export async function streamChat({ modelRef, systemPrompt, messages, onDelta, si
   }
 }
 
-/** 底层流式执行：返回 { text, usage, aborted }；thinkingLevel 为 pi 思考强度档（null=不传） */
+/** 底层流式执行：返回 { text, usage, aborted }；thinkingLevel=null 跟随厂商，off 显式关闭。 */
 async function runStream(piModel, systemPrompt, messages, onDelta, signal, thinkingLevel = null) {
   const context = {
     systemPrompt: systemPrompt ?? "你是流光咖啡馆的 AI 助手，回答简洁、准确，用中文。",
@@ -381,7 +413,7 @@ async function runStream(piModel, systemPrompt, messages, onDelta, signal, think
   let full = "";
   let usage = null;
   let aborted = false;
-  const stream = models.stream(piModel, context, { signal, ...(thinkingLevel ? { thinkingLevel } : {}) });
+  const stream = streamWithThinking(piModel, context, { signal }, thinkingLevel);
   for await (const event of stream) {
     if (signal?.aborted) {
       aborted = true;

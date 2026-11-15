@@ -4,7 +4,7 @@
 import { Agent } from "@earendil-works/pi-agent-core";
 import { getPg } from "../db.mjs";
 import { conv as chatConv, msg as chatMsg } from "./chat-db.mjs";
-import { getModelByRef, streamSimple, defaultModelRef, primeFaux, resolveThinking } from "./llm.mjs";
+import { getModelByRef, streamWithThinking, defaultModelRef, primeFaux, resolveThinking } from "./llm.mjs";
 import { toolsFor } from "./agent-tools.mjs";
 import { roleOfPrincipal, gateApp } from "./gateway.mjs";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -53,7 +53,7 @@ async function runAgent({ ctx, conversation, userText, body }) {
   const tools = toolsFor(conversation.app, ctx);
   const model = getModelByRef(conversation.model ?? defaultModelRef());
   if (!model) throw new Error("没有可用模型");
-  // 思考强度：会话覆盖优先，其次模型默认；模型不支持该档 → 不传（pi 按模型配置执行）
+  // 思考开关：会话覆盖优先，其次模型默认；null=厂商默认，off=显式关闭
   const thinkingLevel = resolveThinking(conversation.thinking ?? null, conversation.model ?? defaultModelRef());
 
   const trace = []; // 工具轨迹（渲染工具卡片用）
@@ -71,7 +71,7 @@ async function runAgent({ ctx, conversation, userText, body }) {
       model,
       tools,
     },
-    streamFn: (m, c, o) => streamSimple(m, c, { ...o, ...(thinkingLevel ? { thinkingLevel } : {}) }),
+    streamFn: (m, c, o) => streamWithThinking(m, c, o, thinkingLevel),
     beforeToolCall: async ({ toolCall }) => {
       steps++;
       const tool = tools.find((x) => x.name === toolCall.name);

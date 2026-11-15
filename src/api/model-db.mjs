@@ -27,7 +27,7 @@ const toModel = (r) => ({
   inputPrice: r.input_price != null ? Number(r.input_price) : null,
   outputPrice: r.output_price != null ? Number(r.output_price) : null,
   supportsTools: r.supports_tools, source: r.source, fetchedAt: r.fetched_at,
-  thinking: r.thinking ?? null, // 默认思考强度（NULL=推理关闭；学 WorkBuddy 模型配置）
+  thinking: r.thinking ?? null, // 默认思考强度（NULL=未配置，对话开启时跟随厂商默认）
   thinkingLevels: r.thinking_levels ? String(r.thinking_levels).split(",") : [],
   displayOrder: r.display_order ?? 0,      // 排序：越靠前越优先，第一位=默认模型（学 WorkBuddy）
   supportsImages: r.supports_images === true, // 图片输入能力（多模态标记；对话附件据此提示）
